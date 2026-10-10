@@ -73,8 +73,7 @@ These are what make Local Review safe to point at your work. A PR that weakens o
   [RELEASING.md](https://github.com/edspencer/local-review/blob/main/RELEASING.md).
 
 Security issues: please report them privately, as described in
-[SECURITY.md](https://github.com/edspencer/local-review/blob/main/SECURITY.md). Everyone taking part follows the
-[Code of Conduct](https://github.com/edspencer/local-review/blob/main/CODE_OF_CONDUCT.md).
+[SECURITY.md](https://github.com/edspencer/local-review/blob/main/SECURITY.md).
 
 ## Where things are
 
