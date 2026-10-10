@@ -1,0 +1,100 @@
+---
+/**
+ * ValueProps — the six-card grid under the fold.
+ *
+ * Paddock's site goes straight from the hero to the scroll-swap section. Local
+ * Review's pitch rests as much on what it promises NOT to do (touch your repos,
+ * talk to GitHub, delete your review) as on what it does, and those promises do
+ * not have screenshots, so they get a grid of their own first.
+ */
+import Icon from './Icon.astro';
+import { VALUE_PROPS } from './copy';
+---
+
+<section class="props section">
+	<div class="container">
+		<header class="props-head" data-reveal>
+			<p class="eyebrow">Why Local Review</p>
+			<h2 class="h2">The first review happens before the pull request.</h2>
+			<p class="lede">
+				Your agent writes the commits. You review them as the PRs they will become, on your own machine,
+				and nobody else sees a thing until the stack is right.
+			</p>
+		</header>
+
+		<div class="props-grid">
+			{
+				VALUE_PROPS.map((p) => (
+					<article class="prop card" data-reveal>
+						<span class="prop-icon">
+							<Icon name={p.icon} />
+						</span>
+						<h3>{p.title}</h3>
+						<p>{p.body}</p>
+					</article>
+				))
+			}
+		</div>
+	</div>
+</section>
+
+<style>
+	.props-head {
+		margin-bottom: clamp(2rem, 5vw, 3.5rem);
+	}
+
+	.props-head .lede {
+		margin-top: 1.1rem;
+	}
+
+	.props-grid {
+		display: grid;
+		gap: 1rem;
+	}
+
+	@media (min-width: 640px) {
+		.props-grid {
+			grid-template-columns: repeat(2, 1fr);
+		}
+	}
+
+	@media (min-width: 1000px) {
+		.props-grid {
+			grid-template-columns: repeat(3, 1fr);
+		}
+	}
+
+	.prop {
+		padding: 1.5rem 1.5rem 1.65rem;
+	}
+
+	.prop-icon {
+		display: inline-grid;
+		place-items: center;
+		width: 40px;
+		height: 40px;
+		border-radius: 10px;
+		background: color-mix(in oklab, var(--plum) 70%, transparent);
+		border: 1px solid color-mix(in oklab, rgb(var(--accent)) 35%, transparent);
+		color: rgb(var(--accent));
+	}
+
+	.prop-icon :global(svg) {
+		width: 20px;
+		height: 20px;
+	}
+
+	.prop h3 {
+		margin: 1rem 0 0.5rem;
+		font-size: 1.1rem;
+		font-weight: 600;
+		letter-spacing: -0.01em;
+	}
+
+	.prop p {
+		margin: 0;
+		color: var(--text-muted);
+		font-size: 0.95rem;
+		line-height: 1.65;
+	}
+</style>

@@ -1,0 +1,101 @@
+/* Local Review docs: brand tweaks on top of Starlight. Keep minimal; Starlight defaults are good. */
+
+/*
+ * The app's identity is deep plum (#4a1942) with amber (#e8a33d): see the README's
+ * "deliberate 'not GitHub' difference". Plum is far too dark to be a link colour
+ * on a dark page, so the accent swaps by theme: amber in dark mode, plum in light.
+ */
+:root {
+	--sl-color-accent-low: #3a1534;
+	--sl-color-accent: #e8a33d;
+	--sl-color-accent-high: #f6d29b;
+
+	--lr-plum: #4a1942;
+	--lr-plum-2: #5c1f52;
+	--lr-amber: #e8a33d;
+}
+
+:root[data-theme='light'] {
+	--sl-color-accent-low: #f3e3ef;
+	--sl-color-accent: #6b2a60;
+	--sl-color-accent-high: #4a1942;
+}
+
+/* Slightly wider content column for reference tables (env vars, API). */
+:root {
+	--sl-content-width: 50rem;
+}
+
+/*
+ * The header carries the app's own top bar: plum, with an amber underline, in
+ * both themes. It is the one place the docs look like the product.
+ *
+ * Scoped to `header.header` (Starlight's PageFrame), because `.header` alone also
+ * matches Starlight's inner header div and Expressive Code's code-frame titles.
+ * And the controls are restyled one by one rather than by overriding Starlight's
+ * --sl-color-* variables here: the search dialog lives inside this element, so
+ * overridden variables would leak into it.
+ */
+header.header {
+	background: linear-gradient(90deg, var(--lr-plum) 0%, var(--lr-plum-2) 100%);
+	border-bottom: 3px solid var(--lr-amber);
+}
+
+header.header .site-title {
+	color: #fff;
+}
+
+header.header .social-icons a,
+header.header starlight-theme-select label,
+header.header starlight-theme-select select {
+	color: rgb(255 255 255 / 0.85);
+}
+
+header.header .social-icons a:hover,
+header.header starlight-theme-select label:hover,
+header.header starlight-theme-select select:hover {
+	color: #fff;
+}
+
+/* The picker's open list is drawn by the OS on the page's own colours. */
+header.header starlight-theme-select option {
+	color: var(--sl-color-gray-1);
+}
+
+header.header .social-icons::after {
+	border-color: rgb(255 255 255 / 0.28);
+}
+
+/* The search box sits on plum, so it gets a translucent light field rather than
+   the page's grey. */
+header.header button[data-open-modal] {
+	background-color: rgb(255 255 255 / 0.1);
+	border-color: rgb(255 255 255 / 0.28);
+	color: rgb(255 255 255 / 0.85);
+}
+
+header.header button[data-open-modal]:hover {
+	border-color: rgb(255 255 255 / 0.55);
+	color: #fff;
+}
+
+header.header button[data-open-modal] kbd {
+	background-color: rgb(255 255 255 / 0.14);
+	color: rgb(255 255 255 / 0.85);
+}
+
+/* Mermaid: render at natural size and scroll, rather than scaling down to fit.
+ * The natural width is pinned in public/mermaid-init.js; this rule only provides
+ * the scroll container. (Same approach as Paddock's docs.) */
+.sl-markdown-content pre.mermaid {
+	overflow-x: auto;
+	/* Room for the scrollbar when a wide diagram needs one. */
+	padding-block: 0.5rem;
+}
+
+.sl-markdown-content pre.mermaid > svg {
+	display: block;
+	/* Centre it when it is narrower than the column. */
+	margin-inline: auto;
+	height: auto;
+}

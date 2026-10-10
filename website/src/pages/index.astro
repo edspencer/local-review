@@ -1,0 +1,26 @@
+---
+/**
+ * The landing page.
+ *
+ * This file route wins `/` over Starlight's injected routes, so it renders
+ * outside Starlight with its own layout (LandingLayout). The docs start at
+ * /introduction/, which is the first entry in the sidebar. Never point the
+ * sidebar at `/`: it would eject a reader from the docs with no way back.
+ */
+import LandingLayout from '../components/landing/LandingLayout.astro';
+import Hero from '../components/landing/Hero.astro';
+import ValueProps from '../components/landing/ValueProps.astro';
+import ScrollFeatures from '../components/landing/ScrollFeatures.astro';
+import Agents from '../components/landing/Agents.astro';
+import GetStarted from '../components/landing/GetStarted.astro';
+import { hero } from '../components/landing/copy';
+import { TITLE, TAGLINE } from '../site.mjs';
+---
+
+<LandingLayout title={`${TITLE}: ${TAGLINE}`} description={hero.lede}>
+	<Hero />
+	<ValueProps />
+	<ScrollFeatures />
+	<Agents />
+	<GetStarted />
+</LandingLayout>

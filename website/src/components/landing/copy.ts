@@ -1,0 +1,170 @@
+/**
+ * Landing-page copy, in one place.
+ *
+ * Every string the landing page renders lives here rather than being scattered
+ * through the components, so the words can be worked on without touching markup.
+ * (Same arrangement as Paddock's site.)
+ *
+ * FIRST DRAFT. This copy is distilled from the README and has not been through
+ * an editing pass yet. The media slots are placeholders too: see FEATURES.
+ */
+
+import { REPO_URL, TAGLINE } from '../../site.mjs';
+
+export { REPO_URL };
+
+export const hero = {
+	/** Small line above the H1. */
+	eyebrow: 'Open source · MIT · runs on your machine',
+	/** The H1. */
+	title: `${TAGLINE}.`,
+	lede: 'Local Review shows every commit on your branch as its own pull request, grouped into the stacks you mean to open, in a GitHub-style review UI that runs on your laptop.',
+	body: 'Comment, request changes and mark PRs ready while it is still just you and your agent. Nothing is pushed until the stack is right.',
+};
+
+/** The one command worth pasting. */
+export const QUICKSTART = {
+	id: 'quickstart',
+	label: 'Quick start',
+	blurb: 'Needs Node 22+ and git. Reads your repos, never writes to them.',
+	command: 'npx local-review',
+	link: { text: 'Set up your first project', href: '/getting-started/quickstart/' },
+} as const;
+
+/** The second item in the strip: a link, not a tab (see CommandTabs.astro). */
+export const SECONDARY_LINK = {
+	label: 'Other ways to install',
+	href: '/getting-started/installation/',
+	title: 'Installation: npx, a global install, or from source',
+} as const;
+
+/** The hero buttons, repeated in the closing section. */
+export const HERO_LINKS = [
+	{ text: 'Get started', href: '/getting-started/quickstart/', icon: 'arrow', primary: true },
+	{ text: 'Read the docs', href: '/introduction/', icon: 'docs', primary: false },
+	{ text: 'View on GitHub', href: REPO_URL, icon: 'github', primary: false },
+] as const;
+
+/** The value-prop grid under the fold. */
+export const VALUE_PROPS = [
+	{
+		icon: 'stack',
+		title: 'Every commit is a PR',
+		body: 'Each commit gets a Conversation tab and a Files changed tab, numbered and grouped into colour-coded stacks, exactly as it will look on GitHub.',
+	},
+	{
+		icon: 'repos',
+		title: 'Stacks across repos',
+		body: 'One project can span several repos, each with its own branch and stacks, so a change that touches the API, the client and the infra is reviewed as one piece of work.',
+	},
+	{
+		icon: 'chat',
+		title: 'Your agent answers in the review',
+		body: 'Comments are plain YAML files. Your agent reads them, fixes the commits and replies in the same files, and its replies appear in the browser as it works.',
+	},
+	{
+		icon: 'lock',
+		title: 'Read-only by construction',
+		body: 'Local Review never fetches, checks out, commits or rebases. All git access goes through one read-only allow-list, so it cannot touch the repos it shows you.',
+	},
+	{
+		icon: 'shield',
+		title: 'Nothing leaves your machine',
+		body: 'It never talks to GitHub, only listens on localhost, and never deletes your review: everything is snapshotted hourly while it changes.',
+	},
+	{
+		icon: 'rocket',
+		title: 'Publish when it is right',
+		body: 'When a stack is ready, your agent opens it as native GitHub stacked PRs with the titles and descriptions you approved, then records what it created.',
+	},
+] as const;
+
+/**
+ * The scroll-swap "how it works" section: each entry is one step and the media
+ * that goes with it.
+ *
+ * PLACEHOLDERS. Real captures come from the demo test bed's capture rig (WP7).
+ * Each `placeholder` string says what the shot should show; the sizes are the
+ * frame the real image should roughly fill. Follow Paddock's media rule when
+ * they land: tight CROPS of one feature at close to 1:1, never full-window
+ * screenshots, because the media column is only ~700px wide.
+ */
+export const FEATURES = [
+	{
+		title: '1. Describe the work',
+		body: 'A project is one YAML file: the repos involved, the branch to review in each, and where each stack starts. Pick stacks by commit subject and they survive every rebase.',
+		media: {
+			width: 640,
+			height: 420,
+			placeholder: 'project.yaml beside the sidebar it produces: two repos, three colour-coded stacks',
+		},
+	},
+	{
+		title: '2. Review each commit as a PR',
+		body: 'Read the diff with split or unified views, comment on a line or a range, resolve threads and tick files as viewed. Readiness badges show where every PR in every stack stands.',
+		media: {
+			width: 700,
+			height: 440,
+			placeholder: 'Files changed: an inline comment thread on a range of lines, with the Viewed checkbox',
+		},
+	},
+	{
+		title: '3. Your agent replies',
+		body: 'Hand the project to your coding agent. It reads your threads, amends the commits and answers in the review files. Threads follow their code across the rebase.',
+		media: {
+			width: 640,
+			height: 380,
+			placeholder: 'A thread with your comment and an agent reply (author: claude) that arrived live',
+		},
+	},
+	{
+		title: '4. Mark it ready, then publish',
+		body: 'Mark each PR ready. The plan command prints every branch, base, title and body, and your agent opens the stack on GitHub and records each PR back in Local Review.',
+		media: {
+			width: 680,
+			height: 400,
+			placeholder: 'The stack picture: three stacks, ready / published badges, PR sizes on one scale',
+		},
+	},
+] as const;
+
+/** The "works with your agent" section. */
+export const AGENTS = {
+	eyebrow: 'Works with your agent',
+	title: 'Plain files in, plain files out.',
+	body: 'There is no plugin and no API key. Local Review keeps your review in YAML files under ~/.local-review, and any coding agent that can read and write files can take part: Claude Code, Codex, or the next one.',
+	points: [
+		{
+			title: 'A guide written for agents',
+			body: '`local-review guide` prints the agent guide: the data model, how to answer threads, how to fix a commit mid-stack, and how to publish.',
+		},
+		{
+			title: 'A plan, not guesswork',
+			body: '`local-review plan` prints exactly what each PR should be on GitHub, as Markdown, JSON or YAML, so publishing is mechanical.',
+		},
+		{
+			title: 'One prompt to hand off',
+			body: 'Paste the hand-off prompt into your agent and it knows where your review lives and what to do with it.',
+		},
+	],
+	link: { text: 'Read the agent guide', href: '/agents/agent-guide/' },
+	/** The review file shown in the code card. Illustrative, not real data. */
+	file: 'reviews/my-service/3f9c2e1….yaml',
+	sample: `threads:
+  - id: t-1a2b3c4d
+    path: src/config/loader.ts
+    side: right
+    line: 42
+    resolved: false
+    comments:
+      - id: c-5e6f7a8b
+        author: ada
+        body: |
+          This swallows the parse error. Can we
+          surface the file name and line instead?
+      - id: c-9d0e1f2a
+        author: claude
+        body: |
+          Done in the amended commit: the error now
+          reads "config.yaml:12: unexpected key".`,
+} as const;

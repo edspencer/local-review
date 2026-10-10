@@ -1,0 +1,260 @@
+/*
+ * Landing page — base tokens and primitives.
+ *
+ * This file is loaded ONLY by src/pages/index.astro, which lives outside
+ * Starlight. It deliberately does not inherit Starlight's theme: the docs are
+ * light-or-auto and the landing page is unconditionally dark, which is a
+ * deliberate split rather than an oversight. (Same structure as Paddock's site.)
+ *
+ * The palette comes from the app's own "not GitHub" header: deep plum #4a1942
+ * and amber #e8a33d (src/styles.css in the app, `.app-header`). The ground is a
+ * near-black pushed towards that plum, and amber is the one accent.
+ */
+
+:root {
+	--ground: #150a13; /* the page: plum-black */
+	--raised: #251320; /* cards */
+	--sunken: #0f070d; /* terminal wells */
+	--hover: #2e1828;
+
+	--plum: #4a1942;
+	--plum-2: #5c1f52;
+	--ink: #2b0f27; /* text on amber */
+
+	--text: #f4ece9;
+	--text-muted: #c5b5bd;
+	--text-subtle: #a8959f;
+
+	--border-subtle: #33202e;
+	--border: #45293e;
+	--border-strong: #7a5670;
+
+	--accent: 232 163 61; /* amber, #e8a33d */
+	--accent-color: rgb(var(--accent));
+
+	--font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+	--font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+	/* One spacing rhythm for the whole page, so sections cannot drift apart. */
+	--gutter: clamp(1.25rem, 5vw, 3rem);
+	--measure: 1200px;
+	--section-y: clamp(4.5rem, 10vw, 9rem);
+
+	--radius-media: 14px;
+	--radius-pill: 999px;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	scroll-behavior: smooth;
+	/* The sticky media frame in the scroll section is offset by the nav height;
+	   anchor jumps must clear it too. */
+	scroll-padding-top: 5.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	html {
+		scroll-behavior: auto;
+	}
+}
+
+body {
+	margin: 0;
+	background: var(--ground);
+	color: var(--text);
+	font-family: var(--font-sans);
+	font-size: 17px;
+	line-height: 1.6;
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+	overflow-x: hidden;
+}
+
+img,
+video,
+canvas,
+iframe {
+	max-width: 100%;
+}
+
+a {
+	color: inherit;
+}
+
+:focus-visible {
+	outline: 2px solid var(--accent-color);
+	outline-offset: 3px;
+	border-radius: 4px;
+}
+
+/* ---- layout primitives -------------------------------------------------- */
+
+.container {
+	width: 100%;
+	max-width: var(--measure);
+	margin-inline: auto;
+	padding-inline: var(--gutter);
+}
+
+.section {
+	padding-block: var(--section-y);
+}
+
+/* ---- type --------------------------------------------------------------- */
+
+/* The eyebrow is `--text`, not `--text-muted`: it sits on the brightest part of
+   the hero backdrop, where the muted colour loses contrast. */
+.eyebrow {
+	display: inline-block;
+	font-family: var(--font-mono);
+	font-size: 0.75rem;
+	font-weight: 500;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--text);
+	margin: 0 0 0.9rem;
+}
+
+/* Sections below the hero have a flat ground behind them, so the eyebrow can
+   take its intended muted weight there. */
+.section .eyebrow {
+	color: var(--text-muted);
+}
+
+.h1 {
+	font-size: clamp(2.5rem, 6.5vw, 4.25rem);
+	line-height: 1.04;
+	letter-spacing: -0.03em;
+	font-weight: 600;
+	margin: 0;
+	text-wrap: balance;
+}
+
+.h2 {
+	font-size: clamp(1.85rem, 3.6vw, 2.75rem);
+	line-height: 1.15;
+	letter-spacing: -0.022em;
+	font-weight: 600;
+	margin: 0;
+	text-wrap: balance;
+}
+
+.lede {
+	font-size: clamp(1.02rem, 1.35vw, 1.15rem);
+	line-height: 1.65;
+	color: var(--text-muted);
+	max-width: 52ch;
+}
+
+/* ---- buttons ------------------------------------------------------------ */
+
+.btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.55rem;
+	padding: 0.7rem 1.25rem;
+	border-radius: var(--radius-pill);
+	border: 1px solid var(--border);
+	background: color-mix(in oklab, var(--raised) 55%, transparent);
+	color: var(--text);
+	font-size: 0.95rem;
+	font-weight: 500;
+	text-decoration: none;
+	backdrop-filter: blur(8px);
+	transition:
+		background-color 0.18s ease,
+		border-color 0.18s ease,
+		transform 0.18s ease;
+}
+
+.btn:hover {
+	background: color-mix(in oklab, var(--hover) 80%, transparent);
+	border-color: var(--border-strong);
+	transform: translateY(-1px);
+}
+
+/* The primary button is the app's amber pill ("not on GitHub"), ink on amber. */
+.btn--primary {
+	background: var(--accent-color);
+	border-color: var(--accent-color);
+	color: var(--ink);
+	font-weight: 600;
+}
+
+.btn--primary:hover {
+	background: #f0b55e;
+	border-color: #f0b55e;
+}
+
+.btn svg {
+	width: 17px;
+	height: 17px;
+	flex: none;
+}
+
+.btn-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.7rem;
+}
+
+/* ---- surfaces ----------------------------------------------------------- */
+
+.card {
+	background: color-mix(in oklab, var(--raised) 62%, transparent);
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-media);
+	backdrop-filter: blur(10px);
+}
+
+/* Screenshot frames: a hairline plus a soft lift, so a light-mode capture does
+   not float unbounded on the dark ground. */
+.media-frame {
+	position: relative;
+	overflow: hidden;
+	border: 1px solid var(--border-subtle);
+	border-radius: var(--radius-media);
+	background: var(--sunken);
+	box-shadow: 0 24px 60px -20px rgb(0 0 0 / 0.7);
+	aspect-ratio: 8 / 5;
+}
+
+.media-frame img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	object-position: top center;
+}
+
+/* ---- reveal-on-scroll --------------------------------------------------- */
+
+/* Applied by src/scripts/landing.ts via IntersectionObserver. The initial
+   hidden state is set in the same script rather than here, so that a reader
+   with JS disabled gets the full page instead of a blank one — the failure mode
+   the reference page has (its full-page screenshot is almost entirely black). */
+.reveal {
+	opacity: 0;
+	transform: translateY(18px);
+	transition:
+		opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+		transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.reveal.is-in {
+	opacity: 1;
+	transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.reveal {
+		opacity: 1;
+		transform: none;
+		transition: none;
+	}
+}

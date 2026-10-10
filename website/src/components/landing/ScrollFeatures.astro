@@ -1,0 +1,234 @@
+---
+/**
+ * ScrollFeatures — the sticky media that swaps as you read past it.
+ *
+ * Reverse-engineered from deepseek.com/harness rather than guessed at. Their
+ * implementation, measured in the browser:
+ *
+ *   grid-cols-[42fr_58fr]
+ *   left  — one block per feature, each `min-h-[35vh] py-[11vh]`,
+ *           `transition-opacity duration-500`, active 1 / inactive 0.3,
+ *           `cursor-pointer`
+ *   right — a `position: sticky; top: 168px` frame at `aspect-[8/5]`
+ *   mobile — an entirely separate `md:hidden` stacked list, no sticky at all
+ *
+ * We keep that shape. The differences are deliberate:
+ *
+ *   - ONE set of markup, not two. Their desktop and mobile trees duplicate every
+ *     heading and paragraph, which doubles the DOM and means a copy fix has to
+ *     be made twice. Ours reflows with CSS.
+ *   - Inactive blocks sit at 0.45 rather than 0.3. At 0.3 on our warm ground the
+ *     body copy drops under 4.5:1 and reads as disabled rather than unfocused.
+ *   - NO FIXED ASPECT RATIO on the frame, which is the big one. See below.
+ *
+ * The stage does not force 8:5: media here should be crops of one feature each
+ * (see the PLACEHOLDERS note on FEATURES in copy.ts), in whatever shape that
+ * feature happens to be, and forcing them into one box would crop or pillarbox.
+ *
+ * Instead every item sits at its natural size, capped to the column width, and
+ * all of them are stacked in ONE grid cell. The stage therefore takes the height
+ * of the tallest item and centres the rest — so the media never letterboxes,
+ * never crops, and the layout never shifts as the swap happens.
+ *
+ * No scroll-jacking: the observer only decides which item is showing.
+ */
+import Placeholder from './Placeholder.astro';
+import { FEATURES } from './copy';
+
+// Every media slot is a PLACEHOLDER for now. When real captures land (from the
+// demo test bed's capture rig), put them in src/assets/landing/, import them
+// here, and render them with astro:assets <Image> as Paddock's site does.
+---
+
+<section class="feat section" data-features>
+	<div class="container">
+		<header class="feat-head" data-reveal>
+			<p class="eyebrow">How it works</p>
+			<h2 class="h2">From a branch full of commits<br />to a stack of PRs you trust.</h2>
+		</header>
+
+		<div class="feat-grid">
+			<div class="feat-blocks">
+				{
+					FEATURES.map((f, i) => (
+						<article
+							class:list={['feat-block', { 'is-current': i === 0 }]}
+							data-feature-block
+							aria-current={i === 0 ? 'true' : undefined}
+						>
+							<h3>{f.title}</h3>
+							<p>{f.body}</p>
+
+							{/* Shown only below the breakpoint, where there is no sticky column. */}
+							<div class="feat-inline">
+								<Placeholder label={f.media.placeholder} width={f.media.width} height={f.media.height} />
+							</div>
+						</article>
+					))
+				}
+			</div>
+
+			<div class="feat-sticky-col">
+				<div class="feat-sticky">
+					<div class="feat-stage">
+						{
+							FEATURES.map((f, i) => (
+								<div class:list={['feat-shot', { 'is-current': i === 0 }]} data-feature-shot>
+									<Placeholder label={f.media.placeholder} width={f.media.width} height={f.media.height} />
+								</div>
+							))
+						}
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</section>
+
+<style>
+	/* Wider than the rest of the page so the media column is ~700px: real crops
+	   should then land at or near 1:1 rather than being downscaled. */
+	.feat .container {
+		max-width: 1320px;
+	}
+
+	.feat-head {
+		margin-bottom: clamp(2rem, 5vw, 3.5rem);
+	}
+
+	.feat-grid {
+		display: grid;
+		gap: 2rem;
+	}
+
+	.feat-block {
+		cursor: default;
+	}
+
+	.feat-block + .feat-block {
+		margin-top: 3rem;
+	}
+
+	.feat-block h3 {
+		font-size: 1.35rem;
+		font-weight: 600;
+		letter-spacing: -0.015em;
+		margin: 0 0 0.7rem;
+	}
+
+	.feat-block p {
+		margin: 0;
+		color: var(--text-muted);
+		line-height: 1.7;
+		max-width: 46ch;
+	}
+
+	.feat-inline {
+		margin-top: 1.5rem;
+	}
+
+	.feat-sticky-col {
+		display: none;
+	}
+
+	/* ---- the media itself -------------------------------------------------- */
+
+	/*
+	 * Natural size, capped to the column. `height: auto` is what keeps a 796x254
+	 * hover rail from being stretched to the height of the 732x521 Home shot
+	 * sharing its grid cell.
+	 */
+	.feat-media {
+		display: block;
+		max-width: 100%;
+		height: auto;
+		border: 1px solid var(--border-subtle);
+		border-radius: var(--radius-media);
+		background: var(--sunken);
+		box-shadow: 0 24px 60px -20px rgb(0 0 0 / 0.7);
+	}
+
+	/* ---- desktop: sticky media, dimmed inactive blocks --------------------- */
+
+	@media (min-width: 940px) {
+		.feat-grid {
+			grid-template-columns: 42fr 58fr;
+			gap: clamp(2.5rem, 5vw, 4.5rem);
+			align-items: start;
+		}
+
+		.feat-block {
+			display: flex;
+			flex-direction: column;
+			justify-content: center;
+			min-height: 30vh;
+			padding-block: 7vh;
+			cursor: pointer;
+			opacity: 0.45;
+			transition: opacity 0.5s ease;
+		}
+
+		.feat-block + .feat-block {
+			margin-top: 0;
+		}
+
+		.feat-block.is-current {
+			opacity: 1;
+		}
+
+		.feat-inline {
+			display: none;
+		}
+
+		.feat-sticky-col {
+			display: block;
+			height: 100%;
+		}
+
+		.feat-sticky {
+			position: sticky;
+			/* Clears the fixed 4.25rem nav with room to breathe. */
+			top: 8.5rem;
+		}
+	}
+
+	/* ---- the cross-fading stage -------------------------------------------- */
+
+	/*
+	 * All items in one grid cell: the stage is as tall as the tallest of them and
+	 * never resizes as they swap, so the sticky column does not jump while you
+	 * scroll. Shorter items are centred in it.
+	 *
+	 * Stacking them also means every item is decoded before it is needed —
+	 * swapping a single `src` instead would flash on first show over a slow
+	 * connection.
+	 */
+	.feat-stage {
+		display: grid;
+		place-items: center;
+	}
+
+	.feat-shot {
+		grid-area: 1 / 1;
+		width: 100%;
+		display: flex;
+		justify-content: center;
+		opacity: 0;
+		transition: opacity 0.45s ease;
+		/* Inert while hidden: stops a cross-faded item swallowing clicks or
+		   showing up in the tab order. */
+		pointer-events: none;
+	}
+
+	.feat-shot.is-current {
+		opacity: 1;
+		pointer-events: auto;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.feat-block,
+		.feat-shot {
+			transition: none;
+		}
+	}
+</style>

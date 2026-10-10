@@ -1,0 +1,248 @@
+---
+/**
+ * LandingLayout — the document shell for the marketing homepage.
+ *
+ * This page lives at src/pages/index.astro, OUTSIDE Starlight. Astro's file
+ * routes take precedence over an integration's injected routes, so this wins
+ * `/` while the Starlight docs pages keep building untouched. That is what buys
+ * us a real fold: Starlight's `splash` template cannot produce one. (The same
+ * arrangement as Paddock's site, which this is modelled on.)
+ *
+ * The cost of being outside Starlight is that nothing is inherited — no nav, no
+ * footer, no head tags, no analytics. All four are re-provided here, and the
+ * duplication is called out at each site rather than left to be discovered.
+ */
+import '../../styles/landing.css';
+import { REPO_URL } from './copy';
+import { posthogSnippet, TITLE } from '../../site.mjs';
+// The white-wordmark lockup with a faint tile edge, for plum and near-plum
+// grounds. Copied from ../brand by scripts/sync-brand.mjs.
+import lockup from '../../assets/lockup-on-plum.svg';
+
+interface Props {
+	title: string;
+	description: string;
+}
+
+const { title, description } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
+const ogImage = new URL('/og-image.png', Astro.site).href;
+
+const navLinks = [
+	{ text: 'Docs', href: '/introduction/' },
+	{ text: 'Quickstart', href: '/getting-started/quickstart/' },
+	{ text: 'Concepts', href: '/concepts/pr-stacks/' },
+	{ text: 'For agents', href: '/agents/agent-guide/' },
+];
+
+// Same helper, same build-time variable as the Starlight pages (astro.config.mjs):
+// null unless PUBLIC_POSTHOG_KEY is set, in which case nothing is emitted.
+const posthog = posthogSnippet(import.meta.env.PUBLIC_POSTHOG_KEY);
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>{title}</title>
+		<meta name="description" content={description} />
+		<link rel="canonical" href={canonical} />
+		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+		<link rel="icon" href="/favicon.ico" sizes="32x32" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+		<meta property="og:type" content="website" />
+		<meta property="og:title" content={title} />
+		<meta property="og:description" content={description} />
+		<meta property="og:url" content={canonical} />
+		<meta property="og:image" content={ogImage} />
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:image" content={ogImage} />
+
+		{/*
+			Fonts: Inter + JetBrains Mono, the same two families the app bundles
+			for its stack pictures. Preconnect because they are render-blocking for
+			the H1, which is the largest paint on the page.
+		*/}
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			rel="stylesheet"
+			href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+		/>
+
+		{/*
+			PostHog, OFF by default. The Starlight pages get the same snippet from
+			astro.config.mjs; this page is outside Starlight, so it emits its own,
+			from the same helper. See src/site.mjs.
+		*/}
+		{posthog && <script is:inline set:html={posthog} />}
+	</head>
+
+	<body>
+		<a class="skip" href="#main">Skip to content</a>
+
+		<header class="nav">
+			<div class="nav-inner container">
+				<a class="brand" href="/">
+					<img src={lockup.src} alt={TITLE} width="158" height="30" />
+				</a>
+				<nav class="nav-links" aria-label="Main">
+					{navLinks.map((l) => <a href={l.href}>{l.text}</a>)}
+				</nav>
+				<a class="nav-gh" href={REPO_URL} rel="noopener">GitHub&nbsp;→</a>
+			</div>
+		</header>
+
+		<main id="main">
+			<slot />
+		</main>
+
+		<footer class="foot">
+			<div class="container foot-inner">
+				<p>
+					{TITLE}: review your PR stacks on your own machine. MIT licensed. By
+					<a href="https://edspencer.net">Ed Spencer</a>.
+				</p>
+				<nav class="foot-links" aria-label="Footer">
+					<a href={REPO_URL}>GitHub</a>
+					<a href="/introduction/">Docs</a>
+					<a href="/guarantees/read-only/">Guarantees</a>
+					<a href="/contributing/">Contributing</a>
+				</nav>
+			</div>
+		</footer>
+
+		<script>
+			import '../../scripts/landing';
+		</script>
+
+		<style>
+			.skip {
+				position: absolute;
+				left: -9999px;
+				top: 0;
+				background: var(--raised);
+				color: var(--text);
+				padding: 0.75rem 1rem;
+				z-index: 100;
+				border-radius: 0 0 8px 0;
+			}
+			.skip:focus {
+				left: 0;
+			}
+
+			.nav {
+				position: fixed;
+				inset: 0 0 auto 0;
+				z-index: 50;
+				/* Transparent over the hero, then frosted once scrolled — the class is
+				   toggled in scripts/landing.ts. */
+				transition:
+					background-color 0.25s ease,
+					border-color 0.25s ease;
+				border-bottom: 1px solid transparent;
+			}
+
+			/* Once stuck, the nav becomes the app's own top bar: plum with an amber
+			   underline, the deliberate "not GitHub" look. */
+			:global(.nav.is-stuck) {
+				background: color-mix(in oklab, var(--plum) 88%, transparent);
+				backdrop-filter: blur(12px);
+				border-bottom-color: var(--accent-color);
+			}
+
+			.nav-inner {
+				display: flex;
+				align-items: center;
+				gap: 2rem;
+				height: 4.25rem;
+			}
+
+			.brand {
+				display: flex;
+				align-items: center;
+				gap: 0.55rem;
+				font-weight: 600;
+				font-size: 1.05rem;
+				letter-spacing: -0.01em;
+				text-decoration: none;
+			}
+
+			.nav-links {
+				display: none;
+				gap: 1.65rem;
+				margin-inline-start: auto;
+			}
+
+			.nav-links a {
+				color: var(--text-muted);
+				text-decoration: none;
+				font-size: 0.92rem;
+				transition: color 0.15s ease;
+			}
+
+			.nav-links a:hover {
+				color: var(--text);
+			}
+
+			.nav-gh {
+				margin-inline-start: auto;
+				color: var(--text-muted);
+				text-decoration: none;
+				font-size: 0.92rem;
+			}
+
+			.nav-gh:hover {
+				color: var(--text);
+			}
+
+			@media (min-width: 860px) {
+				.nav-links {
+					display: flex;
+				}
+				.nav-gh {
+					margin-inline-start: 0;
+				}
+			}
+
+			.foot {
+				border-top: 1px solid var(--border-subtle);
+				padding-block: 2.5rem;
+				color: var(--text-subtle);
+				font-size: 0.88rem;
+			}
+
+			.foot-inner {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 1rem 2rem;
+				align-items: center;
+				justify-content: space-between;
+			}
+
+			.foot p {
+				margin: 0;
+			}
+
+			.foot a {
+				color: var(--text-muted);
+				text-decoration: none;
+			}
+
+			.foot a:hover {
+				color: var(--text);
+				text-decoration: underline;
+			}
+
+			.foot-links {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 1.4rem;
+			}
+		</style>
+	</body>
+</html>

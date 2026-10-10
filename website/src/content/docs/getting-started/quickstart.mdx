@@ -1,0 +1,89 @@
+---
+title: Quickstart
+description: Run Local Review with npx, create your first project, and review a branch as a stack of PRs.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import { DEFAULT_PORT, LOCAL_URL } from '../../../site.mjs';
+
+You need **Node.js 22 or newer** and **git**. Local Review runs on macOS and Linux. (Windows is untested.)
+
+<Steps>
+
+1. **Start Local Review.** Run it from any directory:
+
+   ```sh
+   npx local-review
+   ```
+
+   <p>It serves the UI on <a href={LOCAL_URL}>{LOCAL_URL}</a>. With no projects yet, the page tells you how to
+   create one, which is the next step. Leave it running.</p>
+
+2. **Create a project.** In another terminal, pick a short name (a *slug*) for the piece of work you want
+   reviewed:
+
+   ```sh
+   npx local-review init my-feature
+   ```
+
+   This creates `~/.local-review/projects/my-feature/project.yaml`, a commented starting point.
+
+3. **Point it at your branch.** Edit `project.yaml` and list the repo, the branch to review and the base it
+   branched from. Then split the commits into stacks by the subject of the commit each stack starts at:
+
+   ```yaml title="~/.local-review/projects/my-feature/project.yaml"
+   title: My feature
+   repos:
+     - path: ~/code/my-service
+       branch: me/my-feature   # the range ends at this branch's head
+       base: origin/main       # and starts at its merge-base with this
+       stacks:
+         - title: Groundwork
+           starts_at: "Add the config loader"
+         - title: The feature itself
+           starts_at: "Add the feature flag"
+   ```
+
+   Leave `stacks:` out and the whole branch is one stack. A project can list several repos.
+
+4. **Review.** Save the file and the browser picks it up; no restart is needed. Each commit is now a PR in the
+   sidebar, in its stack. Read the diffs, leave comments, tick files as **Viewed**, and mark each PR **Ready**
+   when you're happy with it.
+
+5. **Hand it to your agent.** Your comments are saved as plain YAML next to `project.yaml`. Point your agent at
+   them and it can reply, fix the commits and, when you're ready, publish the stacks to GitHub. Start with the
+   [agent guide](/agents/agent-guide/).
+
+</Steps>
+
+## Where your data lives
+
+Everything you create lives in plain files in `~/.local-review/`, never in the repos you review:
+
+```
+~/.local-review/
+  projects/
+    my-feature/
+      project.yaml                      # repos, commit ranges and PR stacks
+      prs/<repo>/<full-sha>.yaml        # PR title/description overrides, readiness, branch, GitHub PR
+      reviews/<repo>/<full-sha>.yaml    # review comments and Viewed marks
+  backups/                              # automatic snapshots of projects/
+```
+
+To keep it somewhere else, set `LOCAL_REVIEW_HOME`, for example to try Local Review out without touching your
+real reviews:
+
+```sh
+LOCAL_REVIEW_HOME=/tmp/lr-demo npx local-review
+```
+
+<p>
+	To use a port other than {DEFAULT_PORT}, pass <code>--port &lt;n&gt;</code> or set <code>PORT</code>. See{' '}
+	<a href="/reference/environment/">Environment variables</a> for the rest.
+</p>
+
+## Next steps
+
+- [PR stacks](/concepts/pr-stacks/): how stacks are chosen, and why they survive rebases.
+- [A tour of the UI](/using/ui-tour/): what everything on the screen means.
+- [Read-only guarantee](/guarantees/read-only/): why Local Review can't damage your repos.
