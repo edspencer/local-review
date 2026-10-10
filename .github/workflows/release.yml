@@ -1,0 +1,227 @@
+name: Release
+
+# How a release happens (RELEASING.md has the whole story):
+#   1. On every push to main, changesets keeps a "chore: version packages" PR up to date: it consumes the pending
+#      .changeset/*.md files into CHANGELOG.md and bumps package.json's version.
+#   2. Merging that PR pushes to main with no changesets left and a version that has no v<version> tag yet. In that
+#      same run, `verify-ci` waits for CI to pass on the merge commit, `publish-npm` publishes local-review to npm
+#      (trusted publishing over OIDC, with provenance: there is no NPM_TOKEN), and `github-release` creates the
+#      v<version> tag and GitHub Release.
+#
+# Everything happens in one run, so nothing relies on a tag pushed with GITHUB_TOKEN triggering another workflow
+# (GitHub doesn't run workflows for those).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Release runs queue rather than cancel: a cancelled run could stop between the npm publish and the GitHub Release.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Version PR / detect release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the changeset-release/main branch
+      pull-requests: write # open and update the version PR
+    outputs:
+      should_release: ${{ steps.detect.outputs.should_release }}
+      version: ${{ steps.detect.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the tags, for the check below
+
+      # Node 24, for its npm 11: changeset:version refreshes package-lock.json, and npm 10 (Node 22's) would drop the
+      # `libc` fields npm 11 writes.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # Opens or updates the version PR while there are changesets. No `publish-script`: publishing is the
+      # publish-npm job, after verify-ci.
+      - name: Changesets version PR
+        id: changesets
+        uses: changesets/action@v2
+        with:
+          version-script: npm run changeset:version
+          commit-message: "chore: version packages"
+          pr-title: "chore: version packages"
+        env:
+          # For @changesets/changelog-github, which looks up each changeset's PR and author for the changelog.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # After the version PR merges there are no changesets left. If this version has no v<version> tag yet, it's a
+      # new release. (A release whose npm publish worked but whose GitHub Release didn't still has no tag, so a re-run
+      # finishes it: publish-npm skips a version that's already on npm.)
+      - name: Detect release
+        id: detect
+        if: steps.changesets.outputs.has-changesets == 'false'
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then
+            echo "v${VERSION} is already released; nothing to do"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new release: v${VERSION}"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Nothing is published unless CI passed on the exact commit being released.
+  #
+  # The version PR is opened by github-actions[bot], and GitHub doesn't run CI normally for it (runs from a bot's PR
+  # are parked for approval, or not triggered at all), so that PR can merge without CI ever having run on it. CI on
+  # the push to main does run (a person merged it), and this job waits for that run and requires it to succeed.
+  #
+  # If CI failed for a reason you judge unrelated (a flake), re-run CI until it's green, then re-run this workflow
+  # (Actions → Release → Run workflow).
+  verify-ci:
+    name: Require CI green on this commit
+    needs: release
+    if: needs.release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    steps:
+      - name: Wait for CI on this commit, and require success
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          deadline=$(( SECONDS + 1800 ))   # 30 minutes; CI takes a few
+          while :; do
+            # `// empty`: Release and CI start together, so the CI run may not exist yet
+            line="$(gh api \
+              "repos/${REPO}/actions/workflows/ci.yml/runs?head_sha=${SHA}&event=push&per_page=1" \
+              --jq '.workflow_runs[0] // empty | "\(.status)\t\(.conclusion // "-")\t\(.html_url)"' \
+              2>/dev/null || true)"
+
+            if [ -n "${line}" ]; then
+              status="$(printf '%s' "${line}" | cut -f1)"
+              conclusion="$(printf '%s' "${line}" | cut -f2)"
+              url="$(printf '%s' "${line}" | cut -f3)"
+              if [ "${status}" = "completed" ]; then
+                if [ "${conclusion}" = "success" ]; then
+                  echo "CI passed on ${SHA}: ${url}"
+                  exit 0
+                fi
+                echo "::error::CI concluded '${conclusion}' on ${SHA}. Not publishing a commit whose CI didn't pass. See ${url}"
+                exit 1
+              fi
+              echo "CI is ${status} on ${SHA}; waiting. ${url}"
+            else
+              echo "No CI run for ${SHA} yet; waiting."
+            fi
+
+            if [ "${SECONDS}" -ge "${deadline}" ]; then
+              echo "::error::Timed out after 30 minutes waiting for CI on ${SHA}. Not publishing."
+              exit 1
+            fi
+            sleep 20
+          done
+
+  # Auth is npm trusted publishing over OIDC: no NPM_TOKEN exists anywhere, and the package's npm settings disallow
+  # tokens. It needs `id-token: write`, npm >= 11.5.1 and `registry-url` on setup-node, and a trusted publisher on
+  # npmjs.com for this repo and this workflow file (RELEASING.md). Provenance comes from publishConfig.provenance.
+  publish-npm:
+    name: Publish to npm
+    needs: [release, verify-ci]
+    if: needs.release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC: trusted publishing and provenance
+    env:
+      VERSION: ${{ needs.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          # Without this npm never writes a registry line into .npmrc, and the publish can't authenticate.
+          registry-url: "https://registry.npmjs.org"
+
+      # Installed with Node 22's own npm, the same as CI.
+      - run: npm ci
+
+      # Node 22 ships npm 10; trusted publishing needs >= 11.5.1. Pinned to a major (the one that wrote the lockfile)
+      # rather than @latest, so a new npm major can't change how a release publishes.
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@^11.5.1
+
+      # `prepack` builds dist/. A re-run after a later step failed finds the version already on npm and skips this
+      # (an npm version can never be published twice).
+      - name: Publish
+        run: |
+          set -euo pipefail
+          if [ -n "$(npm view "local-review@${VERSION}" version 2>/dev/null || true)" ]; then
+            echo "local-review@${VERSION} is already on npm; not publishing it again"
+          else
+            npm publish
+          fi
+
+      - name: Verify provenance landed
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 10); do
+            if npm view "local-review@${VERSION}" dist.attestations.provenance --json 2>/dev/null | grep -q slsa; then
+              echo "provenance attested for ${VERSION}"; exit 0
+            fi
+            echo "attestation not visible yet (attempt $i); waiting"; sleep 15
+          done
+          echo "::error::local-review@${VERSION} is published but no provenance attestation appeared" >&2
+          exit 1
+
+  # The tag and the GitHub Release come after npm, so a tag always means a published version.
+  github-release:
+    name: Tag + GitHub Release
+    needs: [release, publish-npm]
+    if: needs.release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the v<version> tag and the Release
+    env:
+      VERSION: ${{ needs.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # The release notes are this version's CHANGELOG.md section, without its heading.
+      - name: Release notes from CHANGELOG.md
+        run: |
+          set -euo pipefail
+          awk -v v="## ${VERSION}" '$0 == v { on = 1; next } on && /^## / { exit } on { print }' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::error::CHANGELOG.md has no '## ${VERSION}' section"
+            exit 1
+          fi
+          cat notes.md
+
+      # Creates the v<version> tag at this commit.
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            echo "v${VERSION} already has a GitHub Release"
+            exit 0
+          fi
+          gh release create "v${VERSION}" \
+            --target "${GITHUB_SHA}" \
+            --title "v${VERSION}" \
+            --notes-file notes.md

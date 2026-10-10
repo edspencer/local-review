@@ -30,6 +30,10 @@ npm run lr -- <cmd>   # any `local-review` command, from source (e.g. `npm run l
 If your shell exports `NODE_ENV=production`, `npm ci` skips the dev dependencies (TypeScript, Vite, tsx): unset it
 (`env -u NODE_ENV npm ci`).
 
+**Dependencies:** `package-lock.json` is written by npm 11. If you add or upgrade a dependency on Node 22 (which
+ships npm 10), use npm 11 for it, e.g. `npx npm@11 install -D some-package`: npm 10 drops fields npm 11 writes, which
+churns the lockfile.
+
 ## Checks
 
 CI runs all of these on Node 22 and 24, on Linux and macOS. Run them before you open a PR:
@@ -79,10 +83,21 @@ the rest of it is.
 
 Versions and the changelog come from [changesets](https://github.com/changesets/changesets). If your PR changes
 something a user of the npm package would notice (a feature, a fix, a changed default, a new CLI flag, a UI change),
-it needs a changeset in the same PR: a small markdown file in `.changeset/` naming the bump (patch, minor or major)
-and a summary for the changelog. Write the summary for users, not reviewers: what they'll see, and what they need to
-do if anything breaks. Changes nobody using the package would notice (tests, CI, refactors, contributor docs) don't
-need one.
+add a changeset in the same PR:
+
+```sh
+npm run changeset     # pick patch / minor / major, write the summary for the changelog
+git add .changeset && git commit -m "Add changeset"
+```
+
+That writes a small markdown file in `.changeset/`; you can also write or edit it by hand. Write the summary for
+users, not reviewers: what they'll see, and what they need to do if something breaks (say so first, and how to keep
+the old behaviour). Before 1.0, a breaking change is a minor bump. Changes nobody using the package would notice
+(tests, CI, refactors, contributor docs) don't need one. `npx changeset status --verbose` shows what the next
+release would be.
+
+You don't bump `version` or edit `CHANGELOG.md` yourself: the release workflow does both. How changesets become a
+release on npm: [RELEASING.md](RELEASING.md).
 
 ## Security
 
