@@ -15,7 +15,9 @@
   <img alt="Node.js 22 or later" src="https://img.shields.io/badge/node-%E2%89%A522-339933">
 </p>
 
-<!-- SHOT: pr-conversation — a full PR page: the plum "not on GitHub" header, the sidebar's colour-coded stacks across two repos, and an inline thread with an agent reply -->
+<p align="center">
+  <img alt="Local Review showing a PR: the plum &quot;not on GitHub&quot; header, a sidebar of colour-coded PR stacks with readiness badges, and the PR's title, readiness toggle and Conversation tab" src="https://raw.githubusercontent.com/edspencer/local-review/main/docs/media/readme-hero.png" width="800">
+</p>
 
 Local Review is a GitHub-style pull-request UI for the **stack of commits on your machine**, before any of it is
 pushed. Every commit is shown as its own PR, grouped into the stacks you mean to open. You review them like PRs, your
@@ -31,6 +33,11 @@ GitHub stacked PRs.
   works in front of any [stacking tool](https://local-review.edspencer.net/concepts/stacking-tools/).
 - **Safe to point at your work.** It never modifies your repos, never talks to GitHub, never deletes your review, and
   only listens on localhost.
+
+<p align="center">
+  <img alt="A review round trip: the reviewer comments on a range of lines, the agent's reply appears in the thread live, the reviewer resolves the thread and marks the PR ready, and the sidebar's stack tally goes from 1/3 to 2/3 ready" src="https://raw.githubusercontent.com/edspencer/local-review/main/docs/media/demo.gif" width="800">
+  <br><sub>One review round trip, on the fictional demo project the docs use.</sub>
+</p>
 
 ## Quickstart
 

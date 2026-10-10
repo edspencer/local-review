@@ -7,7 +7,7 @@ The **Stack** tab draws a picture of the project's PR stacks, with the PR you're
 one shared scale. Copy it as an image or download a PNG to paste beside a real PR, into Slack, or into a design doc.
 The project homepage shows the same picture for the whole project.
 
-<!-- SHOT: stack-tab — the Stack tab: three stacks with weight bars, one PR highlighted (◀ this PR), and the This stack / This repo / Whole project picker; crop to the picture and its toolbar -->
+![The Stack tab: This stack / This repo / Whole project buttons, Copy image and Download PNG, and the picture of one repo's four stacks with size bars and the current PR marked "this PR"](../../../assets/shots/stack-tab.png "The Stack tab at “This repo”. The PR you're on is marked, and every bar is on the same scale.")
 
 ## The Stack tab
 
@@ -43,7 +43,7 @@ curl -o pr3.png "http://localhost:5622/api/projects/my-feature/repos/my-service/
 The SVG is 680px wide and the PNG is drawn at 2x (1360px). Options: `?scope=project|repo|stack`,
 `?scale=sqrt|linear`, `?title=0` and `?download`.
 
-<!-- SHOT: crop-stack-picture — the stack picture as copied or downloaded (the PNG itself); crop -->
+![A stack picture for a whole project: four repos, each with its branch, its stacks and a size bar for every PR, and a Local Review footer](../../../assets/shots/crop-stack-picture.png "The picture for a whole project, as Copy image and Download PNG give it to you.")
 
 ## How they're drawn
 

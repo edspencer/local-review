@@ -6,6 +6,7 @@
  *   3. stickyNav()      frost the header once the hero is behind it
  *   4. scrollFeatures() the sticky screenshot that swaps as you read
  *   5. commandTabs()    quick-start tab, and copy-to-clipboard
+ *   6. heroVideo()      the hero's demo clip: plays while on screen
  *
  * Every one of them is progressive: with JS off or broken, the page still
  * renders completely and every link still works. The reveal animation in
@@ -483,8 +484,44 @@ function commandTabs() {
 
 /* -------------------------------------------------------------------------- */
 
+/* -------------------------------------------------------------------------- */
+/* 6. hero video                                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The hero's clip has no `autoplay`: it starts here, only while it is on
+ * screen and the tab is visible, for the same reason the feature clips do
+ * (decoding video nobody is watching is a cost). `preload="none"` means
+ * nothing is fetched before that. With reduced motion it never starts on its
+ * own; it gets controls instead, so playing it is the reader's choice.
+ */
+function heroVideo() {
+	const v = document.querySelector<HTMLVideoElement>('video[data-hero-video]');
+	if (!v) return;
+	if (reduceMotion) {
+		v.controls = true;
+		return;
+	}
+	let visible = false;
+	const sync = () => {
+		if (visible && !document.hidden) void v.play().catch(() => (v.controls = true));
+		else if (!v.paused) v.pause();
+	};
+	new IntersectionObserver(
+		([entry]) => {
+			visible = entry.isIntersecting;
+			sync();
+		},
+		{ threshold: 0.25 },
+	).observe(v);
+	document.addEventListener('visibilitychange', sync);
+}
+
+/* -------------------------------------------------------------------------- */
+
 dotGrid();
 revealOnScroll();
 stickyNav();
 scrollFeatures();
 commandTabs();
+heroVideo();

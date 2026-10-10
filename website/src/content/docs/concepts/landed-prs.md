@@ -29,7 +29,7 @@ landed:
   at: 2026-10-09T12:00:00Z
 ```
 
-<!-- SHOT: landed-pr — a sidebar stack whose bottom PRs show the purple merged badge and a `2/4 MERGED`-style footer; crop to the stack -->
+![A merged PR in Local Review: a purple Merged pill with its GitHub number in the header, "merged 4 days ago (squash)" below it, and its stack in the sidebar reading 2/2 merged](../../../assets/shots/landed-pr.png "A landed PR keeps its number, its place in the stack and its review. In the sidebar, the stack it closed reads 2/2 MERGED.")
 
 ## How landed PRs behave
 
@@ -63,7 +63,7 @@ landed:
   PRs whose recorded `github.base` differs from the plan's base, and about prs files with a `github:` record but no
   `landed:` whose commit is now in the repo base ("landed upstream but not frozen").
 
-<!-- SHOT: archived-project — an archived project: everything merged, purple merged badges; full page -->
+![The homepage of an archived project: every PR has a purple merged badge, and the repo is labelled merged](../../../assets/shots/archived-project.png "An archived project: everything in it has landed, so it moves to the Archived section of the project switcher.")
 
 :::note[Local Review comments and GitHub comments are entirely separate]
 Local Review never imports GitHub review threads, and never sends its own to GitHub, for landed PRs as for any other.

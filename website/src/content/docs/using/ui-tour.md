@@ -6,7 +6,7 @@ description: The header, sidebar, PR header, tabs and project homepage, and what
 Local Review's layout follows GitHub's pull-request page closely, so it should feel familiar: a sidebar of PRs, and for
 each PR a header and Conversation, Files changed and Stack tabs. Under a header that is deliberately **not** GitHub's.
 
-<!-- SHOT: pr-conversation — a full-window PR page: plum header, sidebar with stacks, PR header, Conversation tab; full page -->
+![The full Local Review window on a PR: the plum header with the "not on GitHub" badge, the sidebar of stacks, the PR header and the Conversation tab](../../../assets/shots/pr-conversation.png)
 
 ## The header: deliberately not GitHub
 
@@ -18,7 +18,7 @@ The header also shows the project title, with a **project switcher** when there'
 projects (everything [landed](/concepts/landed-prs/)) are in a collapsed **Archived** section at the bottom of the
 switcher. Click the project title to go to the project's homepage.
 
-<!-- SHOT: crop-project-switcher — the project switcher open, with the collapsed Archived section; crop -->
+![The project switcher open: two projects with their repo and commit counts, and an Archived section holding a third](../../../assets/shots/crop-project-switcher.png)
 
 ## The sidebar
 
@@ -67,7 +67,7 @@ header and stepper live.
   and mentioned, as in the picture), the same readiness badges as the sidebar, and for each stack its weight (PRs,
   distinct files, +/−) and its note (Edit, or "Add a stack note").
 
-<!-- SHOT: project-home-full — the project homepage: intro, whole-project stack picture and the repo → stack → PR list; full page -->
+![A whole project homepage: the project intro, the stack picture for the whole project, and the list of repos, stacks and PRs](../../../assets/shots/project-home-full.png)
 
 ## URLs
 

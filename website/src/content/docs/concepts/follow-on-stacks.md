@@ -16,7 +16,7 @@ stacks:
     follow_on: true             # parked: held back from the stacks going up now
 ```
 
-<!-- SHOT: crop-follow-on — the sidebar's dashed yellow FOLLOW-ON · HELD BACK divider and a faded, hatched follow-on stack below it; crop to the sidebar -->
+![The sidebar's dashed yellow "Follow-on · held back" divider, with a faded, hatched stack of two PRs below it](../../../assets/shots/crop-follow-on.png "A follow-on stack: below the dashed divider, faded and hatched, and left out of the repo's totals.")
 
 ## What it does, and doesn't
 

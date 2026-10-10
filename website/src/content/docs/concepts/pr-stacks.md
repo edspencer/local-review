@@ -30,7 +30,7 @@ flowchart BT
   c2 --> c3
 ```
 
-<!-- SHOT: crop-sidebar-stacks — the sidebar for one repo with three colour-coded stacks (STACK 1 · GROUNDWORK …) and readiness badges; crop to the sidebar -->
+![The sidebar for one repo: three colour-coded stacks (Groundwork, Joining and leaving, Automatic promotion) with readiness badges and per-stack tallies, then a follow-on divider](../../../assets/shots/crop-sidebar-stacks.png "One repo's stacks in the sidebar, each in its own colour, with readiness badges and a tally per stack (2/2 MERGED, 3/3 READY, 1/3 READY).")
 
 ## How stacks are formed
 

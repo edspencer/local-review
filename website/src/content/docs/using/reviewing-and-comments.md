@@ -10,7 +10,7 @@ it works.
 
 ## Files changed
 
-<!-- SHOT: files-changed — Files changed with an inline thread on a range of lines (tinted), the file tree and the Viewed checkbox; crop to one file card plus the tree -->
+![The Files changed tab: the file tree on the left, a diff in unified view with a range of lines tinted and a thread under them, and Viewed checkboxes on each file](../../../assets/shots/files-changed.png)
 
 - **Split or Unified** view (remembered). The unified view has old and new line-number columns.
 - **Expand all / Collapse all**, and a **file tree**: directories collapse, single-child chains are compacted, the
@@ -41,7 +41,7 @@ thread whose line isn't in a shown hunk is listed at the top of its file card.
 When the commit is amended or rebased, threads follow their code; one whose code is gone is marked **Outdated** and
 shows the original lines. See [Following rebases](/concepts/following-rebases/).
 
-<!-- SHOT: crop-inline-thread — an inline thread on a range of lines in the diff, the lines tinted; crop -->
+![A thread on a range of lines in a TSX diff: the commented lines are tinted, and the reviewer's comment and a reply sit under them](../../../assets/shots/crop-inline-thread.png "A comment on a range of lines. The range stays tinted, and more strongly while you hover the thread.")
 
 ## General comments
 

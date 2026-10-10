@@ -6,6 +6,7 @@ import { unified } from '@astrojs/markdown-remark';
 import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
 import rehypePreMermaid from './src/plugins/rehype-pre-mermaid.mjs';
+import rehypeShots from './src/plugins/rehype-shots.mjs';
 import { SITE_URL, REPO_URL, TITLE, TAGLINE, posthogSnippet } from './src/site.mjs';
 
 // PUBLIC_POSTHOG_KEY comes from the build environment (Cloudflare Pages
@@ -26,8 +27,9 @@ export default defineConfig({
 	markdown: {
 		// Astro 7 renders Markdown with Sätteri by default, which doesn't run rehype
 		// plugins; the unified (remark/rehype) processor does. Mermaid code fences are
-		// pre-processed here and rendered client-side (see head script).
-		processor: unified({ rehypePlugins: [rehypePreMermaid] }),
+		// pre-processed here and rendered client-side (see head script). Screenshots get
+		// their 2x sizing and, with a title, a caption (src/plugins/rehype-shots.mjs).
+		processor: unified({ rehypePlugins: [rehypePreMermaid, rehypeShots] }),
 	},
 	integrations: [
 		sitemap(),

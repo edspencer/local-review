@@ -83,7 +83,7 @@ commit's subject, and give every commit a unique one. [Stack selectors](/concept
   file's card (in the Conversation tab only, if the file is gone from the commit). If the code comes back in a later
   rebase, the thread is placed again. **Threads are never dropped.**
 
-<!-- SHOT: crop-outdated-thread — an "Outdated" thread showing the original code from its anchor, on the Conversation tab; crop to the thread -->
+![A thread labelled Outdated, showing the original lines it was left on, the reviewer's comment and the agent's reply](../../../assets/shots/crop-outdated-thread.png "An outdated thread: the code it was on is gone after an amend, so it shows the original lines from its anchor.")
 
 ## Checking after a rebase
 

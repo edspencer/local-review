@@ -6,8 +6,8 @@
  * (Same arrangement as Paddock's site.)
  *
  * Every claim here should be checkable against the docs pages it links to (the
- * edit pass checked them against the code). The media slots are still
- * placeholders: see FEATURES.
+ * edit pass checked them against the code). The media are captures of the
+ * demo test bed: see FEATURES.
  */
 
 import { REPO_URL, TAGLINE } from '../../site.mjs';
@@ -84,47 +84,47 @@ export const VALUE_PROPS = [
  * The scroll-swap "how it works" section: each entry is one step and the media
  * that goes with it.
  *
- * PLACEHOLDERS. Real captures come from the demo test bed's capture rig (WP7).
- * Each `placeholder` string says what the shot should show; the sizes are the
- * frame the real image should roughly fill. Follow Paddock's media rule when
- * they land: tight CROPS of one feature at close to 1:1, never full-window
- * screenshots, because the media column is only ~700px wide.
+ * Media rule (Paddock's, learned the hard way there): tight CROPS of one feature
+ * at close to 1:1, never full-window screenshots, because the media column is
+ * only ~700px wide. Every image comes from the demo test bed's capture rig
+ * (tools/docs-media: `src` is a shot in shots.ts, copied into
+ * src/assets/landing/ by `npm run docs:media:sync`); two of them are composed
+ * there from a crop and the seed's own project.yaml or `plan` output. The demo
+ * project ("Orchard", class waitlists) is fictional: say so in any caption.
+ * Each is drawn at half its pixel size (the PNGs are 2x), with width and height
+ * set from the file, so the stage reserves the space and nothing shifts.
  */
 export const FEATURES = [
 	{
 		title: '1. Describe the work',
 		body: 'A project is one YAML file: the repos involved, the branch to review in each, and where each stack starts. Pick stacks by commit subject and they survive every rebase.',
 		media: {
-			width: 640,
-			height: 420,
-			placeholder: 'project.yaml beside the sidebar it produces: two repos, three colour-coded stacks',
+			src: 'landing-project-yaml',
+			alt: 'A project.yaml excerpt naming a repo, its branch and three stacks by the commit subject each starts at, beside the sidebar it produces: the same three stacks, colour-coded, with their PRs and readiness badges',
 		},
 	},
 	{
 		title: '2. Review each commit as a PR',
 		body: 'Read the diff with split or unified views, comment on a line or a range, resolve threads and tick files as viewed. Readiness badges show where every PR in every stack stands.',
 		media: {
-			width: 700,
-			height: 440,
-			placeholder: 'Files changed: an inline comment thread on a range of lines, with the Viewed checkbox',
+			src: 'crop-inline-thread',
+			alt: 'A comment thread on a range of lines in a diff: the commented lines are tinted, and the reviewer’s comment and a reply sit under them',
 		},
 	},
 	{
 		title: '3. Your agent replies',
 		body: 'Hand the project to your coding agent. It reads your threads, fixes each commit where it stands and answers in the review files. Threads follow their code through the rebase.',
 		media: {
-			width: 640,
-			height: 380,
-			placeholder: 'A thread with your comment and an agent reply (author: claude) that arrived live',
+			src: 'crop-agent-reply',
+			alt: 'A thread on five lines of Go: the reviewer points out that a spot on offer still looks free, and Claude, marked as an agent, replies with two ways to fix it and asks which to do',
 		},
 	},
 	{
 		title: '4. Mark it ready, then publish',
 		body: 'Mark each PR ready. The plan command prints every branch, base, title and body, and on your go-ahead your agent opens the stack on GitHub and records each PR back in Local Review.',
 		media: {
-			width: 680,
-			height: 400,
-			placeholder: 'The stack picture: three stacks, ready / published badges, PR sizes on one scale',
+			src: 'landing-plan',
+			alt: 'The Draft | Ready toggle set to Ready, and below it the output of local-review plan for that PR: its commit, branch, base, status ready, title, and GitHub: not created',
 		},
 	},
 ] as const;

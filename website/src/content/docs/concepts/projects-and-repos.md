@@ -63,4 +63,4 @@ A change that touches an API, its client and the infra is one piece of work, rev
 the project, each with its own branch and stacks. The sidebar has a collapsible section per repo, `j`/`k` walk every
 PR across all of them, and the [stack picture](/using/stack-pictures/) can draw the whole project.
 
-<!-- SHOT: project-home — the sidebar with three repo sections (repo · branch headers), each with its own coloured stacks; crop to the sidebar -->
+![The sidebar sections for three repos (orchard-sdk, orchard-web and orchard-infra), each headed by its branch, each with its own coloured stacks](../../../assets/shots/crop-sidebar-repos.png "One project, several repos: each has its own section in the sidebar, its own branch and its own stacks. (The repos are from the fictional demo project.)")

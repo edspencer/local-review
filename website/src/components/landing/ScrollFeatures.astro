@@ -22,7 +22,7 @@
  *   - NO FIXED ASPECT RATIO on the frame, which is the big one. See below.
  *
  * The stage does not force 8:5: media here should be crops of one feature each
- * (see the PLACEHOLDERS note on FEATURES in copy.ts), in whatever shape that
+ * (see the media rule on FEATURES in copy.ts), in whatever shape that
  * feature happens to be, and forcing them into one box would crop or pillarbox.
  *
  * Instead every item sits at its natural size, capped to the column width, and
@@ -32,12 +32,22 @@
  *
  * No scroll-jacking: the observer only decides which item is showing.
  */
-import Placeholder from './Placeholder.astro';
+import { Image } from 'astro:assets';
 import { FEATURES } from './copy';
 
-// Every media slot is a PLACEHOLDER for now. When real captures land (from the
-// demo test bed's capture rig), put them in src/assets/landing/, import them
-// here, and render them with astro:assets <Image> as Paddock's site does.
+// Captures from the demo test bed (tools/docs-media), copied here by
+// `npm run docs:media:sync`, which copies whatever this file imports.
+import landingProjectYaml from '../../assets/landing/landing-project-yaml.png';
+import cropInlineThread from '../../assets/landing/crop-inline-thread.png';
+import cropAgentReply from '../../assets/landing/crop-agent-reply.png';
+import landingPlan from '../../assets/landing/landing-plan.png';
+
+const IMAGES = {
+	'landing-project-yaml': landingProjectYaml,
+	'crop-inline-thread': cropInlineThread,
+	'crop-agent-reply': cropAgentReply,
+	'landing-plan': landingPlan,
+} as const;
 ---
 
 <section class="feat section" data-features>
@@ -61,20 +71,41 @@ import { FEATURES } from './copy';
 
 							{/* Shown only below the breakpoint, where there is no sticky column. */}
 							<div class="feat-inline">
-								<Placeholder label={f.media.placeholder} width={f.media.width} height={f.media.height} />
+								<Image
+									class="feat-media"
+									src={IMAGES[f.media.src]}
+									alt={f.media.alt}
+									width={IMAGES[f.media.src].width / 2}
+									height={IMAGES[f.media.src].height / 2}
+									densities={[1, 2]}
+									loading="lazy"
+								/>
 							</div>
 						</article>
 					))
 				}
 			</div>
 
+			{/*
+				Each image is drawn at its CSS size (the PNGs are 2x) with 1x and 2x
+				variants. One wider than the column (the composed project.yaml one)
+				just scales down to fit: .feat-media caps it at 100%.
+			*/}
 			<div class="feat-sticky-col">
 				<div class="feat-sticky">
 					<div class="feat-stage">
 						{
 							FEATURES.map((f, i) => (
 								<div class:list={['feat-shot', { 'is-current': i === 0 }]} data-feature-shot>
-									<Placeholder label={f.media.placeholder} width={f.media.width} height={f.media.height} />
+									<Image
+										class="feat-media"
+										src={IMAGES[f.media.src]}
+										alt={f.media.alt}
+										width={IMAGES[f.media.src].width / 2}
+										height={IMAGES[f.media.src].height / 2}
+										densities={[1, 2]}
+										loading="lazy"
+									/>
 								</div>
 							))
 						}

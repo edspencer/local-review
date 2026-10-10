@@ -14,7 +14,7 @@ every PR, and a count on every stack, show where things stand at a glance.
 | **Published** | GitHub's PR icon in a blue circle | an agent, by recording the GitHub PR | a usable `github:` record |
 | **Merged** | GitHub's merge icon in a purple circle | an agent, by freezing the merged PR | a usable `landed:` record |
 
-<!-- SHOT: crop-readiness — four sidebar rows side by side showing the draft pie, ready tick, published and merged badges; tight crop -->
+![Sidebar rows in three stacks showing every readiness badge: purple merged icons, blue published icons with #118-style links, a green ready tick and grey draft pies](../../../assets/shots/crop-sidebar-lifecycle.png "All four badges in one sidebar: merged (purple), published (blue, with the GitHub link), ready (green tick) and draft (the pie fills as you review).")
 
 ## The rules
 
@@ -47,7 +47,7 @@ file. Once the PR is published it's replaced by a blue **Published** pill with t
 merged by a purple **Merged** pill, with "merged &lt;when&gt; (method)" in the line below. Toggling, an agent's edits
 to the prs file, and new Viewed marks or resolved threads all update the sidebar, header and stepper live.
 
-<!-- SHOT: crop-merged-pill — a landed PR's purple Merged pill and "merged … (squash)"; crop -->
+![The header of a landed PR: a purple Merged pill, the merged-on-GitHub badge #112, and the line below it](../../../assets/shots/crop-merged-pill.png)
 
 ## Before publishing
 
