@@ -63,12 +63,30 @@ Built and served by **Cloudflare Pages** from the GitHub repo (git integration, 
 
 Every PR that touches the repo also gets a preview deployment.
 
-## Analytics (off by default)
+## Analytics (PostHog, off until you set one variable)
 
-PostHog analytics loads **only if `PUBLIC_POSTHOG_KEY` is set when the site is built**. To turn it on, add it in
-Cloudflare Pages → the project → Settings → Variables and Secrets (as a plain-text variable, for Production and,
-if wanted, Preview), then redeploy. The key is a public `phc_…` project key; it ends up in every page's HTML either
-way. To try it locally, put `PUBLIC_POSTHOG_KEY=phc_…` in `website/.env` (git-ignored).
+PostHog loads **only if `PUBLIC_POSTHOG_KEY` is set when the site is built**. No key is committed, and with it
+unset no analytics code is emitted on any page. Turning it on takes exactly one variable:
 
-Requests go to `/ingest` on the site's own domain and are forwarded to PostHog's US cloud by
-`functions/ingest/[[path]].ts`. See `website/CLAUDE.md`.
+| Cloudflare Pages variable | Value | Environment |
+| --- | --- | --- |
+| `PUBLIC_POSTHOG_KEY` | the PostHog project's API key, `phc_…` (PostHog → Project settings → Project API key) | Production (add Preview too only if you want preview deploys counted) |
+
+Set it in Cloudflare Pages → the project → **Settings → Variables and Secrets** as a plain-text variable (it is a
+public, publishable key that ends up in every page's HTML, so it needn't be a secret), then **redeploy**: it is read
+at build time, so it takes effect from the next build. Nothing else is needed: no other variable, no wrangler config,
+no DNS change. The proxy function below is already deployed with the site.
+
+Requests go to `/ingest` on the site's own domain (so ad blockers don't drop them) and
+`functions/ingest/[[path]].ts`, a Cloudflare Pages Function, forwards them to PostHog's **US** cloud: `/ingest/static/*`
+to `us-assets.i.posthog.com`, everything else to `us.i.posthog.com`. If the PostHog project is in the EU cloud,
+change those two hosts to `eu-assets.i.posthog.com` / `eu.i.posthog.com` and `ui_host` in `src/site.mjs` to
+`https://eu.posthog.com`, together.
+
+**Checking it after the first deploy with the key:** open the site with the browser's network tab open. You should
+see `GET /ingest/static/array.js` (200) and then `POST /ingest/e/…` or `/ingest/i/v0/e/…` (200), and page views in
+PostHog's Activity view within a minute. If `/ingest/…` returns the site's 404 page, the function didn't deploy:
+check that the Pages project's root directory is `website`, since `functions/` is looked up relative to it.
+
+To try it locally, put `PUBLIC_POSTHOG_KEY=phc_…` in `website/.env` (git-ignored) and build. Note that
+`npm run preview` and `npm run dev` don't run the Pages Function, so `/ingest` 404s locally; that is expected.

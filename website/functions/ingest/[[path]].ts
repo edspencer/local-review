@@ -20,6 +20,11 @@
  * assets host, and the install snippet's built-in
  * `api_host.replace('.i.posthog.com', '-assets.i.posthog.com')` is a no-op once
  * api_host is our own domain, so the routing has to happen here instead.
+ *
+ * Checked against PostHog (2026-10-10): /static/array.js comes back from the
+ * assets host, /e/ events are accepted, and the SDK's /array/<key>/config(.js)
+ * remote-config request is served by the API host as well as the assets host,
+ * so it needs no route of its own.
  */
 export const onRequest: PagesFunction = async ({ request }) => {
 	const url = new URL(request.url);
