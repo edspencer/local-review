@@ -1,0 +1,118 @@
+---
+/**
+ * Hero — the fold.
+ *
+ * Two columns on desktop, as on Paddock's site: prose and buttons on the left,
+ * the terminal card on the right. Under the terminal, where Paddock has its
+ * video, sits a screenshot slot: a PLACEHOLDER until the capture rig produces
+ * the real one. On mobile the columns stack.
+ */
+import Icon from './Icon.astro';
+import CommandTabs from './CommandTabs.astro';
+import HeroBackdrop from './HeroBackdrop.astro';
+import Placeholder from './Placeholder.astro';
+import { hero, HERO_LINKS } from './copy';
+---
+
+<section class="hero">
+	<HeroBackdrop />
+
+	<div class="container hero-inner">
+		<div class="hero-copy">
+			<p class="eyebrow">{hero.eyebrow}</p>
+			<h1 class="h1">{hero.title}</h1>
+			<p class="lede lede--first">{hero.lede}</p>
+			<p class="lede">{hero.body}</p>
+
+			<div class="btn-row hero-btns">
+				{
+					HERO_LINKS.map((l) => (
+						<a
+							class={`btn ${l.primary ? 'btn--primary' : ''}`}
+							href={l.href}
+							rel={l.href.startsWith('http') ? 'noopener' : undefined}
+						>
+							<Icon name={l.icon as any} />
+							{l.text}
+						</a>
+					))
+				}
+			</div>
+		</div>
+
+		<div class="hero-aside">
+			<CommandTabs idPrefix="hero" />
+
+			<Placeholder
+				class="hero-shot"
+				label="The PR view: plum header, the stack sidebar with readiness badges, and a diff with an inline thread"
+				width={1280}
+				height={800}
+			/>
+		</div>
+	</div>
+</section>
+
+<style>
+	.hero {
+		position: relative;
+		display: flex;
+		align-items: center;
+		/* Not 100svh. A full-viewport hero on a 900px-tall laptop left ~150px of
+		   dead space above and below the content, which reads as a layout bug
+		   rather than as generosity. This is tall enough to own the fold and
+		   short enough that the next section peeks, which is what invites the
+		   scroll the whole page depends on. */
+		min-height: min(92svh, 54rem);
+		padding-block: 8rem 4.5rem;
+		isolation: isolate;
+	}
+
+	.hero-inner {
+		position: relative;
+		z-index: 1;
+		display: grid;
+		gap: clamp(2.5rem, 5vw, 4rem);
+		align-items: center;
+	}
+
+	@media (min-width: 940px) {
+		.hero-inner {
+			/* Even halves (Paddock uses 47/53), plus slightly tighter button padding
+			   below: together they keep our three hero buttons on one row at
+			   1440px, where 47fr left them ~30px short. */
+			grid-template-columns: 1fr 1fr;
+		}
+	}
+
+	/* Smaller than the shared .h1: our headline is a whole sentence, and at
+	   full size it ran to four lines and pushed the buttons below the fold. */
+	.hero-copy .h1 {
+		font-size: clamp(2.4rem, 5vw, 3.6rem);
+		margin-bottom: 1.6rem;
+	}
+
+	.lede--first {
+		margin-top: 0;
+	}
+
+	.lede + .lede {
+		margin-top: 1rem;
+	}
+
+	.hero-btns {
+		margin-top: 2.25rem;
+	}
+
+	.hero-btns .btn {
+		padding-inline: 1.1rem;
+	}
+
+	.hero-aside {
+		display: flex;
+		flex-direction: column;
+		gap: 1.1rem;
+		min-width: 0;
+	}
+
+</style>

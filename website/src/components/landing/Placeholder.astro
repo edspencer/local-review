@@ -1,0 +1,77 @@
+---
+/**
+ * Placeholder — a clearly-labelled stand-in for a screenshot that does not
+ * exist yet.
+ *
+ * Real captures come from the demo test bed's capture rig. Until then every
+ * media slot on the landing page renders one of these: a dashed frame at the
+ * intended size, saying PLACEHOLDER and what the real shot should show, so
+ * nobody mistakes it for finished work. Grep for `<Placeholder` to find them all.
+ */
+import Icon from './Icon.astro';
+
+interface Props {
+	/** What the real image should show. */
+	label: string;
+	width: number;
+	height: number;
+	class?: string;
+}
+const { label, width, height, class: className } = Astro.props;
+---
+
+<div
+	class:list={['ph', className]}
+	style={`aspect-ratio: ${width} / ${height}; max-width: ${width}px;`}
+	role="img"
+	aria-label={`Placeholder image: ${label}`}
+	data-placeholder
+>
+	<Icon name="image" />
+	<span class="ph-tag">Screenshot placeholder · {width}×{height}</span>
+	<span class="ph-label">{label}</span>
+</div>
+
+<style>
+	.ph {
+		width: 100%;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 0.6rem;
+		padding: 1.5rem;
+		text-align: center;
+		border: 2px dashed color-mix(in oklab, rgb(var(--accent)) 55%, transparent);
+		border-radius: var(--radius-media);
+		background:
+			repeating-linear-gradient(
+				-45deg,
+				color-mix(in oklab, rgb(var(--accent)) 6%, transparent) 0 14px,
+				transparent 14px 28px
+			),
+			var(--sunken);
+		color: var(--text-muted);
+	}
+
+	.ph :global(svg) {
+		width: 36px;
+		height: 36px;
+		color: rgb(var(--accent));
+		opacity: 0.8;
+	}
+
+	.ph-tag {
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: rgb(var(--accent));
+	}
+
+	.ph-label {
+		max-width: 36ch;
+		font-size: 0.92rem;
+		line-height: 1.5;
+	}
+</style>
