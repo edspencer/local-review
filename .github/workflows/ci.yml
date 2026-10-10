@@ -73,6 +73,11 @@ jobs:
         if: steps.filter.outputs.docs == 'true'
         run: npm run build
         working-directory: website
+      # Every site-relative link (and #fragment) in the built pages resolves (no dependencies; scripts/check-links.mjs).
+      - name: Check internal links
+        if: steps.filter.outputs.docs == 'true'
+        run: node scripts/check-links.mjs
+        working-directory: website
 
   # One stable check name to require in branch rules, so the matrix can change without editing them.
   ci-passed:

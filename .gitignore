@@ -6,7 +6,7 @@ dist/
 # Playwright MCP scratch (snapshots, screenshots from driving the UI)
 .playwright-mcp/
 .DS_Store
-# User data lives in ~/.local-review (see "Where your data lives" in README.md), never in this repo.
+# User data lives in ~/.local-review (see website/src/content/docs/reference/data-directory.md), never in this repo.
 /projects/
 # Personal agent rules for this checkout (Claude Code reads it next to CLAUDE.md); never committed.
 CLAUDE.local.md

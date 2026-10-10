@@ -3,8 +3,64 @@ title: Projects & repos
 description: A project groups the repos and commit ranges that make up one piece of work.
 ---
 
-A **project** is one piece of work, like "My feature", described by a `project.yaml` under `~/.local-review/projects/<slug>/`. It spans one or more **repos**, and for each one names a commit range: from the merge-base with a `base` up to a `branch` head. Local Review reads those commits; it never changes the repos.
+A **project** is one piece of work, like "My feature": a directory under `~/.local-review/projects/<slug>/` with a
+`project.yaml` in it. It spans one or more **repos**, and for each one names a **commit range**: from the merge-base
+with a `base` up to a `branch` head. Those commits are split into [PR stacks](/concepts/pr-stacks/), and each commit
+is reviewed [as a PR](/concepts/commits-as-prs/).
 
-:::note[TODO: content]
-This page is a stub. Its content will move here from the README's "Projects" section.
-:::
+```yaml title="~/.local-review/projects/my-feature/project.yaml"
+title: My feature
+repos:
+  - path: ~/code/my-service
+    branch: me/my-feature     # the range ends at this branch's head
+    base: origin/main         # and starts (exclusive) at its merge-base with this
+  - path: ~/code/my-client    # a second repo, with its own range and stacks
+    branch: me/my-feature
+```
+
+`local-review init my-feature` creates the file from a commented example. Every field is on
+[project.yaml](/reference/project-yaml/).
+
+## Projects
+
+- The directory name is the project's **slug**, used in URLs: `/<slug>` is the project's homepage, and
+  `/<slug>/<repo>/<sha>` one of its PRs.
+- The header shows the project's title, with a **project switcher** when there's more than one. A project whose PRs
+  have all [landed](/concepts/landed-prs/) is archived automatically, into a collapsed **Archived** section at the
+  bottom of the switcher.
+- An optional `description:` is the **project intro**: one or two paragraphs of context that go at the top of every
+  full PR body. See [Editing PR titles & descriptions](/using/editing-pr-text/#project-context).
+- `/` opens the most recently modified project's first commit.
+
+## Repos and ranges
+
+Each repo is a local clone, which Local Review only ever reads ([read-only guarantee](/guarantees/read-only/)).
+
+- **The end** is `branch:` (its head) or `to:` (a sha or ref, inclusive).
+- **The start** is `merge-base(base, end)`, exclusive, with `base:` defaulting to `origin/HEAD`, else `main`, else
+  `master`; or `from:`, the first commit included.
+- **The name** (`name:`, default the directory name) is used in URLs and as the directory name for the repo's
+  [prs](/reference/pr-files/) and [comment](/reference/comment-files/) files.
+
+Each commit is diffed against its first parent with rename detection (`-M`), so a base that has moved on doesn't
+matter: you see each commit's own change. ([Landed PRs](/concepts/landed-prs/#how-landed-prs-behave) are diffed
+differently.)
+
+## Live updates
+
+Nothing needs a restart:
+
+- branch heads are polled every 3 seconds, so a new commit, an amend or a rebase shows up on its own;
+- every file under `~/.local-review/projects/` is re-read on each request and watched, and edits push a refresh to the
+  browser.
+
+A missing repo or branch shows as an error in the sidebar (a missing branch isn't one in a repo with landed PRs), and
+stack problems as a warning. See [Errors and warnings](/reference/project-yaml/#errors-and-warnings).
+
+## Several repos, one piece of work
+
+A change that touches an API, its client and the infra is one piece of work, reviewed in one place: list each repo in
+the project, each with its own branch and stacks. The sidebar has a collapsible section per repo, `j`/`k` walk every
+PR across all of them, and the [stack picture](/using/stack-pictures/) can draw the whole project.
+
+<!-- SHOT: project-home — the sidebar with three repo sections (repo · branch headers), each with its own coloured stacks; crop to the sidebar -->

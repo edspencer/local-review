@@ -25,7 +25,7 @@ npm run lr -- <cmd>   # any `local-review` command, from source (e.g. `npm run l
 
 **Keep your real reviews out of it.** Point a development instance at a throwaway data directory, e.g.
 `LOCAL_REVIEW_HOME=$(mktemp -d) npm start -- --port 5050`. `LOCAL_REVIEW_WEB_PORT` / `LOCAL_REVIEW_API_PORT` move
-`npm run dev`'s ports, so it can run next to a live instance (README "Run").
+`npm run dev`'s ports, so it can run next to a live instance ([Environment variables](https://local-review.edspencer.net/reference/environment/)).
 
 If your shell exports `NODE_ENV=production`, `npm ci` skips the dev dependencies (TypeScript, Vite, tsx): unset it
 (`env -u NODE_ENV npm ci`).
@@ -54,22 +54,30 @@ These are what make Local Review safe to point at your work. A PR that weakens o
 the rest of it is.
 
 - **Reviewed repos are read-only.** Local Review never commits to, checks out, rebases, fetches or otherwise
-  modifies a repo it reviews. All git access goes through `server/git.ts` and its read-only allow-list (README
-  ["Read-only guarantee"](README.md#read-only-guarantee)). New git calls go through it too, using only subcommands
+  modifies a repo it reviews. All git access goes through `server/git.ts` and its read-only allow-list (the
+  ["Read-only guarantee"](https://local-review.edspencer.net/guarantees/read-only/)). New git calls go through it too, using only subcommands
   on the list.
 - **User data is never deleted.** Writes under `~/.local-review` are atomic and never clobber; nothing is unlinked
-  or truncated except snapshot pruning (README ["Where your data lives"](README.md#where-your-data-lives),
-  "Never-delete guarantees"). `test/fsguard.test.ts` enforces it: it scans `server/**/*.ts` and fails if anything
+  or truncated except snapshot pruning (the ["Never-delete guarantee"](https://local-review.edspencer.net/guarantees/never-delete/)). `test/fsguard.test.ts` enforces it: it scans `server/**/*.ts` and fails if anything
   outside `server/safefs.ts` and `server/backups.ts` calls `unlink`, `rm`, `writeFile`, `rename` and friends, or
   shells out to `rm`/`mv`. If it fails on your change, route the write through `server/safefs.ts`; don't widen the
   test.
 - **Localhost only.** The server binds 127.0.0.1 and rejects non-localhost `Host`/`Origin` headers
   (`server/security.ts`). No `--host` flag, no way around it.
 - **It must not look like GitHub.** The layout mirrors GitHub's PR page, but at least one deliberate difference has
-  to stay obvious at a glance: today the plum top bar with the amber underline and the "not on GitHub" pill (README
-  ["The deliberate 'not GitHub' difference"](README.md#the-deliberate-not-github-difference)).
-- **User data never lives in this repo.** If you change where data lives or the comment file schema, update the
-  README sections that document them ("Where your data lives", "Comment files") in the same PR.
+  to stay obvious at a glance: today the plum top bar with the amber underline and the "not on GitHub" pill
+  (["The header: deliberately not GitHub"](https://local-review.edspencer.net/using/ui-tour/#the-header-deliberately-not-github)).
+- **User data never lives in this repo.** If you change where data lives or a file schema, update the docs pages
+  that document them in the same PR: they're under `website/src/content/docs/` (see "User data" in
+  [AGENTS.md](AGENTS.md)).
+
+## Docs
+
+The reference documentation is the docs site, https://local-review.edspencer.net, built from
+[`website/`](website/) (Astro + Starlight; `website/CLAUDE.md` has the details). The README is a short landing page
+that links to it, so behaviour changes go in the docs pages. The site's agent-guide pages are generated from
+[AGENT-GUIDE.md](AGENT-GUIDE.md): edit that, then run `node scripts/sync-agent-guide.mjs` in `website/` and commit
+the result. `npm test` checks that, and that the docs' default port matches `server/port.ts`.
 
 ## Pull requests
 

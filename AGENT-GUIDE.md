@@ -7,8 +7,8 @@ prints this guide.
 
 Commands below are `local-review …`: run them as `npx local-review …` unless it's installed globally
 (`npm i -g local-review`). The URLs assume the default port, 5622; if the reviewer runs it with `--port`, use
-theirs. "README" means Local Review's [README](https://github.com/edspencer/local-review#readme) (also in the
-installed package).
+theirs. The reference docs (file schemas, the HTTP API, every edge case) are at
+https://local-review.edspencer.net; this guide links the pages it relies on.
 
 ## What Local Review is
 
@@ -21,7 +21,7 @@ Everything lives in plain YAML under `~/.local-review/projects/<slug>/` (or `$LO
 
 ```
 project.yaml                    repos, commit ranges, PR stacks, intro and stack notes
-reviews/<repo>/<full-sha>.yaml  the reviewer's threads and your replies (schema: README "Comment files")
+reviews/<repo>/<full-sha>.yaml  the reviewer's threads and your replies (schema: the docs site's "Comment files schema")
 prs/<repo>/<full-sha>.yaml      PR title/body overrides, status (draft / ready), branch, github, landed
 ```
 
@@ -37,7 +37,7 @@ at `merge-base(base, branch)`). Each repo has `stacks`, consecutive groups of co
 intro. `starts_at` is a commit **subject** (or a sha prefix): a stack runs from that commit up to the next stack's
 start. A stack may have `follow_on: true`: parked work for later (below). After merges, a repo also has
 `landed:`, the keys of its merged PRs' prs files, bottom to top ("After merges"), and its `branch` becomes optional.
-See README "Projects" for the full schema.
+The full schema: [project.yaml](https://local-review.edspencer.net/reference/project-yaml/).
 
 **Follow-on stacks** are parked work: PRs to get to later, not part of the stacks going up now. They're
 reviewed like any other, keep their PR numbers, and sit at the end of the repo's `stacks:`. **Don't publish or
@@ -122,7 +122,9 @@ curl -s -X PUT -H "$J" $BASE/pr -d '{"title":"…","body":"…"}'               
 curl -s -X PUT -H "$J" $BASE/pr -d '{"branch":"me/x"}'                                 # record a branch
 ```
 
-With the server down, edit the YAML files directly instead (README "Comment files", "For agents: a recipe").
+With the server down, edit the YAML files directly instead: see
+[Comment files](https://local-review.edspencer.net/agents/comment-files/) for the recipe and
+[the schema](https://local-review.edspencer.net/reference/comment-files/).
 
 ## Handling review threads
 
@@ -405,6 +407,27 @@ Only when the reviewer asks. Everything comes from read-only `gh` GETs, and **no
 4. The diffs need the heads and bases in the local clone (fetching is your call, in your repo; Local Review never
    fetches). Without the head or base, a PR shows its merge commit's diff; without that either, no diff and a
    warning. Check the files / + / − against GitHub's numbers.
+
+Stacking tools leave merged stacks looking different on GitHub. Check which kind you have before writing `landed:`:
+
+- **ghstack (e.g. PyTorch): "Closed", not merged.** A merge bot lands each PR on `main` as one commit and closes the
+  PR, so `mergedAt` and `mergeCommit` are null. Find the landed commit by its `Pull Request resolved: …/pull/<N>`
+  trailer (`gh api search/commits -f q='repo:<owner>/<repo> "pull/<N>"'`), and use it as `landed.commit`, with
+  `method: rebase` and its commit date as `at`. Each PR's base is its own synthetic `gh/<user>/<n>/base` branch, not
+  the PR below; `headRefOid`/`baseRefOid` still give the PR's own diff.
+- **Meta's exported repos (e.g. pytorch/executorch): "Merged", but into a synthetic base.** The PR merged into its
+  own `gh/…/base` branch, and that merge commit is not on `main`. The real commit on `main` comes from Meta's export
+  (a `Differential Revision:` trailer): use that as `landed.commit`, not `mergeCommit`.
+- **GitHub native stacks merged in one go: a stale `baseRefName`.** The upper PRs keep the branch below as their
+  `baseRefName` although everything landed on the stack's base. That's expected: record it as is, since `baseRefOid`
+  (the head of the PR below) is what gives each PR its own diff.
+- **Graphite and other auto-retargeted stacks: interleaved squashes.** After each merge GitHub retargets the next PR
+  to `main`, so its `baseRefName` is `main` and the squash commits sit between unrelated commits on `main`. The
+  head/base pairs still give each PR's own diff; the branch it was stacked on is only in the timeline
+  (`github.stacked_on`, as in "Freezing merged PRs").
+- **Sapling: cumulative PRs.** Each PR targets `main` and contains every PR below it, so its head/base diff is the
+  whole stack so far, and GitHub's numbers are cumulative too. Set each PR's `landed.base` to the `headRefOid` of the
+  PR below it (the bottom PR keeps its own base), so each one shows just its own change.
 
 ## Hand-off prompt template
 

@@ -1,8 +1,8 @@
 # Local Review brand kit
 
 The mark is a stack of PRs, and the front one has been reviewed: three offset cards with an amber card and a check in
-front. It sits on a deep plum tile, the same plum and amber as the app header, which is deliberately not GitHub (README
-"The deliberate 'not GitHub' difference").
+front. It sits on a deep plum tile, the same plum and amber as the app header, which is deliberately not GitHub (see
+[the header](https://local-review.edspencer.net/using/ui-tour/#the-header-deliberately-not-github) in the docs).
 
 ## Files
 
