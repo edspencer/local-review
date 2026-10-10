@@ -66,8 +66,8 @@ trusted publisher and locked the package down to 2FA with no tokens. 0.0.1 is th
 been published from a laptop, and it's permanently unattested. That's why it holds no code.
 
 Until the first real release, `npx local-review` resolves to the placeholder and fails ("could not determine
-executable to run"). The first release moves `latest` off it. Consider deprecating 0.0.1 afterwards
-(`npm deprecate local-review@0.0.1 "placeholder, use the latest version"`).
+executable to run"). The first release moves `latest` off it. 0.2.0 was the first real release. Deprecate 0.0.1 by hand (it needs a logged-in maintainer):
+`npm deprecate local-review@0.0.1 "placeholder, use the latest version"`.
 
 ## When something goes wrong
 
@@ -83,6 +83,13 @@ twice (and unpublishing is only possible for 72 hours, and frees nothing: the ve
   there's no tag. Fix the cause and re-run the workflow (Actions → Release → Run workflow, or re-run the failed jobs).
   An auth failure (`E404`/`ENEEDAUTH` on publish) almost always means the trusted publisher settings don't match the
   repo, the workflow file name or the job's `id-token` permission.
+- **`E403 … OIDC permission denied for this action`** means npm accepted the OIDC token but the trusted publisher
+  isn't allowed to do a direct publish: a new trusted publisher only allows *staged* publishes until **npm publish**
+  is ticked under its **Allowed actions** on npmjs.com. That's what blocked the first 0.2.0 run; ticking it and
+  re-running the failed jobs published it.
+- This repo was created after 2026-07-15, so GitHub issues it OIDC tokens with *immutable* subject claims
+  (`repo:edspencer@6929/local-review@…`). npm matched them for the 0.2.0 publish, but if a future publish fails at the
+  token exchange with `package not found` (E404), check [npm/cli#9969](https://github.com/npm/cli/issues/9969) first.
 - **Published, but a later step failed** (the provenance check timed out, or the GitHub Release step failed). The
   version is on npm and there's no `v<version>` tag, so re-running the workflow detects the release again, *skips*
   the publish ("already on npm") and finishes the provenance check, the tag and the Release.
