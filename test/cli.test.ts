@@ -34,7 +34,7 @@ describe('local-review CLI', () => {
     const h = await lr(['--help']);
     assert.equal(h.code, 0);
     assert.match(h.stdout, /^Usage: local-review \[serve\]/);
-    assert.match(h.stdout, /--port <n> +the port \(default 5000, or \$PORT\)/);
+    assert.match(h.stdout, /--port <n> +the port \(default 5622, or \$PORT\)/);
     for (const cmd of ['plan', 'init', 'guide']) assert.match(h.stdout, new RegExp(`^  ${cmd} `, 'm'));
   });
 
@@ -67,7 +67,7 @@ describe('local-review CLI', () => {
     assert.equal(r.code, 0, r.stderr);
     const file = path.join(PROJECTS, 'demo', 'project.yaml');
     assert.match(r.stdout, new RegExp(`Created ${file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
-    assert.match(r.stdout, /http:\/\/localhost:5000\/demo/);
+    assert.match(r.stdout, /http:\/\/localhost:5622\/demo/);
     const text = fs.readFileSync(file, 'utf8');
     const example = fs.readFileSync(path.join(ROOT, 'examples', 'project.example.yaml'), 'utf8');
     assert.equal(text, example.replace('title: My feature', 'title: demo'));

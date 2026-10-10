@@ -6,14 +6,14 @@ see [AGENTS.md](https://github.com/edspencer/local-review/blob/main/AGENTS.md) i
 prints this guide.
 
 Commands below are `local-review …`: run them as `npx local-review …` unless it's installed globally
-(`npm i -g local-review`). The URLs assume the default port, 5000; if the reviewer runs it with `--port`, use
+(`npm i -g local-review`). The URLs assume the default port, 5622; if the reviewer runs it with `--port`, use
 theirs. "README" means Local Review's [README](https://github.com/edspencer/local-review#readme) (also in the
 installed package).
 
 ## What Local Review is
 
 A local, GitHub-PR-style review UI for stacks of commits. Each commit is one candidate PR. The reviewer (the human you're working for) reviews them at
-**http://localhost:5000/&lt;project&gt;/&lt;repo&gt;/&lt;sha&gt;** (short or full sha; `/<project>` is the project homepage).
+**http://localhost:5622/&lt;project&gt;/&lt;repo&gt;/&lt;sha&gt;** (short or full sha; `/<project>` is the project homepage).
 Local Review never talks to GitHub and never modifies the repos it shows. You do the git and GitHub work, and record
 the results in its files.
 
@@ -103,17 +103,17 @@ stack selectors (`starts_at`) depend on subjects too.
 
 Then tell the reviewer it's ready, with the URL.
 
-## API (http://localhost:5000)
+## API (http://localhost:5622)
 
 Use a short or full sha.
 
 ```sh
 P=my-feature; R=my-service; SHA=0a1b2c3d
-BASE=http://localhost:5000/api/projects/$P/repos/$R/commits/$SHA
+BASE=http://localhost:5622/api/projects/$P/repos/$R/commits/$SHA
 J='Content-Type: application/json'
 
 # all commits: position, stack, title, status, unresolved, branch, github
-curl -s http://localhost:5000/api/projects/$P | jq '.repos[] | {name, commits: [.commits[] | {position, short, title, status, unresolved, branch, github}]}'
+curl -s http://localhost:5622/api/projects/$P | jq '.repos[] | {name, commits: [.commits[] | {position, short, title, status, unresolved, branch, github}]}'
 
 curl -s $BASE/review | jq '.threads[] | select(.resolved != true)'                      # open threads
 curl -s -X POST -H "$J" $BASE/threads/<tid>/comments -d '{"author":"claude","body":"…"}'  # reply
@@ -283,7 +283,7 @@ for b in $(jq -r '.prs[].branch.name' /tmp/plan.json); do
   sha=$(git rev-parse "$b")
   gh pr view "$b" --json number,url,headRefName,baseRefName \
     | jq '{github: {number, url, branch: .headRefName, base: .baseRefName}}' \
-    | curl -s -X PUT -H "$J" -d @- http://localhost:5000/api/projects/$P/repos/$R/commits/$sha/pr >/dev/null
+    | curl -s -X PUT -H "$J" -d @- http://localhost:5622/api/projects/$P/repos/$R/commits/$sha/pr >/dev/null
 done
 ```
 
@@ -411,7 +411,7 @@ Only when the reviewer asks. Everything comes from read-only `gh` GETs, and **no
 To start a chat that addresses the reviewer's comments, paste this (fill in the `<…>`s):
 
 ```
-I've reviewed <repo> in Local Review (project <project>, http://localhost:5000/<project>).
+I've reviewed <repo> in Local Review (project <project>, http://localhost:5622/<project>).
 Address my open review threads. First run `npx local-review guide` and follow that guide exactly:
 - fix each reviewed commit with --fixup + autosquash onto the stack's current merge-base, with
   --update-refs, keeping subjects unchanged;

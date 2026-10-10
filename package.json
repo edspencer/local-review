@@ -37,7 +37,7 @@
     "AGENT-GUIDE.md"
   ],
   "engines": {
-    "node": ">=20.19.0"
+    "node": ">=22"
   },
   "scripts": {
     "start": "node scripts/start.mjs",

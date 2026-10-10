@@ -3,7 +3,7 @@
 # it is also a commented reference for writing one by hand.
 #
 # Edit the paths and branches below. The directory name ("my-feature") is the project's slug, used in
-# URLs: http://localhost:5000/my-feature. Edits are picked up live, no restart needed.
+# URLs: http://localhost:5622/my-feature. Edits are picked up live, no restart needed.
 # The full schema and the stack selector rules are under "Projects" in README.md.
 title: My feature
 description: |                        # optional: the project intro (Markdown), editable in the UI too.

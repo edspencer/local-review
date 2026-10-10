@@ -14,11 +14,11 @@ and `local-review plan` prints what each PR should be. Merged PRs stay in their 
 
 ## Run
 
-Needs Node.js 20.19 or later, and git. macOS and Linux.
+Needs Node.js 22 or later, and git. macOS and Linux.
 
 ```sh
 npx local-review init my-feature   # create a project to review (then edit it: see "Projects")
-npx local-review                   # serve the UI + API on http://localhost:5000
+npx local-review                   # serve the UI + API on http://localhost:5622
 ```
 
 Or install it once with `npm i -g local-review` and run `local-review`. The commands:
@@ -31,14 +31,14 @@ local-review guide                  print the guide for agents (AGENT-GUIDE.md)
 local-review --help | --version
 ```
 
-Environment overrides: `LOCAL_REVIEW_HOME` (the data directory, default `~/.local-review`), `PORT` (default 5000;
-`--port` wins), `LOCAL_REVIEW_USER` (who you are; see [The reviewer](#the-reviewer)). On macOS the AirPlay Receiver
-also listens on port 5000; if it can't bind or you get the wrong page, run `npx local-review --port 5050` (or turn
-AirPlay Receiver off in System Settings).
+Environment overrides: `LOCAL_REVIEW_HOME` (the data directory, default `~/.local-review`), `PORT` (default 5622;
+`--port` wins), `LOCAL_REVIEW_USER` (who you are; see [The reviewer](#the-reviewer)). If the port is in use, it says
+so and exits: pick another with `--port <n>` (or `PORT=<n>`). The default was 5000 before 0.2.0; if you have
+bookmarks or agent prompts with `localhost:5000`, update them (or run `--port 5000`).
 
 **From a checkout** (to work on Local Review itself; see [AGENTS.md](AGENTS.md)): `npm install`, then `npm start`
 builds what's stale and runs the compiled CLI (`npm start -- --port 5050`), and `npm run lr -- <command>` runs any
-command from source. `npm run dev` runs Vite with hot reload on :5000, proxying `/api` to the API server on :5001
+command from source. `npm run dev` runs Vite with hot reload on :5622, proxying `/api` to the API server on :5623
 (`LOCAL_REVIEW_WEB_PORT` / `LOCAL_REVIEW_API_PORT` change both, e.g. to run it next to a live instance).
 `npm run typecheck` type-checks the server and the frontend. `npm test` runs the tests (`node:test`; they build
 throwaway git repos in the OS temp dir and delete them afterwards). `npm run build` builds the UI into `dist/web`
@@ -483,7 +483,7 @@ this is the file-level detail.
    `ls ~/.local-review/projects/my-feature/reviews/my-service/$(git -C ~/code/my-service rev-parse me/my-feature).yaml`.
    Repo names are the `name` in `project.yaml` (default: the repo directory name). If there's no file under that
    sha but the commit was just rebased, its comments may still be in the old sha's file: `GET
-   http://localhost:5000/api/projects/<project>/repos/<repo>/commits/<sha>/review` returns `file` (where they are now),
+   http://localhost:5622/api/projects/<project>/repos/<repo>/commits/<sha>/review` returns `file` (where they are now),
    `target_file` and `carried_over`. Either file can be edited; the server moves it on its next write.
 2. **List unresolved threads:** threads with `resolved: false` (or no `resolved`). For example:
    ```sh
