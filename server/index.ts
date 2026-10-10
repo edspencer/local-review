@@ -9,7 +9,7 @@ import { PROJECTS_DIR, ROOT, SAFE_NAME, WEB_DIST } from './config.js';
 import { detailOf, filesOf, type CommitSummary } from './commits.js';
 import { prStatus, progressOf, storedStatus } from '../shared/readiness.js';
 import { ReviewConflictError, loadReview, mutateReview, randomId, reviewPath, unresolvedCount, viewReview, type Review, type ReviewContext, type Thread } from './reviews.js';
-import { branchName, githubOf, loadPr, loadPrs, prPath, prView, writePr, type GithubPr, type LoadedPr } from './prs.js';
+import { branchName, githubOf, loadPr, loadPrs, prPath, prView, titleEdited, writePr, type GithubPr, type LoadedPr } from './prs.js';
 import { loadRefs, reconcileBranch, type RefIndex } from './branches.js';
 import { contextFor, inspectOrphan, liveCommits, prContextFor } from './context.js';
 import { emit, startWatchers, subscribe } from './events.js';
@@ -133,12 +133,13 @@ async function repoPayload(r: LoadedRepo, withWeights = false) {
         filesOf(r.info.path, cm).catch(() => []), // cached per sha (a landed PR: its own diff)
       ]);
       const pr = prs.get(cm.sha);
+      const edited = titleEdited(pr?.override, cm.subject);
       return {
         ...cm,
         position: i + 1,
         stack: r.stackOf.get(cm.sha) ?? 0,
-        title: pr?.override.title ?? cm.subject,
-        title_source: pr?.override.title !== undefined ? 'override' : 'commit',
+        title: edited ? pr!.override.title! : cm.subject,
+        title_source: edited ? 'override' : 'commit',
         ...branchFields(r, refs, cm.sha, pr),
         unresolved: l ? unresolvedCount(l.review) : 0,
         threads: l ? l.review.threads.length : 0,

@@ -1,8 +1,9 @@
 // Pure text helpers for the PR title / description editors (no DOM, so they're unit-tested under node).
 
+import { normBody } from '../shared/prText.js';
+
 /** Normalised like the server does, so "unchanged" compares what would actually be stored. */
-export const normTitle = (s: string) => s.replace(/\s+/g, ' ').trim();
-export const normBody = (s: string) => s.replace(/\r\n/g, '\n').trimEnd();
+export { normBody, normTitle } from '../shared/prText.js';
 
 /** Clipboard text for "Copy title + description". */
 export const titleAndBody = (pr: { title: string; body: string }) => (pr.body.trim() ? `${pr.title}\n\n${normBody(pr.body)}` : pr.title);

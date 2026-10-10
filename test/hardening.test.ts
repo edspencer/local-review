@@ -326,6 +326,12 @@ describe('HTTP API', () => {
     const s2 = await req('PUT', pr, { body: { title: null } });
     assert.deepEqual([s2.json.title, s2.json.title_source, s2.json.body_source], ['Change f', 'commit', 'override']);
     assert.equal(YAML.parse(fs.readFileSync(file, 'utf8')).agent_note, 'keep me');
+    // a hand-written title that's just the commit subject isn't "edited", on the PR page or in the commit list
+    const keep = fs.readFileSync(file, 'utf8');
+    fs.writeFileSync(file, keep + 'title: "Change f "\n');
+    assert.equal((await req('GET', pr)).json.title_source, 'commit');
+    assert.equal((await req('GET', '/api/projects/demo-proj')).json.repos.find((r: any) => r.name === 'demo').commits[0].title_source, 'commit');
+    fs.writeFileSync(file, keep);
     // invalid YAML is never overwritten
     const broken = 'title: [unclosed\n';
     fs.writeFileSync(file, broken);
