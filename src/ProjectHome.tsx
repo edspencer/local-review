@@ -5,7 +5,7 @@ import { IntroText, StackNoteText, StackWeight, TotalsLine, canHaveNote, repoAgg
 import { repoLabel } from '../shared/repoLabel';
 import { mergeAggregates, summary } from '../shared/totals';
 import { ImageActions, useCopyImage } from './StackTab';
-import { navigate, routeUrl } from './util';
+import { navigate, routeUrl, useTilde } from './util';
 
 // as in the sidebar (App's stackLabel; not imported from App, which imports this file)
 const stackLabel = (g: StackGroup) => (g.number !== null && !g.implicit ? `Stack ${g.number} · ${g.title}` : g.title);
@@ -21,6 +21,7 @@ export function ProjectHome({ project, version }: { project: ProjectData; versio
   };
   // totals leave follow-on stacks out (shared/totals.ts, the same numbers as the picture)
   const aggs = new Map(project.repos.map((r) => [r.name, repoAggregate(r)]));
+  const tilde = useTilde();
   return (
     <div className="page project-home">
       <div className="pr-header">
@@ -54,7 +55,7 @@ export function ProjectHome({ project, version }: { project: ProjectData; versio
                 {r.name} <RepoLabel r={r} />
                 {r.commits.length > 0 && <TotalsLine s={summary(aggs.get(r.name)!)} />}
               </h3>
-              {r.error && <div className="flash flash-error">{r.error}</div>}
+              {r.error && <div className="flash flash-error">{tilde(r.error)}</div>}
               {r.stacks.filter((g) => g.shas.length).map((g, i, shown) => (
                 <Fragment key={g.index}>
                   {g.follow_on && !shown[i - 1]?.follow_on && (

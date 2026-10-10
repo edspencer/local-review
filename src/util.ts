@@ -1,4 +1,5 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, useSyncExternalStore } from 'react';
+import { tildify } from '../shared/paths';
 
 // ---------- routing (tiny, history API) ----------
 // /<project>/<repo>/<sha>[?tab=files&file=…]. `/<project>` opens its first commit; an old `/<repo>/<sha>`
@@ -119,4 +120,14 @@ export function hashString(s: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
   return (h >>> 0).toString(36);
+}
+
+// ---------- paths ----------
+/** The server's home directory (from /api/projects), so paths under it can be shown as `~/…`. */
+export const HomeContext = createContext<string | null>(null);
+
+/** Shows a path, or a message with paths in it, home-relative (`~/.local-review/…`): shared/paths.ts. */
+export function useTilde() {
+  const home = useContext(HomeContext);
+  return useCallback((s: string) => tildify(s, home), [home]);
 }

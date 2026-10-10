@@ -1,11 +1,12 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { streamSSE } from 'hono/streaming';
-import { PROJECTS_DIR, ROOT, SAFE_NAME, WEB_DIST } from './config.js';
+import { PROJECTS_DIR, SAFE_NAME, WEB_DIST } from './config.js';
 import { detailOf, filesOf, type CommitSummary } from './commits.js';
 import { prStatus, progressOf, storedStatus } from '../shared/readiness.js';
 import { ReviewConflictError, loadReview, mutateReview, randomId, reviewPath, unresolvedCount, viewReview, type Review, type ReviewContext, type Thread } from './reviews.js';
@@ -36,12 +37,10 @@ app.onError((err, c) => {
   return c.json({ error: err.message }, status as any);
 });
 
-const relFile = (f: string) => (path.relative(ROOT, f).startsWith('..') ? f : path.relative(ROOT, f));
-
 async function getProject(slug: string): Promise<LoadedProject> {
   // only names that are plain directory names under projects/ (no traversal), and that exist
   const p = SAFE_NAME.test(slug) ? await loadProject(slug) : null;
-  if (!p) throw new HttpError(404, `no project '${slug}' in ${relFile(PROJECTS_DIR)}`);
+  if (!p) throw new HttpError(404, `no project '${slug}' in ${PROJECTS_DIR}`);
   return p;
 }
 
@@ -81,8 +80,8 @@ async function reviewPayload(ctx: ReviewContext) {
   const prev = l.review.previous_commits;
   return {
     ...l.review,
-    file: relFile(l.file ?? target), // the file the comments are in right now
-    target_file: relFile(target), // where they'll be saved (differs only while carried over)
+    file: l.file ?? target, // the file the comments are in right now
+    target_file: target, // where they'll be saved (differs only while carried over)
     matched_from: l.matchedFrom ?? null,
     matched_by: l.matchedBy ?? null,
     // set when this review came from an earlier commit (pending or already saved under this sha)
@@ -112,8 +111,8 @@ async function prPayload(r: Resolved, body: string) {
   return {
     ...prView(l, { subject: r.commit.subject, body }),
     ...branchFields(r.repo, await loadRefs(r.repo.cfg.path), r.commit.sha, l),
-    file: relFile(l.file ?? prPath(ctx.dir, ctx.sha)),
-    target_file: relFile(prPath(ctx.dir, ctx.sha)),
+    file: l.file ?? prPath(ctx.dir, ctx.sha),
+    target_file: prPath(ctx.dir, ctx.sha),
     matched_from: l.matchedFrom ?? null,
     matched_by: l.matchedBy ?? null,
     parse_error: l.parseError ?? null,
@@ -162,8 +161,8 @@ async function repoPayload(r: LoadedRepo, withWeights = false) {
     error: info.error ?? null,
     warnings: r.warnings,
     stacks: weights ? r.stacks.map((g, i) => ({ ...g, weight: weights[i] })) : r.stacks,
-    reviewsDir: relFile(r.reviewsDir),
-    prsDir: relFile(r.prsDir),
+    reviewsDir: r.reviewsDir,
+    prsDir: r.prsDir,
     commits,
   };
 }
@@ -198,7 +197,7 @@ app.get('/api/projects', async (c) => {
       };
     }),
   );
-  return c.json({ projectsDir: relFile(PROJECTS_DIR), projects: projects.filter(Boolean) });
+  return c.json({ projectsDir: PROJECTS_DIR, home: os.homedir(), projects: projects.filter(Boolean) });
 });
 
 app.get('/api/projects/:project', async (c) => {
@@ -207,7 +206,7 @@ app.get('/api/projects/:project', async (c) => {
     slug: p.cfg.slug,
     title: p.cfg.title,
     description: p.cfg.description,
-    file: relFile(p.cfg.file),
+    file: p.cfg.file,
     error: p.cfg.error ?? null,
     repos: await Promise.all(p.repos.map((r) => repoPayload(r, true))),
   });
@@ -227,7 +226,7 @@ app.put('/api/projects/:project/description', async (c) => {
   const p = await getProject(c.req.param('project'));
   const cfg = await editProjectYaml(p.cfg.slug, (doc) => setProjectDescription(doc, description));
   emit({ type: 'project', project: p.cfg.slug, reason: 'config' });
-  return c.json({ description: cfg.description, file: relFile(cfg.file) });
+  return c.json({ description: cfg.description, file: cfg.file });
 });
 
 app.put('/api/projects/:project/repos/:repo/stacks/:number/description', async (c) => {
@@ -241,7 +240,7 @@ app.put('/api/projects/:project/repos/:repo/stacks/:number/description', async (
   const cfg = await editProjectYaml(p.cfg.slug, (doc, cur) => setStackDescription(doc, cur, repo, Number(n), description, b.title));
   emit({ type: 'project', project: p.cfg.slug, reason: 'config' });
   const spec = cfg.repos.find((r) => r.name === repo)?.stacks[Number(n) - 1];
-  return c.json({ description: spec?.description ?? null, title: spec?.title ?? null, file: relFile(cfg.file) });
+  return c.json({ description: spec?.description ?? null, title: spec?.title ?? null, file: cfg.file });
 });
 
 const COMMIT = '/api/projects/:project/repos/:repo/commits/:sha';

@@ -5,7 +5,8 @@ import { CommitPage } from './CommitPage';
 import { ProjectHome, RepoLabel } from './ProjectHome';
 import { FOLLOW_ON_TIP, FollowOnBadge, ReadinessBadge } from './Readiness';
 import { TextDraftsProvider, repoAggregate } from './ProjectText';
-import { hashString, isTyping, navigate, relativeTime, routeUrl, useLocalStorage, useRoute, useTick, type Route } from './util';
+import { tildify } from '../shared/paths';
+import { HomeContext, hashString, isTyping, navigate, relativeTime, routeUrl, useLocalStorage, useRoute, useTick, useTilde, type Route } from './util';
 
 const mostRecent = (l: ProjectsResponse | null) => (l?.projects ?? []).slice().sort((a, b) => b.modified.localeCompare(a.modified))[0] ?? null;
 
@@ -118,7 +119,10 @@ export function App() {
     [project],
   );
 
+  const tilde = (s: string) => tildify(s, list?.home);
+
   return (
+    <HomeContext.Provider value={list?.home ?? null}>
     <div className="app">
       <header className="app-header">
         <button className="header-btn" onClick={() => setSidebarOpen(!sidebarOpen)} title="Toggle sidebar">☰</button>
@@ -135,13 +139,13 @@ export function App() {
       <div className="app-body">
         {sidebarOpen && (
           <aside className="sidebar">
-            {loadError && <div className="flash flash-error">{loadError}</div>}
-            {project?.error && <div className="flash flash-error">{project.error}</div>}
+            {loadError && <div className="flash flash-error">{tilde(loadError)}</div>}
+            {project?.error && <div className="flash flash-error">{tilde(project.error)}</div>}
             {!project && !loadError && list && list.projects.length > 0 && <div className="loading">Loading project…</div>}
             {list && list.projects.length === 0 && (
               <div className="sidebar-empty">No projects yet.</div>
             )}
-            {project && project.repos.length === 0 && !project.error && <div className="sidebar-empty">No repos in <code>{project.file}</code>.</div>}
+            {project && project.repos.length === 0 && !project.error && <div className="sidebar-empty">No repos in <code>{tilde(project.file)}</code>.</div>}
             {project?.repos.map((r) => (
               <RepoSection
                 key={r.name}
@@ -185,12 +189,12 @@ export function App() {
               <p>A project is one <code>project.yaml</code> naming the repos and branches to review. Create one from a commented example:</p>
               <pre style={{ display: 'inline-block', textAlign: 'left', margin: '8px 0', padding: '8px 12px', background: 'var(--bg-subtle)', borderRadius: 'var(--radius)', fontSize: 12 }}>npx local-review init my-feature</pre>
               <p>
-                then edit <code>{list.projectsDir}/my-feature/project.yaml</code>: its paths and branches. It shows up here as soon as it's saved, no restart needed. See "Where your data lives" and
+                then edit <code>{tilde(list.projectsDir)}/my-feature/project.yaml</code>: its paths and branches. It shows up here as soon as it's saved, no restart needed. See "Where your data lives" and
                 "Projects" in the README.
               </p>
             </div>
           ) : project && flat.length === 0 ? (
-            <div className="page blankslate">No commits to review in <strong>{project.title}</strong>. Check <code>{project.file}</code>.</div>
+            <div className="page blankslate">No commits to review in <strong>{project.title}</strong>. Check <code>{tilde(project.file)}</code>.</div>
           ) : (
             <div className="page loading">Loading…</div>
           )}
@@ -198,6 +202,7 @@ export function App() {
         </main>
       </div>
     </div>
+    </HomeContext.Provider>
   );
 }
 
@@ -284,11 +289,12 @@ function RepoSection({ project, repo: r, route, closed, toggle }: { project: Pro
   const fo = repoAggregate(r).followOn;
   const foDone = r.commits.filter((c) => parked.has(c.sha) && !c.landed && fullyViewed(c)).length;
   const bySha = new Map(r.commits.map((c) => [c.sha, c]));
+  const tilde = useTilde();
   return (
     <section className={`repo ${closed ? 'closed' : ''} ${r.error ? 'has-error' : ''}`}>
       <button
         className="repo-heading"
-        title={`${r.path}\nrange end: ${r.end || '(none: all landed)'}\n${r.from ? `from: ${r.from}` : `base: ${r.base ?? '?'}`}${merged ? `\n${merged} landed (merged) PR${merged === 1 ? '' : 's'}` : ''}${closed ? '\n(click to expand)' : ''}`}
+        title={`${tilde(r.path)}\nrange end: ${r.end || '(none: all landed)'}\n${r.from ? `from: ${r.from}` : `base: ${r.base ?? '?'}`}${merged ? `\n${merged} landed (merged) PR${merged === 1 ? '' : 's'}` : ''}${closed ? '\n(click to expand)' : ''}`}
         aria-expanded={!closed}
         onClick={toggle}
       >
@@ -299,7 +305,7 @@ function RepoSection({ project, repo: r, route, closed, toggle }: { project: Pro
           <span className="repo-name">{r.name}</span> <RepoLabel r={r} end />
         </span>
         {closed && r.warnings.length > 0 && (
-          <span className="repo-warn-flag" title={r.warnings.join('\n')} role="status">
+          <span className="repo-warn-flag" title={tilde(r.warnings.join('\n'))} role="status">
             ⚠ {r.warnings.length}
           </span>
         )}
@@ -317,15 +323,15 @@ function RepoSection({ project, repo: r, route, closed, toggle }: { project: Pro
       {r.error && (
         <div className="repo-error" role="alert">
           <strong>Can't read this repo</strong>
-          <span>{r.error}</span>
-          {!r.error.includes(r.path) && <code title={r.path}>{r.path}</code>}
-          <span className="muted">Fix it in <code>{project.file}</code>; it reloads by itself.</span>
+          <span>{tilde(r.error)}</span>
+          {!r.error.includes(r.path) && <code title={r.path}>{tilde(r.path)}</code>}
+          <span className="muted">Fix it in <code>{tilde(project.file)}</code>; it reloads by itself.</span>
         </div>
       )}
       {!closed && r.warnings.length > 0 && (
         <div className="repo-warning" role="status">
-          {r.warnings.map((w, i) => <span key={i}>⚠ {w}</span>)}
-          <span className="muted">Edit <code>{project.file}</code>.</span>
+          {r.warnings.map((w, i) => <span key={i}>⚠ {tilde(w)}</span>)}
+          <span className="muted">Edit <code>{tilde(project.file)}</code>.</span>
         </div>
       )}
       {!closed && !r.error && r.commits.length === 0 && <div className="sidebar-empty">No commits in range ({r.base ?? r.from ?? '?'}..{r.end || '?'}).</div>}
