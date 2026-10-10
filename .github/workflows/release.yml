@@ -178,7 +178,7 @@ jobs:
       - name: Verify provenance landed
         run: |
           set -euo pipefail
-          for i in $(seq 1 10); do
+          for i in $(seq 1 40); do
             if npm view "local-review@${VERSION}" dist.attestations.provenance --json 2>/dev/null | grep -q slsa; then
               echo "provenance attested for ${VERSION}"; exit 0
             fi
