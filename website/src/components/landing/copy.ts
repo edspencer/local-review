@@ -5,8 +5,9 @@
  * through the components, so the words can be worked on without touching markup.
  * (Same arrangement as Paddock's site.)
  *
- * FIRST DRAFT. This copy is distilled from the README and has not been through
- * an editing pass yet. The media slots are placeholders too: see FEATURES.
+ * Every claim here should be checkable against the docs pages it links to (the
+ * edit pass checked them against the code). The media slots are still
+ * placeholders: see FEATURES.
  */
 
 import { REPO_URL, TAGLINE } from '../../site.mjs';
@@ -18,8 +19,8 @@ export const hero = {
 	eyebrow: 'Open source · MIT · runs on your machine',
 	/** The H1. */
 	title: `${TAGLINE}.`,
-	lede: 'Local Review shows every commit on your branch as its own pull request, grouped into the stacks you mean to open, in a GitHub-style review UI that runs on your laptop.',
-	body: 'Comment, request changes and mark PRs ready while it is still just you and your agent. Nothing is pushed until the stack is right.',
+	lede: 'Local Review shows every commit on your branch as its own pull request, grouped into the stacks you mean to open, in a GitHub-style review UI that runs on your machine.',
+	body: 'Comment, get your agent to fix things, and mark PRs ready while it is still just you and your agent. Nothing goes to GitHub until the stack is right.',
 };
 
 /** The one command worth pasting. */
@@ -50,7 +51,7 @@ export const VALUE_PROPS = [
 	{
 		icon: 'stack',
 		title: 'Every commit is a PR',
-		body: 'Each commit gets a Conversation tab and a Files changed tab, numbered and grouped into colour-coded stacks, exactly as it will look on GitHub.',
+		body: 'Each commit gets a Conversation tab and a Files changed tab, numbered and grouped into colour-coded stacks: one PR per commit, the way the stack will go up on GitHub.',
 	},
 	{
 		icon: 'repos',
@@ -60,7 +61,7 @@ export const VALUE_PROPS = [
 	{
 		icon: 'chat',
 		title: 'Your agent answers in the review',
-		body: 'Comments are plain YAML files. Your agent reads them, fixes the commits and replies in the same files, and its replies appear in the browser as it works.',
+		body: 'Comments are plain YAML files. Your agent reads them, fixes the commits and replies in the same files, and its replies appear in your browser as it works.',
 	},
 	{
 		icon: 'lock',
@@ -69,13 +70,13 @@ export const VALUE_PROPS = [
 	},
 	{
 		icon: 'shield',
-		title: 'Nothing leaves your machine',
-		body: 'It never talks to GitHub, only listens on localhost, and never deletes your review: everything is snapshotted hourly while it changes.',
+		title: 'Local, and careful with your work',
+		body: 'Local Review never talks to GitHub and only answers on localhost. It never deletes your review, and snapshots it every hour that something changes.',
 	},
 	{
 		icon: 'rocket',
 		title: 'Publish when it is right',
-		body: 'When a stack is ready, your agent opens it as native GitHub stacked PRs with the titles and descriptions you approved, then records what it created.',
+		body: 'When a stack is ready, your agent opens it as GitHub stacked PRs with the titles and descriptions you approved, one stack at a time, then records what it created.',
 	},
 ] as const;
 
@@ -110,7 +111,7 @@ export const FEATURES = [
 	},
 	{
 		title: '3. Your agent replies',
-		body: 'Hand the project to your coding agent. It reads your threads, amends the commits and answers in the review files. Threads follow their code across the rebase.',
+		body: 'Hand the project to your coding agent. It reads your threads, fixes each commit where it stands and answers in the review files. Threads follow their code through the rebase.',
 		media: {
 			width: 640,
 			height: 380,
@@ -119,7 +120,7 @@ export const FEATURES = [
 	},
 	{
 		title: '4. Mark it ready, then publish',
-		body: 'Mark each PR ready. The plan command prints every branch, base, title and body, and your agent opens the stack on GitHub and records each PR back in Local Review.',
+		body: 'Mark each PR ready. The plan command prints every branch, base, title and body, and on your go-ahead your agent opens the stack on GitHub and records each PR back in Local Review.',
 		media: {
 			width: 680,
 			height: 400,
@@ -132,11 +133,11 @@ export const FEATURES = [
 export const AGENTS = {
 	eyebrow: 'Works with your agent',
 	title: 'Plain files in, plain files out.',
-	body: 'There is no plugin and no API key. Local Review keeps your review in YAML files under ~/.local-review, and any coding agent that can read and write files can take part: Claude Code, Codex, or the next one.',
+	body: 'There is no plugin and no API key. Local Review keeps your review in YAML files under ~/.local-review, so any coding agent that can read and write files can take part: Claude Code, Codex, or the next one.',
 	points: [
 		{
 			title: 'A guide written for agents',
-			body: '`local-review guide` prints the agent guide: the data model, how to answer threads, how to fix a commit mid-stack, and how to publish.',
+			body: '`local-review guide` prints the agent guide: the data model, how to answer threads, how to fix a commit mid-stack, how to publish, and what to do after merges.',
 		},
 		{
 			title: 'A plan, not guesswork',
@@ -144,7 +145,7 @@ export const AGENTS = {
 		},
 		{
 			title: 'One prompt to hand off',
-			body: 'Paste the hand-off prompt into your agent and it knows where your review lives and what to do with it.',
+			body: 'Paste the hand-off prompt into your agent and it works through your open threads the way the guide says: fix, reply, resolve only what it should.',
 		},
 	],
 	link: { text: 'Read the agent guide', href: '/agents/agent-guide/' },

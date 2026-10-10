@@ -6,17 +6,27 @@ The human-facing version, with setup, CI and pull request expectations, is [CONT
 
 - **Reviewed repos are read-only.** Local Review reads other repos (for example `~/code/my-service`) and must never
   commit to, rebase, push, check out or otherwise modify them or their branches. All git access goes through
-  `server/git.ts` and its read-only allow-list (README "Read-only guarantee"); keep it that way.
-- **It must look clearly *not GitHub* at a glance**, through at least one deliberate visual difference (README "The
-  deliberate 'not GitHub' difference"), even though it otherwise mirrors GitHub's PR view.
+  `server/git.ts` and its read-only allow-list (docs: `website/src/content/docs/guarantees/read-only.md`); keep it
+  that way.
+- **It must look clearly *not GitHub* at a glance**, through at least one deliberate visual difference (docs: "The
+  header: deliberately not GitHub" in `website/src/content/docs/using/ui-tour.md`), even though it otherwise mirrors
+  GitHub's PR view.
 - **User data never lives in this repo.** Review comments live in plain YAML files that an agent can read and reply
-  to by writing into them. They live in `~/.local-review/projects/<slug>/` (or `$LOCAL_REVIEW_HOME`): see "Where your
-  data lives" and "Comment files" in the README for the layout, schema and never-delete guarantees. Keep those
-  sections up to date when you change any of it.
+  to by writing into them. They live in `~/.local-review/projects/<slug>/` (or `$LOCAL_REVIEW_HOME`). The layout, the file
+  schemas and the never-delete guarantees are documented on the docs site, under `website/src/content/docs/`:
+  `reference/data-directory.md` (where data lives, snapshots), `reference/project-yaml.md`, `reference/pr-files.md`,
+  `reference/comment-files.md` and `agents/comment-files.md` (the schemas and the agent recipe),
+  `concepts/following-rebases.md` (re-matching, line anchoring) and `guarantees/never-delete.md`. Keep those pages
+  up to date in the same PR when you change any of it. The README only links to them.
 - **The server only binds 127.0.0.1** and rejects non-localhost `Host`/`Origin` headers (`server/security.ts`).
   Don't add a way around that (no `--host` flag).
 - **The default port is one constant**, `DEFAULT_PORT` in `server/port.ts`; the CLI help, the startup line and
-  `npm run dev` derive from it.
+  `npm run dev` derive from it. The docs site keeps a copy in `website/src/site.mjs`; `test/docs.test.ts` checks the
+  two match, and that every `localhost:<port>` in the docs and README is the default (or deliberately another).
+- **The docs site** (`website/`, Astro + Starlight, see `website/CLAUDE.md`) holds the reference docs; the README is
+  a short landing page that links to them. Its agent-guide pages are generated from `AGENT-GUIDE.md`: after editing
+  that file, run `node scripts/sync-agent-guide.mjs` in `website/` and commit the result (`npm test` fails until you
+  do).
 - Personal, machine-specific rules go in a git-ignored `CLAUDE.local.md` next to this file.
 
 ## Commands

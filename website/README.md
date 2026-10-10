@@ -19,14 +19,15 @@ npm run build && npm run preview  # build + preview the built site
 
 - `src/pages/index.astro` and `src/components/landing/`: the marketing landing page at `/` (outside Starlight). Its
   copy is all in `src/components/landing/copy.ts`.
-- `src/content/docs/`: the documentation pages (`.md` / `.mdx`, Starlight frontmatter).
+- `src/content/docs/`: the documentation pages (`.md` / `.mdx`, Starlight frontmatter). The `agents/` guide pages
+  are generated from `../AGENT-GUIDE.md` by `node scripts/sync-agent-guide.mjs`; don't edit them by hand.
 - `astro.config.mjs`: site config and the hand-maintained sidebar.
 - `src/site.mjs`: site constants (URL, repo, tagline, **the default port**) and the analytics snippet.
 - `src/assets/`, `public/`, `src/styles/`: logo, favicons, social card, theme.
 - `functions/ingest/[[path]].ts`: the Cloudflare Pages Function that proxies analytics (idle unless analytics is on).
 
 `npm run build` writes the static site to `dist/`, including the Pagefind search index (`dist/pagefind/`) and the
-sitemap (`dist/sitemap-index.xml`).
+sitemap (`dist/sitemap-index.xml`). `node scripts/check-links.mjs` then checks its internal links.
 
 ## Brand assets
 

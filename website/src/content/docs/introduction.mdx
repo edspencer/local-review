@@ -9,6 +9,8 @@ import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 machine, looks like GitHub's pull-request page, and shows every commit on your branch as its own PR, grouped into
 colour-coded **PR stacks**. You read the diffs, leave comments, and mark each PR ready. Nothing is pushed anywhere.
 
+{/* SHOT: intro-hero — a PR page with the plum header, the sidebar's colour-coded stacks and an inline thread with an agent reply; full page */}
+
 ## Why
 
 An AI coding agent can write a dozen tidy commits in an afternoon. Reviewing them properly is the slow part, and
@@ -21,16 +23,17 @@ fixes is a force-push. Local Review moves that first review onto your machine:
 - **Talk to your agent in the review.** Your comments are saved as plain YAML files. Your agent reads them, fixes
   the commits, and replies by writing into the same files; the replies show up in the browser as it works.
 - **Publish when it's ready.** Once a stack is ready, your agent opens it on GitHub as native stacked PRs, with the
-  titles and descriptions you approved, and records what it created back in Local Review.
+  titles and descriptions you approved, and records what it created back in Local Review. It sits in front of
+  whatever you stack with: see [Works with your stacking tool](/concepts/stacking-tools/).
 
 ## What it never does
 
 Local Review is deliberately small and careful:
 
-- It **never modifies the repos it shows you**. All git access is read-only.
+- It **never modifies the repos it shows you**. All git access is read-only ([read-only guarantee](/guarantees/read-only/)).
 - It **never talks to GitHub**. Your agent does the git and GitHub work.
-- It **never deletes your review**, and snapshots it automatically.
-- It **only listens on localhost**.
+- It **never deletes your review**, and snapshots it automatically ([never-delete guarantee](/guarantees/never-delete/)).
+- It **only listens on localhost** ([localhost security](/guarantees/localhost-security/)).
 
 And so you can never mistake it for the real thing, its header is deep plum with an amber underline, not GitHub's.
 

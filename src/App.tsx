@@ -185,8 +185,9 @@ export function App() {
               <p>A project is one <code>project.yaml</code> naming the repos and branches to review. Create one from a commented example:</p>
               <pre style={{ display: 'inline-block', textAlign: 'left', margin: '8px 0', padding: '8px 12px', background: 'var(--bg-subtle)', borderRadius: 'var(--radius)', fontSize: 12 }}>npx local-review init my-feature</pre>
               <p>
-                then edit <code>{list.projectsDir}/my-feature/project.yaml</code>: its paths and branches. It shows up here as soon as it's saved, no restart needed. See "Where your data lives" and
-                "Projects" in the README.
+                then edit <code>{list.projectsDir}/my-feature/project.yaml</code>: its paths and branches. It shows up here as soon as it's saved, no restart needed. See the{' '}
+                <a href="https://local-review.edspencer.net/getting-started/quickstart/" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>Quickstart</a> and{' '}
+                <a href="https://local-review.edspencer.net/reference/project-yaml/" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>project.yaml</a> in the docs.
               </p>
             </div>
           ) : project && flat.length === 0 ? (
