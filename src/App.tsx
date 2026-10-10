@@ -182,10 +182,10 @@ export function App() {
           ) : list && list.projects.length === 0 ? (
             <div className="page blankslate">
               <h2 style={{ color: 'var(--fg)', margin: '0 0 8px', fontSize: 18 }}>No projects yet</h2>
-              <p>A project is one <code>project.yaml</code> naming the repos and branches to review. Create one in your data directory (from the local-review checkout):</p>
-              <pre style={{ display: 'inline-block', textAlign: 'left', margin: '8px 0', padding: '8px 12px', background: 'var(--bg-subtle)', borderRadius: 'var(--radius)', fontSize: 12 }}>{`mkdir -p ${list.projectsDir}/my-feature\ncp examples/project.example.yaml ${list.projectsDir}/my-feature/project.yaml`}</pre>
+              <p>A project is one <code>project.yaml</code> naming the repos and branches to review. Create one from a commented example:</p>
+              <pre style={{ display: 'inline-block', textAlign: 'left', margin: '8px 0', padding: '8px 12px', background: 'var(--bg-subtle)', borderRadius: 'var(--radius)', fontSize: 12 }}>npx local-review init my-feature</pre>
               <p>
-                then edit its paths and branches. It shows up here as soon as it's saved, no restart needed. See "Where your data lives" and
+                then edit <code>{list.projectsDir}/my-feature/project.yaml</code>: its paths and branches. It shows up here as soon as it's saved, no restart needed. See "Where your data lives" and
                 "Projects" in the README.
               </p>
             </div>

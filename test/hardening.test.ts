@@ -241,7 +241,7 @@ describe('HTTP API', () => {
         s.close(() => res(p));
       });
     });
-    server = spawn(process.execPath, ['--import', 'tsx', path.join(ROOT, 'server/index.ts')], {
+    server = spawn(process.execPath, ['--import', 'tsx', path.join(ROOT, 'server/cli.ts'), 'serve'], {
       env: { ...process.env, PORT: String(port), LOCAL_REVIEW_DEV: '1', LOCAL_REVIEW_PROJECTS_DIR: projectsDir, LOCAL_REVIEW_USER: 'Ada Lovelace' },
       stdio: 'ignore',
     });

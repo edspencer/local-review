@@ -1,10 +1,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { DEFAULT_PORT } from './server/port.ts';
 
-// `npm run dev`: Vite serves the UI on 5000 and proxies /api to the API on 5001.
+// `npm run dev`: Vite serves the UI on the default port and proxies /api to the API on the next one up.
 // LOCAL_REVIEW_WEB_PORT / LOCAL_REVIEW_API_PORT override both (e.g. to run a second dev instance).
-const webPort = Number(process.env.LOCAL_REVIEW_WEB_PORT ?? 5000);
-const apiPort = Number(process.env.LOCAL_REVIEW_API_PORT ?? 5001);
+const webPort = Number(process.env.LOCAL_REVIEW_WEB_PORT ?? DEFAULT_PORT);
+const apiPort = Number(process.env.LOCAL_REVIEW_API_PORT ?? DEFAULT_PORT + 1);
 
 export default defineConfig({
   plugins: [react()],
@@ -14,5 +15,6 @@ export default defineConfig({
     strictPort: true,
     proxy: { '/api': { target: `http://127.0.0.1:${apiPort}`, changeOrigin: false } },
   },
-  build: { outDir: 'dist', chunkSizeWarningLimit: 4000 },
+  // the built UI, served by the compiled server (dist/server, from `npm run build:server`)
+  build: { outDir: 'dist/web', emptyOutDir: true, chunkSizeWarningLimit: 4000 },
 });

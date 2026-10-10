@@ -8,26 +8,43 @@ read and reply to by editing them, and replies show up in the UI live.
 
 Nothing here is pushed or published anywhere: Local Review never talks to GitHub. An agent can record the
 branch it tagged each commit with, the GitHub PR it later created and, once that merged, what landed (`prs/` files),
-and `npm run lr -- plan` prints what each PR should be. Merged PRs stay in their stacks as **landed PRs** (see
-[Landed PRs](#landed-prs)). **Agents using Local Review on other repos: read [AGENTS.md](AGENTS.md).**
+and `local-review plan` prints what each PR should be. Merged PRs stay in their stacks as **landed PRs** (see
+[Landed PRs](#landed-prs)). **Agents using Local Review on other repos: read [AGENT-GUIDE.md](AGENT-GUIDE.md)**
+(`npx local-review guide` prints it). Contributors: [AGENTS.md](AGENTS.md).
 
 ## Run
 
+Needs Node.js 20.19 or later, and git. macOS and Linux.
+
 ```sh
-npm install
-npm start          # builds the frontend if needed, then serves UI + API on http://localhost:5000
+npx local-review init my-feature   # create a project to review (then edit it: see "Projects")
+npx local-review                   # serve the UI + API on http://localhost:5000
 ```
 
-`npm run dev` runs Vite with hot reload on :5000, proxying `/api` to the API server on :5001
-(`LOCAL_REVIEW_WEB_PORT` / `LOCAL_REVIEW_API_PORT` change both, e.g. to run it next to a live instance).
-`npm run typecheck` type-checks the server and the frontend. `npm run --silent lr -- plan <project> [--repo <name>]
-[--stack <n>] [--include-follow-on] [--format md|json|yaml]` prints the read-only materialization plan (see [AGENTS.md](AGENTS.md#the-plan-command)). `npm test` runs the tests
-(`node:test`; they build throwaway git repos in the OS temp dir and delete them afterwards).
+Or install it once with `npm i -g local-review` and run `local-review`. The commands:
 
-Environment overrides: `LOCAL_REVIEW_HOME` (the data directory, default `~/.local-review`), `PORT` (default 5000),
-`LOCAL_REVIEW_USER` (who you are; see [The reviewer](#the-reviewer)). On macOS the AirPlay Receiver also listens on
-port 5000; if `npm start` can't bind or you get the wrong page, run `PORT=5050 npm start` (or turn AirPlay Receiver
-off in System Settings). The server binds to 127.0.0.1 only, answers only requests whose
+```
+local-review [serve] [--port <n>]   serve the UI (the default command)
+local-review init <project>         create ~/.local-review/projects/<project>/project.yaml from a commented example
+local-review plan <project> …       print the read-only materialization plan (see AGENT-GUIDE.md "The plan command")
+local-review guide                  print the guide for agents (AGENT-GUIDE.md)
+local-review --help | --version
+```
+
+Environment overrides: `LOCAL_REVIEW_HOME` (the data directory, default `~/.local-review`), `PORT` (default 5000;
+`--port` wins), `LOCAL_REVIEW_USER` (who you are; see [The reviewer](#the-reviewer)). On macOS the AirPlay Receiver
+also listens on port 5000; if it can't bind or you get the wrong page, run `npx local-review --port 5050` (or turn
+AirPlay Receiver off in System Settings).
+
+**From a checkout** (to work on Local Review itself; see [AGENTS.md](AGENTS.md)): `npm install`, then `npm start`
+builds what's stale and runs the compiled CLI (`npm start -- --port 5050`), and `npm run lr -- <command>` runs any
+command from source. `npm run dev` runs Vite with hot reload on :5000, proxying `/api` to the API server on :5001
+(`LOCAL_REVIEW_WEB_PORT` / `LOCAL_REVIEW_API_PORT` change both, e.g. to run it next to a live instance).
+`npm run typecheck` type-checks the server and the frontend. `npm test` runs the tests (`node:test`; they build
+throwaway git repos in the OS temp dir and delete them afterwards). `npm run build` builds the UI into `dist/web`
+and the server into `dist/server`; `npm run smoke:pack` packs, installs and runs the npm package.
+
+The server The server binds to 127.0.0.1 only, answers only requests whose
 `Host` is `localhost`/`127.0.0.1`/`[::1]` (against DNS rebinding), and only accepts writes that are JSON and,
 if the browser sends an `Origin`, come from localhost (against cross-site requests).
 
@@ -41,7 +58,7 @@ Your comments are stored as `author: <id>`, and only yours can be edited or dele
 claude`, never are). The name comes from `LOCAL_REVIEW_USER`, else `git config user.name`, else `$USER`; the id is its
 first word, lowercased and reduced to `[a-z0-9_-]` ("Ada Lovelace" → `ada`). `GET /api/me` returns both. If your
 comment files were written under some id, set `LOCAL_REVIEW_USER` to that id to keep them yours, e.g.
-`LOCAL_REVIEW_USER=ada npm start`.
+`LOCAL_REVIEW_USER=ada npx local-review`.
 
 ## Where your data lives
 
@@ -60,11 +77,11 @@ updated without touching anyone's reviews. It isn't version-controlled.
     2026-10-09T08-45-12Z/               # automatic snapshots: a plain copy of projects/ at that time (UTC)
 ```
 
-**Getting started:** `mkdir -p ~/.local-review/projects/my-feature && cp examples/project.example.yaml
-~/.local-review/projects/my-feature/project.yaml`, then edit it (see "Projects" below). With no projects, the UI
-says the same.
+**Getting started:** `npx local-review init my-feature` creates `~/.local-review/projects/my-feature/project.yaml`
+from a commented example (it never replaces an existing one); then edit it (see "Projects" below). With no projects,
+the UI says the same.
 
-**`LOCAL_REVIEW_HOME`** moves the whole data directory (e.g. `LOCAL_REVIEW_HOME=/tmp/lr-demo npm start` for a
+**`LOCAL_REVIEW_HOME`** moves the whole data directory (e.g. `LOCAL_REVIEW_HOME=/tmp/lr-demo npx local-review --port 5050` for a
 scratch instance next to your real one). `LOCAL_REVIEW_PROJECTS_DIR` only moves `projects/`; it's for the tests,
 and turns automatic snapshots off unless `LOCAL_REVIEW_HOME` is set too.
 
@@ -83,10 +100,11 @@ diff -r ~/.local-review/backups/<timestamp>/<slug> ~/.local-review/projects/<slu
 cp -p ~/.local-review/backups/<timestamp>/<slug>/reviews/<repo>/<sha>.yaml ~/.local-review/projects/<slug>/reviews/<repo>/
 ```
 
-**Never-delete guarantees.** The server can't irreparably delete anything in `~/.local-review`:
+**Never-delete guarantees.** The server (and the CLI) can't irreparably delete anything in `~/.local-review`:
 
 - Every write is atomic: a new temp file in the same directory (opened with `wx`, so never over an existing file),
   then renamed over the target. A failed write leaves the old file as it was (and removes only its own temp file).
+  `local-review init` only creates: its rename is a no-clobber one (below), so it never replaces a `project.yaml`.
 - Writes are operations applied to a fresh read of the file, never a whole file from the browser, and a file
   that isn't valid YAML is never overwritten (HTTP 409; fix it by hand).
 - No file's contents are ever unlinked or truncated. A superseded file (after a rebase re-match) is renamed to
@@ -103,8 +121,8 @@ the snapshots.
 
 ## Projects
 
-Each project is a directory under `~/.local-review/projects/` (layout above); `examples/project.example.yaml` is a
-commented starting point.
+Each project is a directory under `~/.local-review/projects/` (layout above); `local-review init <slug>` creates one from
+[`examples/project.example.yaml`](examples/project.example.yaml), a commented starting point.
 
 **`project.yaml`:**
 
@@ -166,7 +184,7 @@ work: PRs to get to later, not part of the stacks going up now. It's purely advi
 and position, review, comments, Viewed and Draft/Ready work as usual, and there's no promote action (delete the
 line when it's time). The UI shows such stacks in yellow and a little faded, under a `FOLLOW-ON · HELD BACK`
 divider in the sidebar and on the homepage, with a `follow-on` badge on the stack; the stack picture fades them and
-tags them `follow-on`. `lr plan` leaves them out unless asked (AGENTS.md). Any other value is ignored with a warning.
+tags them `follow-on`. `local-review plan` leaves them out unless asked (AGENT-GUIDE.md). Any other value is ignored with a warning.
 Follow-on stacks belong at the end of a repo's `stacks:`: a regular stack after one gets a warning, since its PRs
 would sit on held-back work.
 
@@ -188,7 +206,7 @@ the UI, so they agree.
 
 Once a stack goes up as GitHub stacked PRs and they merge, their commits leave the live range (the merge-base moves),
 so on their own they'd vanish: stacks would empty out and PRs renumber. Instead, the agent **freezes** each merged PR
-before it fetches or rebases (AGENTS.md "After merges"): it writes a `landed:` record into the PR's prs file and
+before it fetches or rebases (AGENT-GUIDE.md "After merges"): it writes a `landed:` record into the PR's prs file and
 appends the file's key to the repo's `landed:` list in `project.yaml`. Local Review only reads these; it never calls
 GitHub.
 
@@ -216,7 +234,7 @@ GitHub.
   same subject can't take them, and a landed PR never takes another commit's file.
 - **Reviews** work as normal on landed PRs (threads, Viewed). **Local Review comments and GitHub comments are
   entirely separate**: Local Review never imports GitHub review threads, and never sends its own to GitHub.
-- **Plan.** `lr plan` never plans landed PRs (the first live PR's base is the repo base), and warns about live PRs
+- **Plan.** `local-review plan` never plans landed PRs (the first live PR's base is the repo base), and warns about live PRs
   whose recorded `github.base` differs from the plan's base, and about prs files with a `github:` record but no
   `landed:` whose commit is now in the repo base ("landed upstream but not frozen").
 
@@ -277,7 +295,7 @@ read-only `git for-each-ref` per range and reconciles each commit (`branch` in t
 - `discovered` lists every branch pointing at the commit: local first, the tip branch (e.g. `me/my-feature`
   on the top commit) last.
 
-**For agents** (the full workflow, from shaping commits to GitHub stacked PRs, is in [AGENTS.md](AGENTS.md)): to
+**For agents** (the full workflow, from shaping commits to GitHub stacked PRs, is in [AGENT-GUIDE.md](AGENT-GUIDE.md)): to
 regroup stacks, edit `starts_at` in `project.yaml`. The intro and stack notes are its
 `description:` fields; only write them when asked (no generated descriptions). To rewrite a PR description, write
 `body:` (or `title:`) into `~/.local-review/projects/<project>/prs/<repo>/<full sha>.yaml`. Both show up in the UI live.
@@ -457,7 +475,7 @@ and files without it read exactly as before.
 
 ### For agents: a recipe
 
-How to reply, when to resolve and how to fix the commits is in [AGENTS.md](AGENTS.md#handling-review-threads);
+How to reply, when to resolve and how to fix the commits is in [AGENT-GUIDE.md](AGENT-GUIDE.md#handling-review-threads);
 this is the file-level detail.
 
 1. **Find the file for a commit:** `~/.local-review/projects/<project>/reviews/<repo>/<full sha>.yaml` (`ls
@@ -590,26 +608,28 @@ boxes.
 ## Layout
 
 ```
-server/   git.ts (read-only git), config.ts (data home, port), safefs.ts (atomic writes, no-clobber renames), backups.ts
+server/   git.ts (read-only git), config.ts (data home, package paths), port.ts (the default port), safefs.ts (atomic writes, no-clobber renames), backups.ts
           (snapshots + pruning), commits.ts (ranges/diffs/patch-id), projects.ts (project.yaml, stack partitioning),
           reviews.ts (YAML store, rebase re-matching), prs.ts (PR title/description/branch/github/landed), landed.ts
           (landed PRs from project.yaml `landed:`), branches.ts (branch
-          discovery + reconciliation), plan.ts + cli.ts (`npm run lr -- plan`), anchors.ts (line anchors
+          discovery + reconciliation), plan.ts, cli.ts (the `local-review` CLI: serve, plan, init, guide), anchors.ts (line anchors
           + relocation), context.ts, events.ts (watch + SSE), index.ts (Hono), security.ts (localhost Host/Origin guard),
           stackviz.ts (stack picture: SVG + PNG), fonts/ (bundled OFL fonts for it)
 test/     npm test: projects/stacks/PR overrides, review store, anchors, git wrapper and HTTP API tests against throwaway git repos,
           plus the PR editors' text helpers, the stack picture (aggregation, SVG, PNG endpoints), snapshots/pruning
-          (backups.test.ts), branch tagging + the plan command (branches.test.ts), landed PRs (landed.test.ts) and the static never-delete guard
-          (fsguard.test.ts)
+          (backups.test.ts), branch tagging + the plan command (branches.test.ts), the CLI's other commands (cli.test.ts),
+          landed PRs (landed.test.ts) and the static never-delete guard (fsguard.test.ts)
 src/      React UI: App (header, sidebar, SSE, j/k), CommitPage (PR header, Conversation), FilesChanged (tree, cards, @pierre/diffs), Comments
           (threads, Markdown editor), PrEdit (PR title/description editing + copy), prText (their pure text helpers),
           StackTab (the Stack tab, copy/download), ProjectHome (/<project>)
 shared/   prText.ts: the full PR body composition, used by both the UI and the plan; totals.ts: aggregate
           stats over stacks (follow-on stacks and merged PRs left out), used by the stack picture and the UI;
           readiness.ts: draft / ready / published / merged
-scripts/start.mjs   build-if-needed + serve
-AGENTS.md           the guide for agents driving Local Review from other repos
-examples/           project.example.yaml, a commented starting point (your projects live in ~/.local-review/projects/)
+scripts/            start.mjs (npm start: build what's stale, run the compiled CLI), smoke-pack.mjs (npm run smoke:pack)
+dist/               npm run build: web/ (the UI), server/ + shared/ (compiled); what the npm package runs
+AGENT-GUIDE.md      the guide for agents driving Local Review from other repos (`local-review guide`)
+AGENTS.md           conventions for agents (and people) developing Local Review; CLAUDE.md imports it
+examples/           project.example.yaml, the commented starting point `init` copies (your projects live in ~/.local-review/projects/)
 ```
 
 ## License

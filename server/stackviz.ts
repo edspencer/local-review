@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import opentype from 'opentype.js';
 import { Resvg } from '@resvg/resvg-js';
-import { ROOT } from './config.js';
+import { FONT_DIR } from './config.js';
 import { loadRefs, reconcileBranch } from './branches.js';
 import { filesOf } from './commits.js';
 import { inspectOrphan, liveCommits } from './context.js';
@@ -151,7 +151,6 @@ export async function stackWeights(r: LoadedRepo): Promise<Totals[]> {
 }
 
 // ---------------------------------------------------------------- fonts and text measurement
-const FONT_DIR = path.join(ROOT, 'server', 'fonts');
 const FONT_FILES = {
   regular: 'Inter_400Regular.ttf',
   semibold: 'Inter_600SemiBold.ttf',

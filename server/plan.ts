@@ -1,6 +1,6 @@
 // The read-only materialization plan: for each candidate PR (commit) in scope, in order, what the real GitHub PR
 // would be: branch, base, title and the exact full body (the same composition as the UI's "Full body" button).
-// Never writes anything and never talks to GitHub; `lr plan` prints it, an agent follows it after the reviewer says go.
+// Never writes anything and never talks to GitHub; `local-review plan` prints it, an agent follows it after the reviewer says go.
 import fs from 'node:fs';
 import YAML from 'yaml';
 import { fullPrBody } from '../shared/prText.js';
@@ -179,7 +179,7 @@ async function repoPlan(project: LoadedProject, r: LoadedRepo, onlyStack?: numbe
 /**
  * "Landed upstream but not frozen": a prs file with a `github:` record and no `landed:`, whose commit is now an
  * ancestor of the repo's base (it merged with its sha intact, and the range moved past it). The agent should have
- * frozen it before fetching (AGENTS.md "After merges"); Local Review only warns.
+ * frozen it before fetching (AGENT-GUIDE.md "After merges"); Local Review only warns.
  */
 async function unfrozen(r: LoadedRepo): Promise<string[]> {
   let files: string[];
@@ -204,7 +204,7 @@ async function unfrozen(r: LoadedRepo): Promise<string[]> {
     const gh = l.override.github;
     if (!gh || l.override.landed) continue;
     if (await isAncestor(r.cfg.path, sha, base))
-      out.push(`prs file ${sha.slice(0, 8)} (GitHub PR #${gh.number}) has landed upstream (its commit is in ${r.info.base ?? 'the base'}) but isn't frozen: write its \`landed:\` record and add it to the repo's \`landed:\` list (AGENTS.md "After merges")`);
+      out.push(`prs file ${sha.slice(0, 8)} (GitHub PR #${gh.number}) has landed upstream (its commit is in ${r.info.base ?? 'the base'}) but isn't frozen: write its \`landed:\` record and add it to the repo's \`landed:\` list (AGENT-GUIDE.md "After merges")`);
   }
   return out;
 }

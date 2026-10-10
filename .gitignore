@@ -1,6 +1,8 @@
 node_modules/
 dist/
 *.log
+# `npm pack` output
+*.tgz
 .DS_Store
 # User data lives in ~/.local-review (see "Where your data lives" in README.md), never in this repo.
 /projects/
