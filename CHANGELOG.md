@@ -1,5 +1,14 @@
 # local-review
 
+## 0.4.0
+
+### Minor Changes
+
+- [#26](https://github.com/edspencer/local-review/pull/26) [`853927f`](https://github.com/edspencer/local-review/commit/853927f12a52024dc6a05a047951c3a5103d9226) Thanks [@edspencer](https://github.com/edspencer)! - Click an image in a PR description, stack note, the project intro, a comment or an editor's preview to see it in a
+  viewer over the page, fitted to the window. Click it again to see it at full size and scroll or drag around it;
+  ← / → step through the other images in the same block, and Esc closes it. An image inside a link still opens its
+  link, unless the link is to the image itself.
+
 ## 0.3.0
 
 ### Minor Changes
