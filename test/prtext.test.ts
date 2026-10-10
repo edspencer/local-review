@@ -2,6 +2,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CONTEXT_SEPARATOR, applyFormat, fullPrBody, normBody, normTitle, titleAndBody } from '../src/prText.ts';
+import { tildify } from '../shared/paths.ts';
 
 describe('markdown toolbar', () => {
   const at = (text: string, sel: string) => { const s = text.indexOf(sel); return [s, s + sel.length] as const; };
@@ -60,4 +61,19 @@ describe('Copy full PR body', () => {
     assert.equal(fullPrBody({ intro: null, stackNote: '  \n', body: 'B\n' }), 'B');
     assert.equal(fullPrBody({ intro: 'I\r\n', body: '' }), 'I');
   });
+});
+
+test('tildify: paths under the home directory are shown as ~/…, and only whole path prefixes', () => {
+  const home = '/Users/ada';
+  assert.equal(tildify('/Users/ada/.local-review/projects/x/project.yaml', home), '~/.local-review/projects/x/project.yaml');
+  assert.equal(tildify('/Users/ada', home), '~');
+  assert.equal(tildify('/Users/ada/', '/Users/ada/'), '~/');
+  assert.equal(tildify("invalid YAML in /Users/ada/.local-review/p.yaml: bad; repo not found: /Users/ada/code/x", home), 'invalid YAML in ~/.local-review/p.yaml: bad; repo not found: ~/code/x');
+  assert.equal(tildify('(/Users/ada/code)', home), '(~/code)');
+  assert.equal(tildify('/Users/adam/code', home), '/Users/adam/code');
+  assert.equal(tildify('/srv/Users/ada/code', home), '/srv/Users/ada/code');
+  assert.equal(tildify('/tmp/x', home), '/tmp/x');
+  assert.equal(tildify('/Users/ada/x', ''), '/Users/ada/x');
+  assert.equal(tildify('/x', '/'), '/x');
+  assert.equal(tildify('/a.b+c/x', '/a.b+c'), '~/x');
 });

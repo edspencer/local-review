@@ -9,7 +9,7 @@ import { ProjectContextBox } from './ProjectText';
 import { FollowOnBadge, ReadinessBadge, ReadinessControl } from './Readiness';
 import { progressOf, statusTooltip } from '../shared/readiness';
 import { StackTab } from './StackTab';
-import { navigate, relativeTime, routeUrl, type Route } from './util';
+import { navigate, relativeTime, routeUrl, useTilde, type Route } from './util';
 
 export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, projectFile, reviewBump, onChanged, repoData, vizVersion }: { route: Route; loc: Loc; projectTitle: string; projectIntro: string | null; projectFile: string; reviewBump: Map<string, number>; onChanged: () => void; repoData?: RepoData; vizVersion: string }) {
   const sha = route.sha!;
@@ -159,7 +159,9 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
     [loc, fullSha, wrap],
   );
 
-  if (error) return <div className="page"><div className="flash flash-error">{error}</div></div>;
+  const tilde = useTilde();
+
+  if (error) return <div className="page"><div className="flash flash-error">{tilde(error)}</div></div>;
   if (!data || !review || !data.commit.sha.startsWith(sha.toLowerCase())) return <div className="page"><div className="loading">Loading…</div></div>;
 
   const c = data.commit;
@@ -250,8 +252,8 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
         )}
         {group && stackCommits.length > 0 && <StackStepper loc={loc} group={group} commits={stackCommits} current={c.sha} tab={tab} next={data.next} />}
         {actionError && <div className="flash flash-error" role="alert">{actionError} <button className="btn-link" onClick={() => setActionError(null)}>Dismiss</button></div>}
-        {data.pr.parse_error && <div className="flash flash-error">PR file <code>{data.pr.file}</code> is not valid YAML, so the commit message is shown instead: {data.pr.parse_error}</div>}
-        {review.parse_error && <div className="flash flash-error">Review file <code>{review.file}</code> is not valid YAML, so it's shown empty and won't be overwritten: {review.parse_error}</div>}
+        {data.pr.parse_error && <div className="flash flash-error">PR file <code>{tilde(data.pr.file)}</code> is not valid YAML, so the commit message is shown instead: {tilde(data.pr.parse_error)}</div>}
+        {review.parse_error && <div className="flash flash-error">Review file <code>{tilde(review.file)}</code> is not valid YAML, so it's shown empty and won't be overwritten: {tilde(review.parse_error)}</div>}
       </div>
 
       <div className="tabnav">
@@ -402,6 +404,7 @@ function DescriptionHeader({ pr, draft, setDraft, onRevert, fullBody }: DescProp
 function Conversation({ data, loc, review, actions, onNew, desc, context }: { data: CommitResponse; loc: Loc; review: Review; actions: ThreadActions; onNew: (body: string) => Promise<unknown>; desc: DescProps; context: React.ReactNode }) {
   const { pr, draft, setDraft, onSave } = desc;
   const c = data.commit;
+  const tilde = useTilde();
   const filesByPath = useMemo(() => new Map(c.files.map((f) => [f.path, f])), [c.files]);
   const threads = useMemo(() => {
     const ts = review.threads.map((t, i) => ({ t, i, at: t.comments[0]?.created ? Date.parse(t.comments[0].created) : NaN }));
@@ -497,7 +500,7 @@ function Conversation({ data, loc, review, actions, onNew, desc, context }: { da
           </div>
         </div>
         <p className="yaml-hint muted">
-          Comments are stored in <code>{review.file}</code>. An agent can reply by appending to a thread's <code>comments</code> with <code>author: claude</code>; it shows up here live.
+          Comments are stored in <code>{tilde(review.file)}</code>. An agent can reply by appending to a thread's <code>comments</code> with <code>author: claude</code>; it shows up here live.
         </p>
       </div>
       <aside className="conversation-sidebar">
@@ -520,11 +523,11 @@ function Conversation({ data, loc, review, actions, onNew, desc, context }: { da
               ? `${[data.pr.title_source === 'override' && 'Title', data.pr.body_source === 'override' && 'description'].filter(Boolean).join(' and ')} from`
               : 'From the commit message. Edit them above (saved locally) or in'}
           </p>
-          <code className="review-file">{data.pr.file}</code>
+          <code className="review-file">{tilde(data.pr.file)}</code>
         </div>
         <div className="sidebar-section">
           <h3>Review file</h3>
-          <code className="review-file">{review.file}</code>
+          <code className="review-file">{tilde(review.file)}</code>
         </div>
         {review.patch_id && (
           <div className="sidebar-section">

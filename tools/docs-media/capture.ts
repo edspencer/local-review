@@ -97,28 +97,6 @@ function leakPattern(port: string) {
   );
 }
 
-/**
- * The UI shows where its files are (the review file, the prs file). The seed lives in a scratch directory; show it
- * where a real user's data is: `~/…`. And the rig's own port as the default one. Text nodes only: layout is kept.
- */
-async function tidyText(page: Page, home: string, port: string) {
-  const homes = [home, path.relative(ROOT, home)].filter((h) => h && !h.startsWith('..'));
-  await page.evaluate(
-    ({ homes, port, def }) => {
-      const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const re = new RegExp(`(?:${homes.map(esc).join('|')})(?=/)`, 'g');
-      const portRe = new RegExp(`localhost:${port}\\b`, 'g');
-      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-        const t = n.nodeValue ?? '';
-        const u = t.replace(re, '~').replace(portRe, `localhost:${def}`);
-        if (u !== t) n.nodeValue = u;
-      }
-    },
-    { homes, port, def: DEFAULT_PORT },
-  );
-}
-
 async function assertClean(page: Page, name: string, port: string) {
   const text = await page.evaluate(() => document.body.innerText);
   const found = [...new Set(text.match(leakPattern(port)) ?? [])];
@@ -217,7 +195,6 @@ async function takeShot(browser: Browser, shot: Shot, m: Manifest, base: string)
     }
     await page.mouse.move(0, viewport.height - 1); // no stray hover state
     await settle(page);
-    await tidyText(page, m.home, port);
     await assertClean(page, shot.name, port);
     const file = path.join(OUT, `${shot.name}.png`);
     let clip: { x: number; y: number; width: number; height: number } | undefined;

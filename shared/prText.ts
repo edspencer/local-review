@@ -7,6 +7,11 @@
  */
 export const CONTEXT_SEPARATOR = '\n\n---\n\n';
 
+/** A PR title as it's stored: whitespace runs collapsed, trimmed. */
+export const normTitle = (s: string) => s.replace(/\s+/g, ' ').trim();
+/** A PR body as it's stored: LF line endings, no trailing whitespace. */
+export const normBody = (s: string) => s.replace(/\r\n/g, '\n').trimEnd();
+
 const block = (s: string | null | undefined) => (s ?? '').replace(/\r\n/g, '\n').replace(/^\s*\n/, '').trimEnd();
 
 /**

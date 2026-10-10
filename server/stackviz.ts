@@ -12,6 +12,7 @@ import { filesOf } from './commits.js';
 import { inspectOrphan, liveCommits } from './context.js';
 import { loadPrs } from './prs.js';
 import { FOLLOW_ON_COLOR, type LoadedProject, type LoadedRepo } from './projects.js';
+import { repoLabel } from '../shared/repoLabel.js';
 import { aggregate, num, plural, summary } from '../shared/totals.js';
 
 // ---------------------------------------------------------------- model
@@ -38,7 +39,8 @@ export interface VizStack {
 }
 export interface VizRepo {
   name: string;
-  branch: string;
+  branch: string; // the label beside the name (shared/repoLabel.ts); '' for none
+  merged?: boolean; // the label is `merged`: nothing live, its PRs landed (purple)
   stacks: VizStack[];
   error?: string | null;
 }
@@ -120,9 +122,11 @@ export async function vizModel(project: LoadedProject, current?: { repo: string;
           }),
         ),
       );
+      const label = repoLabel(r.info, r.info.commits.filter((c) => c.landed).length);
       return {
         name: r.cfg.name,
-        branch: r.info.branch ?? (r.info.end || r.info.base || 'merged'), // no live range (all landed): its base
+        branch: label?.text ?? '',
+        ...(label?.merged ? { merged: true } : {}),
         error: r.info.error ?? null,
         // empty stacks (a selector that matched nothing) would only be noise in a picture
         stacks: r.stacks.filter((g) => g.shas.length).map((g) => ({ label: stackLabel(g), color: g.color, implicit: g.implicit, ...(g.follow_on ? { follow_on: true } : {}), prs: g.shas.map((s) => bySha.get(s)!).filter(Boolean) })),
@@ -258,6 +262,7 @@ const C = {
   foSubtle: '#fff8c5',
   foPillLine: '#d4a72c',
   merged: '#8250df', // GitHub's merged purple
+  mergedSubtle: '#f0eafb', // it at 12% on white, like the UI's .branch-name.is-merged
 };
 export const STACK_HEX: Record<string, string> = {
   blue: '#0969da',
@@ -387,9 +392,12 @@ export function renderStackSvg(m: VizModel, opts: RenderOpts = {}): string {
     const name = truncate(repo.name, 'bold', 14.5, 260);
     out.push(text(PAD, y, name, { face: 'bold', size: 14.5 }));
     const bx = PAD + textWidth(name, 'bold', 14.5) + 10;
-    const branch = truncate(repo.branch, 'mono', 11.5, BOX_R - rightW - 20 - bx - 14);
-    const bw = textWidth(branch, 'mono', 11.5) + 14;
-    out.push(`<rect x="${r1(bx)}" y="${y - 13.5}" width="${r1(bw)}" height="19" rx="9.5" fill="${C.accentSubtle}"/>`, text(bx + 7, y, branch, { face: 'mono', size: 11.5, fill: C.accent }));
+    if (repo.branch) {
+      const branch = truncate(repo.branch, 'mono', 11.5, BOX_R - rightW - 20 - bx - 14);
+      const bw = textWidth(branch, 'mono', 11.5) + 14;
+      const [bg, fg] = repo.merged ? [C.mergedSubtle, C.merged] : [C.accentSubtle, C.accent];
+      out.push(`<rect x="${r1(bx)}" y="${y - 13.5}" width="${r1(bw)}" height="19" rx="9.5" fill="${bg}"/>`, text(bx + 7, y, branch, { face: 'mono', size: 11.5, fill: fg }));
+    }
     if (repo.stacks.some((s) => s.prs.length)) {
       if (rn) {
         // laid out left to right from the measured widths (an end-anchored "+a −d" ignores its dx, so would overlap)

@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import YAML from 'yaml';
 import { atomicWrite, renameToBak } from './safefs.js';
+import { normBody, normTitle } from '../shared/prText.js';
 import { storedStatus } from '../shared/readiness.js';
 import type { Landed } from './commits.js';
 import { ReviewConflictError, matchOrphans, readRaw, reviewPath, str, withLock, type InspectOrphan, type LiveCommit, type MatchKind } from './reviews.js';
@@ -68,10 +69,10 @@ function parse(raw: string): { doc: Record<string, unknown> | null; error?: stri
 export function overrideOf(doc: Record<string, unknown> | null): PrOverride {
   if (!doc) return {};
   const o: PrOverride = {};
-  const title = str(doc.title)?.replace(/\s+/g, ' ').trim();
+  const title = normTitle(str(doc.title) ?? '');
   if (title) o.title = title;
   const body = str(doc.body) ?? str(doc.description);
-  if (body !== undefined) o.body = body.replace(/\r\n/g, '\n').trimEnd();
+  if (body !== undefined) o.body = normBody(body);
   const branch = branchName(doc.branch);
   if (branch) o.branch = branch;
   const gh = githubOf(doc.github);
@@ -308,14 +309,24 @@ export function writePr(ctx: PrContext, change: PrChange, now = new Date()): Pro
   });
 }
 
-/** The PR as shown: override where present, else the commit message. */
+/**
+ * Whether the override's title / body actually changes the commit's. One that says the same as the commit (after the
+ * normalising every stored title / body gets) isn't an edit: the UI's own save drops it, and a hand-written copy of
+ * the commit message reads as unedited too. The file is left alone.
+ */
+export const titleEdited = (o: PrOverride | undefined, subject: string) => o?.title !== undefined && o.title !== normTitle(subject);
+export const bodyEdited = (o: PrOverride | undefined, body: string | undefined) => o?.body !== undefined && o.body !== normBody(body ?? '');
+
+/** The PR as shown: the override where it changes something, else the commit message. */
 export function prView(l: LoadedPr | undefined, commit: { subject: string; body?: string }) {
-  const o = l?.override ?? {};
+  const o = l?.override;
+  const t = titleEdited(o, commit.subject);
+  const b = bodyEdited(o, commit.body);
   return {
-    title: o.title ?? commit.subject,
-    body: o.body ?? commit.body ?? '',
-    title_source: (o.title !== undefined ? 'override' : 'commit') as 'override' | 'commit',
-    body_source: (o.body !== undefined ? 'override' : 'commit') as 'override' | 'commit',
+    title: t ? o!.title! : commit.subject,
+    body: b ? o!.body! : (commit.body ?? ''),
+    title_source: (t ? 'override' : 'commit') as 'override' | 'commit',
+    body_source: (b ? 'override' : 'commit') as 'override' | 'commit',
     commit_subject: commit.subject,
     commit_body: commit.body ?? '',
   };

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { PrInfo } from './api';
 import { MarkdownEditor, Octicon } from './Comments';
 import { normBody, normTitle, titleAndBody } from './prText';
+import { useTilde } from './util';
 
 /** An edit in progress: `base` is the value the editor started from (or last reconciled with), `text` the draft. */
 export interface PrDraft {
@@ -166,6 +167,7 @@ export function TitleEditor({ pr, draft, setDraft, onSave, onCancel }: { pr: PrI
   const [err, setErr] = useState<string | null>(null);
   const { conflict, load, keep } = useReconcile(draft, pr.title, setDraft, normTitle);
   const ref = useRef<HTMLInputElement>(null);
+  const tilde = useTilde();
   useEffect(() => { ref.current?.focus(); ref.current?.select(); }, []);
   const save = async () => {
     if (busy || !normTitle(draft.text)) return;
@@ -191,7 +193,7 @@ export function TitleEditor({ pr, draft, setDraft, onSave, onCancel }: { pr: PrI
       {conflict && <ChangedElsewhere what="title" onLoad={load} onKeep={keep} />}
       {err && <div className="flash flash-error">{err}</div>}
       <div className="pr-title-edit-hint muted">
-        Saved locally in <code>{pr.target_file}</code>; the commit message is unchanged. Enter saves, Esc cancels.
+        Saved locally in <code>{tilde(pr.target_file)}</code>; the commit message is unchanged. Enter saves, Esc cancels.
       </div>
     </div>
   );

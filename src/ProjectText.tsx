@@ -8,7 +8,7 @@ import { aggregate, type Aggregate, type Summary } from '../shared/totals';
 import { Markdown, Octicon } from './Comments';
 import { CopyButton, EditIconButton, MarkdownFieldEditor, type PrDraft } from './PrEdit';
 import { normBody } from './prText';
-import { navigate, useLocalStorage } from './util';
+import { navigate, useLocalStorage, useTilde } from './util';
 
 /** Drafts of intro / stack-note edits, kept above the pages so they survive switching tabs, commits and pages. */
 interface TextDrafts {
@@ -48,6 +48,7 @@ export function EditableText({ draftKey, label, text, what, placeholder, empty, 
   className?: string;
 }) {
   const { drafts, setDraft, refresh } = useContext(Ctx);
+  const tilde = useTilde();
   const draft = drafts[draftKey];
   const current = normBody(text ?? '');
   const set = (d: PrDraft | null) => setDraft(draftKey, d);
@@ -76,7 +77,7 @@ export function EditableText({ draftKey, label, text, what, placeholder, empty, 
         <>
           <MarkdownFieldEditor className="ptext-editor" current={current} what={what} placeholder={placeholder} draft={draft} setDraft={set} onSave={onSave} onCancel={() => set(null)} />
           <div className="ptext-hint muted">
-            Saved in <code>{file}</code> (the rest of the file is kept as it is). ⌘↵ saves, Esc cancels. Empty removes it.
+            Saved in <code>{tilde(file)}</code> (the rest of the file is kept as it is). ⌘↵ saves, Esc cancels. Empty removes it.
           </div>
         </>
       ) : current ? (

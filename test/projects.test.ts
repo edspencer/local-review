@@ -282,6 +282,12 @@ describe('PR title / description overrides', () => {
     // hand-written: just a title, blank title ignored, `description` alias
     fs.writeFileSync(f, 'title: "   "\ndescription: From an agent\n');
     assert.deepEqual((await PR.loadPr(c)).override, { body: 'From an agent' });
+    // a hand-written override that says what the commit says (give or take whitespace) isn't an edit; the file is kept
+    const same = 'title: "Subject  line "\nbody: "Commit body.\\n\\n  "\n';
+    fs.writeFileSync(f, same);
+    const u = PR.prView(await PR.loadPr(c), { subject: 'Subject line', body: 'Commit body.' });
+    assert.deepEqual([u.title, u.title_source, u.body, u.body_source], ['Subject line', 'commit', 'Commit body.', 'commit']);
+    assert.equal(fs.readFileSync(f, 'utf8'), same);
     // concurrent writes are serialised; nothing is lost and no temp files are left behind
     await Promise.all([PR.writePr(c, { title: 'T1' }), PR.writePr(c, { body: 'B1' })]);
     assert.deepEqual((await PR.loadPr(c)).override, { title: 'T1', body: 'B1' });

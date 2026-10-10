@@ -3,6 +3,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { aggregate, followOnNote, mergeAggregates, summary } from '../shared/totals.ts';
+import { repoLabel } from '../shared/repoLabel.ts';
 
 const s = (prs: number, additions: number, deletions: number, follow_on?: boolean) => ({ prs, additions, deletions, ...(follow_on ? { follow_on } : {}) });
 
@@ -42,4 +43,11 @@ describe('totals', () => {
     assert.deepEqual(summary(a, 1), { counts: '1 repo · 1 stack · 3 PRs', additions: 300, deletions: 30, note: '+1 follow-on stack (2 PRs)', merged: '+4 merged' });
     assert.deepEqual(summary(aggregate([{ ...s(9, 13020, 127), merged: m(9, 13020, 127) }]), 1), { counts: '1 repo · 1 stack · 9 merged PRs', additions: 13020, deletions: 127, note: null, merged: null });
   });
+});
+
+test('repoLabel: the branch, else the range end, else "merged" once PRs have landed, else nothing', () => {
+  assert.deepEqual(repoLabel({ branch: 'me/feature', end: 'me/feature' }, 2), { text: 'me/feature', merged: false });
+  assert.deepEqual(repoLabel({ branch: null, end: 'abc1234' }, 0), { text: 'abc1234', merged: false });
+  assert.deepEqual(repoLabel({ branch: null, end: '' }, 3), { text: 'merged', merged: true });
+  assert.equal(repoLabel({ branch: null, end: '' }, 0), null);
 });

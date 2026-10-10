@@ -36,14 +36,14 @@ What gets copied into `website/` or the README is decided there, not here.
 
 ## What the shots must not show
 
-The UI prints where its files are (the review file, the prs file), and those are in the seed's scratch directory.
-Before each shot the rig rewrites the seed's home to `~` and its own port to the default one (5622) in the page's
-text, so the shots show what a real user would see: `~/.local-review/projects/…`. That's the only thing it changes.
+The UI prints where its files are (the review file, the prs file). It shows paths under the home directory as `~/…`,
+and `serve.sh` sets `HOME` to the seed's own home, so the shots show what a real user would see,
+`~/.local-review/projects/…`, with nothing rewritten.
 
-Then it scans the page text and **refuses to write the shot** if anything looks like it belongs to the machine:
-absolute paths (`/tmp/`, `/home/`, `/Users/`, …), loopback and private IPs, a `localhost` port other than 5622, or an
-email outside `.example`. Add your own patterns (a hostname, say) as regex alternatives in `$LR_LEAK_EXTRA`; they're
-not written in this file because it's public. The scan reads the DOM, not pixels, so look at the images too: the
+Before writing a shot the rig scans the page text and **refuses to write it** if anything looks like it belongs to
+the machine: absolute paths (`/tmp/`, `/home/`, `/Users/`, …), loopback and private IPs, a `localhost` port other
+than 5622, or an email outside `.example`. Add your own patterns (a hostname, say) as regex alternatives in
+`$LR_LEAK_EXTRA`; they're not written in this file because it's public. The scan reads the DOM, not pixels, so look at the images too: the
 contact sheet is there for that.
 
 ## Gotchas

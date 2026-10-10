@@ -127,6 +127,8 @@ export interface ProjectSummary {
 
 export interface ProjectsResponse {
   projectsDir: string;
+  /** the server's home directory: paths under it are shown as ~/… (shared/paths.ts) */
+  home: string;
   projects: ProjectSummary[];
 }
 

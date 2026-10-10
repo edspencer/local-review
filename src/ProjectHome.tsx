@@ -1,10 +1,11 @@
 import { Fragment } from 'react';
-import { stackColor, type ProjectData, type StackGroup } from './api';
+import { stackColor, type ProjectData, type RepoData, type StackGroup } from './api';
 import { FOLLOW_ON_TIP, FollowOnBadge, ReadinessBadge } from './Readiness';
 import { IntroText, StackNoteText, StackWeight, TotalsLine, canHaveNote, repoAggregate } from './ProjectText';
+import { repoLabel } from '../shared/repoLabel';
 import { mergeAggregates, summary } from '../shared/totals';
 import { ImageActions, useCopyImage } from './StackTab';
-import { navigate, routeUrl } from './util';
+import { navigate, routeUrl, useTilde } from './util';
 
 // as in the sidebar (App's stackLabel; not imported from App, which imports this file)
 const stackLabel = (g: StackGroup) => (g.number !== null && !g.implicit ? `Stack ${g.number} · ${g.title}` : g.title);
@@ -20,6 +21,7 @@ export function ProjectHome({ project, version }: { project: ProjectData; versio
   };
   // totals leave follow-on stacks out (shared/totals.ts, the same numbers as the picture)
   const aggs = new Map(project.repos.map((r) => [r.name, repoAggregate(r)]));
+  const tilde = useTilde();
   return (
     <div className="page project-home">
       <div className="pr-header">
@@ -50,10 +52,10 @@ export function ProjectHome({ project, version }: { project: ProjectData; versio
           {project.repos.map((r) => (
             <div key={r.name} className="project-home-repo">
               <h3>
-                {r.name} <span className="branch-name">{r.branch ?? (r.end || r.base || "merged")}</span>
+                {r.name} <RepoLabel r={r} />
                 {r.commits.length > 0 && <TotalsLine s={summary(aggs.get(r.name)!)} />}
               </h3>
-              {r.error && <div className="flash flash-error">{r.error}</div>}
+              {r.error && <div className="flash flash-error">{tilde(r.error)}</div>}
               {r.stacks.filter((g) => g.shas.length).map((g, i, shown) => (
                 <Fragment key={g.index}>
                   {g.follow_on && !shown[i - 1]?.follow_on && (
@@ -85,3 +87,11 @@ export function ProjectHome({ project, version }: { project: ProjectData; versio
     </div>
   );
 }
+
+/** The branch beside a repo's name, or `merged` when nothing's live and its PRs have landed (as in the sidebar). */
+export function RepoLabel({ r, end }: { r: RepoData; end?: boolean }) {
+  const label = repoLabel(end ? { end: r.end } : r, r.commits.filter((c) => c.landed).length);
+  if (!label) return null;
+  return label.merged ? <span className="branch-name is-merged" title={MERGED_TIP}>merged</span> : <span className="branch-name">{label.text}</span>;
+}
+const MERGED_TIP = 'No live range: every PR here has landed';

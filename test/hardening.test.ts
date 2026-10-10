@@ -6,6 +6,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
@@ -258,6 +259,8 @@ describe('HTTP API', () => {
   test('projects list; missing repo / branch reported per repo; odd repo names sanitised; stack warnings', async () => {
     const list = await req('GET', '/api/projects');
     assert.equal(list.status, 200);
+    // paths are absolute (the UI shows them ~-relative, with `home`)
+    assert.deepEqual([list.json.projectsDir, list.json.home], [projectsDir, os.homedir()]);
     assert.deepEqual(list.json.projects.map((p: any) => [p.slug, p.title, p.repoCount]), [['demo-proj', 'Demo project', 4]]);
     const r = await req('GET', '/api/projects/demo-proj');
     assert.equal(r.status, 200);
@@ -316,6 +319,7 @@ describe('HTTP API', () => {
     assert.equal(s1.status, 200, JSON.stringify(s1.json));
     assert.deepEqual([s1.json.title, s1.json.title_source, s1.json.body, s1.json.body_source], ['Better title', 'override', 'Why:\n\n- because', 'override']);
     const file = path.join(prsDir, 'demo', `${sha}.yaml`);
+    assert.deepEqual([s1.json.file, s1.json.target_file], [file, file]);
     const doc = YAML.parse(fs.readFileSync(file, 'utf8'));
     assert.deepEqual([doc.commit, doc.subject, typeof doc.patch_id, typeof doc.updated], [sha, 'Change f', 'string', 'string']);
     assert.match(fs.readFileSync(file, 'utf8'), /body: \|/);
@@ -326,6 +330,12 @@ describe('HTTP API', () => {
     const s2 = await req('PUT', pr, { body: { title: null } });
     assert.deepEqual([s2.json.title, s2.json.title_source, s2.json.body_source], ['Change f', 'commit', 'override']);
     assert.equal(YAML.parse(fs.readFileSync(file, 'utf8')).agent_note, 'keep me');
+    // a hand-written title that's just the commit subject isn't "edited", on the PR page or in the commit list
+    const keep = fs.readFileSync(file, 'utf8');
+    fs.writeFileSync(file, keep + 'title: "Change f "\n');
+    assert.equal((await req('GET', pr)).json.title_source, 'commit');
+    assert.equal((await req('GET', '/api/projects/demo-proj')).json.repos.find((r: any) => r.name === 'demo').commits[0].title_source, 'commit');
+    fs.writeFileSync(file, keep);
     // invalid YAML is never overwritten
     const broken = 'title: [unclosed\n';
     fs.writeFileSync(file, broken);
