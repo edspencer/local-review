@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, stackColor, type CommitSummary, type ProjectData, type ProjectsResponse, type RepoData, type ServerEvent, type StackGroup } from './api';
+import { api, stackColor, type CommitSummary, type ProjectData, type ProjectSummary, type ProjectsResponse, type RepoData, type ServerEvent, type StackGroup } from './api';
 import { BranchStatusMarker, MiddleTruncate, PrBadge, branchNote } from './Branch';
 import { CommitPage } from './CommitPage';
 import { ProjectHome } from './ProjectHome';
@@ -203,6 +203,7 @@ export function App() {
 
 function ProjectSwitcher({ list, current, title }: { list: ProjectsResponse; current: string; title: string }) {
   const [open, setOpen] = useState(false);
+  const [archivedOpen, setArchivedOpen] = useLocalStorage('lr.archivedOpen', false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -220,6 +221,29 @@ function ProjectSwitcher({ list, current, title }: { list: ProjectsResponse; cur
       </a>
     );
   const sorted = list.projects.slice().sort((a, b) => b.modified.localeCompare(a.modified));
+  // archived projects (everything landed) go in their own section, collapsed unless the open one is archived
+  const active = sorted.filter((p) => !p.archived);
+  const archived = sorted.filter((p) => p.archived);
+  const showArchived = archivedOpen || archived.some((p) => p.slug === current);
+  const item = (p: ProjectSummary) => (
+    <li key={p.slug}>
+      <a
+        href={`/${encodeURIComponent(p.slug)}`}
+        role="option"
+        aria-selected={p.slug === current}
+        className={`${p.slug === current ? 'current' : ''} ${p.archived ? 'is-archived' : ''}`}
+        onClick={(e) => { e.preventDefault(); setOpen(false); navigate(`/${encodeURIComponent(p.slug)}`); }}
+      >
+        <span className="project-menu-title">{p.title}</span>
+        <span className="project-menu-meta">
+          {p.repoCount} repo{p.repoCount === 1 ? '' : 's'} · {p.archived ? <span className="merged-note">{p.mergedCount} merged</span> : <>{p.commitCount} commit{p.commitCount === 1 ? '' : 's'}</>}
+          {p.followOnCount > 0 && <span className="follow-on-note"> +{p.followOnCount} follow-on</span>}
+          {!p.archived && p.mergedCount > 0 && <span className="merged-note"> +{p.mergedCount} merged</span>}
+          {p.unresolved > 0 && <> · <span className="attn">{p.unresolved} open</span></>} · {relativeTime(p.modified)}
+        </span>
+      </a>
+    </li>
+  );
   return (
     <div className="project-switcher" ref={ref}>
       <button className="header-project is-button" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)} title="Switch project">
@@ -227,24 +251,16 @@ function ProjectSwitcher({ list, current, title }: { list: ProjectsResponse; cur
       </button>
       {open && (
         <ul className="project-menu" role="listbox">
-          {sorted.map((p) => (
-            <li key={p.slug}>
-              <a
-                href={`/${encodeURIComponent(p.slug)}`}
-                role="option"
-                aria-selected={p.slug === current}
-                className={p.slug === current ? 'current' : ''}
-                onClick={(e) => { e.preventDefault(); setOpen(false); navigate(`/${encodeURIComponent(p.slug)}`); }}
-              >
-                <span className="project-menu-title">{p.title}</span>
-                <span className="project-menu-meta">
-                  {p.repoCount} repo{p.repoCount === 1 ? '' : 's'} · {p.commitCount} commit{p.commitCount === 1 ? '' : 's'}
-                  {p.followOnCount > 0 && <span className="follow-on-note"> +{p.followOnCount} follow-on</span>}
-                  {p.unresolved > 0 && <> · <span className="attn">{p.unresolved} open</span></>} · {relativeTime(p.modified)}
-                </span>
-              </a>
+          {active.map(item)}
+          {archived.length > 0 && (
+            <li className="project-menu-section" role="presentation">
+              <button type="button" className="project-menu-section-toggle" aria-expanded={showArchived} onClick={() => setArchivedOpen(!archivedOpen)} title="Projects whose PRs have all merged (every repo has landed PRs and nothing live)">
+                <svg className="octicon" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d={showArchived ? CHEV_DOWN : CHEV_RIGHT} /></svg>
+                Archived <span className="Counter">{archived.length}</span>
+              </button>
             </li>
-          ))}
+          )}
+          {showArchived && archived.map(item)}
         </ul>
       )}
     </div>
@@ -258,19 +274,21 @@ export const stackLabel = (g: StackGroup) => (g.number !== null && !g.implicit ?
 
 function RepoSection({ project, repo: r, route, closed, toggle }: { project: ProjectData; repo: RepoData; route: Route; closed: boolean; toggle: () => void }) {
   const open = r.commits.reduce((a, c) => a + c.unresolved, 0);
-  // the viewed count leaves follow-on stacks out (like every aggregate, shared/totals.ts) and mentions them beside it
+  // the viewed count leaves follow-on stacks out (like every aggregate, shared/totals.ts) and mentions them beside it;
+  // merged PRs are history, so they're left out too (and the count is hidden when nothing else is left)
   const parked = new Set(r.stacks.filter((g) => g.follow_on).flatMap((g) => g.shas));
   const fullyViewed = (c: CommitSummary) => c.filesChanged > 0 && c.viewedCount >= c.filesChanged;
-  const main = r.commits.filter((c) => !parked.has(c.sha));
+  const main = r.commits.filter((c) => !parked.has(c.sha) && !c.landed);
+  const merged = r.commits.filter((c) => c.landed).length;
   const done = main.filter(fullyViewed).length;
   const fo = repoAggregate(r).followOn;
-  const foDone = r.commits.filter((c) => parked.has(c.sha) && fullyViewed(c)).length;
+  const foDone = r.commits.filter((c) => parked.has(c.sha) && !c.landed && fullyViewed(c)).length;
   const bySha = new Map(r.commits.map((c) => [c.sha, c]));
   return (
     <section className={`repo ${closed ? 'closed' : ''} ${r.error ? 'has-error' : ''}`}>
       <button
         className="repo-heading"
-        title={`${r.path}\nrange end: ${r.end}\n${r.from ? `from: ${r.from}` : `base: ${r.base ?? '?'}`}${closed ? '\n(click to expand)' : ''}`}
+        title={`${r.path}\nrange end: ${r.end || '(none: all landed)'}\n${r.from ? `from: ${r.from}` : `base: ${r.base ?? '?'}`}${merged ? `\n${merged} landed (merged) PR${merged === 1 ? '' : 's'}` : ''}${closed ? '\n(click to expand)' : ''}`}
         aria-expanded={!closed}
         onClick={toggle}
       >
@@ -278,14 +296,14 @@ function RepoSection({ project, repo: r, route, closed, toggle }: { project: Pro
           <path d={closed ? CHEV_RIGHT : CHEV_DOWN} />
         </svg>
         <span className="repo-title">
-          <span className="repo-name">{r.name}</span> <span className="branch-name">{r.end}</span>
+          <span className="repo-name">{r.name}</span> {r.end ? <span className="branch-name">{r.end}</span> : merged > 0 && <span className="branch-name is-merged" title="No live range: every PR here has landed">merged</span>}
         </span>
         {closed && r.warnings.length > 0 && (
           <span className="repo-warn-flag" title={r.warnings.join('\n')} role="status">
             ⚠ {r.warnings.length}
           </span>
         )}
-        {!r.error && r.commits.length > 0 && (
+        {!r.error && main.length + fo.prs > 0 && (
           <span
             className="repo-progress"
             title={`${done} of ${main.length} commits fully viewed${fo.prs ? `, not counting ${fo.prs} follow-on PR${fo.prs === 1 ? '' : 's'} (${foDone} viewed)` : ''}${open ? `\n${open} open thread(s)` : ''}`}
@@ -310,7 +328,7 @@ function RepoSection({ project, repo: r, route, closed, toggle }: { project: Pro
           <span className="muted">Edit <code>{project.file}</code>.</span>
         </div>
       )}
-      {!closed && !r.error && r.commits.length === 0 && <div className="sidebar-empty">No commits in range ({r.base ?? r.from ?? '?'}..{r.end}).</div>}
+      {!closed && !r.error && r.commits.length === 0 && <div className="sidebar-empty">No commits in range ({r.base ?? r.from ?? '?'}..{r.end || '?'}).</div>}
       {!closed &&
         r.stacks
           .filter((g) => g.shas.length > 0)
@@ -338,12 +356,16 @@ function RepoSection({ project, repo: r, route, closed, toggle }: { project: Pro
   );
 }
 
-/** "2/4 ready" on a stack's bottom border (the title already fills the top one), once any of its PRs is ready (published counts as ready). */
+/**
+ * "2/4 ready" on a stack's bottom border (the title already fills the top one), once any of its PRs is ready
+ * (published and merged count as ready); "4/4 merged" once they've all landed.
+ */
 function StackTally({ commits }: { commits: CommitSummary[] }) {
   const n = (s: CommitSummary['status']) => commits.filter((c) => c.status === s).length;
-  const ready = n('ready') + n('published');
+  const ready = n('ready') + n('published') + n('merged');
   if (!ready) return null;
-  const tip = [`${n('ready')} ready`, n('published') && `${n('published')} published`, `${n('draft')} draft`].filter(Boolean).join(', ');
+  const tip = [`${n('ready')} ready`, n('published') && `${n('published')} published`, n('merged') && `${n('merged')} merged`, `${n('draft')} draft`].filter(Boolean).join(', ');
+  if (n('merged') === commits.length) return <span className="pr-stack-tally is-merged" title={tip}>{commits.length}/{commits.length} merged</span>;
   return <span className="pr-stack-tally" title={tip}>{ready}/{commits.length} ready</span>;
 }
 

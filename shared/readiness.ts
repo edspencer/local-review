@@ -2,9 +2,10 @@
 // thing. No imports: it's bundled by Vite and run by tsx.
 //
 // Draft → Ready is the reviewer's call, stored as `status:` in prs/<repo>/<sha>.yaml (absent: draft). Published is derived:
-// a PR is published once a `github:` record exists, whatever its status says.
+// a PR is published once a `github:` record exists, whatever its status says. Merged is derived too, from a `landed:`
+// record (written by the agent after the PR merged on GitHub), and wins over everything else.
 
-export type PrStatus = 'draft' | 'ready' | 'published';
+export type PrStatus = 'draft' | 'ready' | 'published' | 'merged';
 
 /** The stored `status:` field, tolerantly: "ready" / "Ready" / " READY " etc. Anything else (or nothing): none. */
 export function storedStatus(v: unknown): 'draft' | 'ready' | undefined {
@@ -12,7 +13,8 @@ export function storedStatus(v: unknown): 'draft' | 'ready' | undefined {
   return s === 'ready' || s === 'draft' ? s : undefined;
 }
 
-export function prStatus(o: { status?: 'draft' | 'ready'; github?: unknown } | undefined): PrStatus {
+export function prStatus(o: { status?: 'draft' | 'ready'; github?: unknown; landed?: unknown } | undefined): PrStatus {
+  if (o?.landed) return 'merged';
   if (o?.github) return 'published';
   return o?.status === 'ready' ? 'ready' : 'draft';
 }
@@ -41,10 +43,10 @@ export function progressText(p: Progress): string {
   return `${progressDone(p)} of ${progressTotal(p)} done: ${p.resolved}/${p.threads} conversation${p.threads === 1 ? '' : 's'} resolved, ${p.viewed}/${p.files} file${p.files === 1 ? '' : 's'} viewed`;
 }
 
-export const STATUS_LABEL: Record<PrStatus, string> = { draft: 'Draft', ready: 'Ready', published: 'Published' };
+export const STATUS_LABEL: Record<PrStatus, string> = { draft: 'Draft', ready: 'Ready', published: 'Published', merged: 'Merged' };
 
-/** The badge's tooltip: "Draft · 6 of 15 done: …", "Ready · …", "Published as #123 · …". */
+/** The badge's tooltip: "Draft · 6 of 15 done: …", "Ready · …", "Published as #123 · …", "Merged as #123 · …". */
 export function statusTooltip(status: PrStatus, p: Progress | null, github?: { number: number } | null): string {
-  const head = status === 'published' && github ? `Published as #${github.number}` : STATUS_LABEL[status];
+  const head = (status === 'published' || status === 'merged') && github ? `${STATUS_LABEL[status]} as #${github.number}` : STATUS_LABEL[status];
   return p ? `${head} · ${progressText(p)}` : head;
 }

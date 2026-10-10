@@ -7,8 +7,9 @@ colour-coded **PR stacks**. Each commit is shown as one "PR" with a Conversation
 read and reply to by editing them, and replies show up in the UI live.
 
 Nothing here is pushed or published anywhere: Local Review never talks to GitHub. An agent can record the
-branch it tagged each commit with and the GitHub PR it later created (`prs/` files), and `npm run lr -- plan`
-prints what each PR should be. **Agents using Local Review on other repos: read [AGENTS.md](AGENTS.md).**
+branch it tagged each commit with, the GitHub PR it later created and, once that merged, what landed (`prs/` files),
+and `npm run lr -- plan` prints what each PR should be. Merged PRs stay in their stacks as **landed PRs** (see
+[Landed PRs](#landed-prs)). **Agents using Local Review on other repos: read [AGENTS.md](AGENTS.md).**
 
 ## Run
 
@@ -53,7 +54,7 @@ updated without touching anyone's reviews. It isn't version-controlled.
   projects/
     <slug>/                             # one per project; the slug is used in URLs: /<slug>/<repo>/<sha>
       project.yaml                      # which repos and commits, and how they're split into PR stacks
-      prs/<repo>/<full-sha>.yaml        # optional PR title/description overrides, readiness, branch, GitHub PR
+      prs/<repo>/<full-sha>.yaml        # optional PR title/description overrides, readiness, branch, GitHub PR, landed
       reviews/<repo>/<full-sha>.yaml    # review comments and Viewed marks (see "Comment files")
   backups/
     2026-10-09T08-45-12Z/               # automatic snapshots: a plain copy of projects/ at that time (UTC)
@@ -116,9 +117,11 @@ repos:
   - name: my-service                # optional, default: the path's basename; used in URLs and dir names
                                     # (a duplicate gets "-2", "-3"… by position, with a warning: name it)
     path: ~/code/my-service
-    branch: me/my-feature           # range end = branch head (or `to: <sha|ref>`, inclusive)
+    branch: me/my-feature           # range end = branch head (or `to: <sha|ref>`, inclusive); optional with `landed:`
     base: origin/main               # range start = merge-base(base, end), exclusive; default origin/HEAD, main, master
     # from: <sha|ref>               # alternative start: the first commit included (overrides base)
+    # landed: ["0a1b2c3d", …]       # optional: merged PRs, bottom to top: keys of prs/<repo>/<sha>.yaml files (see "Landed PRs")
+    # github_stack: 12              # optional, informational: the GitHub stack these PRs went up as
     stacks:                         # optional; consecutive groups, in order
       - title: Groundwork
         color: blue                 # blue green purple orange pink teal red, or "#hex"; default cycles (no yellow)
@@ -144,13 +147,15 @@ file doesn't parse. A stack is addressed by its position in `stacks:`, with its 
 lands on a stack that was reordered meanwhile. A `- Title` shorthand stack becomes `- title: Title` to hold one.
 
 Each commit is diffed against its first parent with rename detection (`-M`), so a base that has moved on
-doesn't matter. Branch heads are polled every 3 s, and every file under `~/.local-review/projects/` is re-read on each
-request and watched (edits push a refresh to the browser), so no restart is needed. A missing repo or branch
-shows as an error in the sidebar.
+doesn't matter (landed PRs are diffed differently; see [Landed PRs](#landed-prs)). Branch heads are polled every 3 s,
+and every file under `~/.local-review/projects/` is re-read on each request and watched (edits push a refresh to the
+browser), so no restart is needed. A missing repo or branch shows as an error in the sidebar (a missing branch isn't
+one in a repo with landed PRs).
 
 **Stacks.** `starts_at` selects a commit: a hex sha prefix (7+ chars; quote it in YAML) or a commit subject,
-compared after trimming, collapsing whitespace and stripping `fixup!`/`squash!`/`amend!`. Subjects survive
-rebases, so prefer them. A stack runs from its start up to the next stack's start; with duplicate subjects the
+compared after trimming, collapsing whitespace and stripping `fixup!`/`squash!`/`amend!`; failing those, a PR title
+(a `title:` override, the same way). Subjects survive rebases, so prefer them. A landed PR's subject is its stored
+one (below), so a stack whose bottom PRs have merged keeps its shape. A stack runs from its start up to the next stack's start; with duplicate subjects the
 first match after the previous stack's start is used, and the first stack may omit `starts_at` (it then starts
 at the first commit). Commits before the first stack go into an implicit grey **Unstacked** group. A selector
 that matches nothing, or only commits at or before the previous stack's start (out of order), makes that stack
@@ -170,12 +175,50 @@ stacks cycle through that list in order. **Yellow is reserved for follow-on stac
 yellow whatever its `color:` says (the field can be left out), and `color: yellow` on a regular stack gives a
 warning and falls back to the colour it would have had by default. (Hex colours aren't checked for yellowness.)
 
-**Totals leave follow-on stacks out.** Every aggregate (the stack picture's summary line and repo headings, the
-homepage's totals, the sidebar's viewed count, the project switcher's commit count) counts regular stacks only and
-mentions the follow-on ones beside it: `2 repos · 4 stacks · 12 PRs · +3,300 −150 · +1 follow-on stack (2 PRs)`. A
-follow-on stack's own heading and its PRs still show their real numbers. When only follow-on work is in view (the
-picture of just a follow-on stack), its numbers are shown, labelled `1 follow-on stack · 2 PRs`. The arithmetic lives
-in `shared/totals.ts`, used by both the server and the UI, so they agree.
+**Totals leave follow-on stacks and merged PRs out.** Every aggregate (the stack picture's summary line and repo
+headings, the homepage's totals, the sidebar's viewed count, the project switcher's commit count) counts regular
+stacks' unmerged PRs only and mentions the rest beside it: `2 repos · 4 stacks · 12 PRs · +3,300 −150 · +1 follow-on
+stack (2 PRs) · +9 merged`. A stack whose PRs have all merged isn't counted among the stacks. A stack's own heading
+and its PRs still show their real numbers. When only follow-on work is in view (the picture of just a follow-on
+stack), its numbers are shown, labelled `1 follow-on stack · 2 PRs`; when only merged work is (an archived project),
+likewise: `1 repo · 1 stack · 9 merged PRs`. The arithmetic lives in `shared/totals.ts`, used by both the server and
+the UI, so they agree.
+
+### Landed PRs
+
+Once a stack goes up as GitHub stacked PRs and they merge, their commits leave the live range (the merge-base moves),
+so on their own they'd vanish: stacks would empty out and PRs renumber. Instead, the agent **freezes** each merged PR
+before it fetches or rebases (AGENTS.md "After merges"): it writes a `landed:` record into the PR's prs file and
+appends the file's key to the repo's `landed:` list in `project.yaml`. Local Review only reads these; it never calls
+GitHub.
+
+- **Order and numbering.** A repo's PRs are its landed PRs, in `landed:` order (bottom to top), then its live
+  commits. PR numbers ("PR 3", `#3`) are positions across both, so they don't change when PRs merge. Keys are prs
+  file names (`<full sha>.yaml`): a full sha or a unique prefix (quote prefixes in YAML). A key that matches no file
+  (or several), a file without a usable `landed:` block, or a duplicate is a warning on the repo, and is skipped. A
+  landed PR whose commit is still in the live range (frozen before the rebase) is shown once, as landed.
+- **Diffs.** A landed PR shows GitHub's view of it: `merge-base(landed.base, landed.head)...landed.head` (GitHub
+  retargets each stacked PR to the base and rebases it there as the one below merges, so this is its own change
+  and nothing else, for a multi-commit PR too). If the head or base object isn't in the local repo (a deleted
+  branch, never fetched), it falls back to the merge commit's first-parent diff (`commit^1..commit`; a note on the
+  page says so), and with neither there's no diff and a warning. Live PRs are diffed as before.
+- **The repo's range.** With `landed:` present, `branch` / `to` are optional: no branch, a deleted branch or an empty
+  live range is no error, and other range problems are a warning. Only a missing repo is still an error.
+- **Stacks.** Landed PRs stay in their stacks. `starts_at` also matches PR titles and a landed PR's stored subject
+  (`subject:` in its prs file, else its head's subject), so a part-merged stack keeps its shape.
+- **Readiness and branches.** A landed PR is **merged** (above published): GitHub's merge icon in a purple circle,
+  and a purple **Merged** pill on its page. Its recorded branch has status `merged`, never a warning (it may well be
+  deleted).
+- **Totals** count merged PRs on the side (`+9 merged`), as above.
+- **Archived projects.** A project in which some repo has landed PRs and no repo has a live commit is archived
+  automatically: the project switcher lists it in a separate, collapsed **Archived** section.
+- **Re-matching.** Landed prs files are never orphans for rebase re-matching (see below), so a live commit with the
+  same subject can't take them, and a landed PR never takes another commit's file.
+- **Reviews** work as normal on landed PRs (threads, Viewed). **Local Review comments and GitHub comments are
+  entirely separate**: Local Review never imports GitHub review threads, and never sends its own to GitHub.
+- **Plan.** `lr plan` never plans landed PRs (the first live PR's base is the repo base), and warns about live PRs
+  whose recorded `github.base` differs from the plan's base, and about prs files with a `github:` record but no
+  `landed:` whose commit is now in the repo base ("landed upstream but not frozen").
 
 **PR title/description overrides.** A commit's PR title and description are its subject and body, unless
 `prs/<repo>/<full-sha>.yaml` says otherwise (the reviewed repo is never touched):
@@ -195,15 +238,26 @@ github:                             # optional: the GitHub PR created from it (r
   branch: me/feature-flag           # optional: the PR's head branch (wins over `branch:` for display)
   base: me/config-loader            # optional: the PR's base branch
   created: 2026-10-09T12:00:00Z     # optional
+  stack: 12                         # optional, informational: the GitHub stack it's in
+  stacked_on: me/config-loader      # optional, informational: the branch it was stacked on before GitHub retargeted it
+landed:                             # optional: it merged on GitHub (frozen by the agent; see "Landed PRs")
+  head: <full sha>                  # the PR's head at merge (headRefOid)
+  base: <full sha>                  # the PR's base at merge (pull.base.sha / baseRefOid)
+  commit: <full sha>                # the merge or squash commit
+  method: merge                     # merge, squash or rebase
+  at: 2026-10-09T12:00:00Z          # when it merged
 updated: 2026-10-09T12:00:00Z
 ```
 
 Hand-written files only need the fields they set. `github:` may also be just a PR number or url; one without a
-usable number is ignored. `status:` is case-insensitive (`Ready`, `READY`); any other value counts as absent.
+usable number is ignored. `status:` is case-insensitive (`Ready`, `READY`); any other value counts as absent. In
+`landed:`, shas must be full 40-hex (any case; others are ignored) and `method` is case-insensitive; the block counts
+once it has a `head` or a `commit`. For a landed PR, `subject:` is its stored subject (used for stack selectors).
 
-**Readiness.** Each PR is **draft**, **ready** or **published** (`status` on every commit in the API). Draft and
-ready are stored in `status:` (absent: draft; marking a PR draft again removes the key). Published is derived: a PR
-is published as soon as it has a usable `github:` record, whatever `status:` says. Marking a PR ready is the reviewer's call:
+**Readiness.** Each PR is **draft**, **ready**, **published** or **merged** (`status` on every commit in the API).
+Draft and ready are stored in `status:` (absent: draft; marking a PR draft again removes the key). Published is
+derived: a PR is published as soon as it has a usable `github:` record, whatever `status:` says. Merged is derived
+from a usable `landed:` record, and wins over the rest. Marking a PR ready is the reviewer's call:
 agents don't set it unless asked. The API also gives each commit `progress: {threads, resolved, files, viewed}`:
 conversations (threads with at least one comment, outdated ones included) and resolved ones, files changed and those
 marked Viewed. Progress is (resolved + viewed) / (threads + files). They follow rebases exactly like review files (same
@@ -218,7 +272,8 @@ read-only `git for-each-ref` per range and reconciles each commit (`branch` in t
 - the display name is the recorded `github.branch`, else `branch:`, else a discovered local branch pointing at the
   commit (one other than the range's own tip branch first), else a discovered remote branch, else none (`null`);
 - `status`: `ok` (recorded, points here), `moved` (recorded, points at `points_at`, e.g. after a rebase without
-  `--update-refs`), `missing` (recorded, not in git) or `discovered` (nothing recorded, found in git);
+  `--update-refs`), `missing` (recorded, not in git), `discovered` (nothing recorded, found in git) or `merged` (a
+  landed PR's recorded branch, whatever git says; never a warning);
 - `discovered` lists every branch pointing at the commit: local first, the tip branch (e.g. `me/my-feature`
   on the top commit) last.
 
@@ -241,7 +296,8 @@ Reviewed repos are never modified. All git access goes through `server/git.ts`, 
   the index, drops any inherited `GIT_*` environment (e.g. `GIT_DIR`), and disables textconv, external diff
   drivers and signature checking;
 - only passes refs from `project.yaml` (checked: no leading `-`, no `..`, after `--end-of-options`) and full
-  40-hex shas that git itself returned.
+  40-hex shas that git itself returned (a landed PR's shas from its prs file are used only after `git rev-parse
+  --verify <sha>^{commit}` has returned them).
 
 Nothing ever fetches, checks out, commits, stashes, rebases or resets. URL shas must be hex and are only
 used after matching them against the repo's own commit list. Project and repo names are restricted to
@@ -256,7 +312,8 @@ get an amber top edge. You can't mistake it for github.com.
 
 ## Using the UI
 
-- Header: the project title, with a project switcher when there's more than one.
+- Header: the project title, with a project switcher when there's more than one. Archived projects (everything
+  landed) are in a collapsed **Archived** section at the bottom of the switcher.
 - Sidebar: one collapsible section per repo (`repo · branch`, with commits fully viewed and open threads), then
   each PR stack as a box with a coloured border and its title on the top line (`STACK 1 · GROUNDWORK`;
   Unstacked is grey and dashed). Commits are numbered 1..n across the whole repo, oldest first ("PR 2"), with the
@@ -264,8 +321,10 @@ get an amber top edge. You can't mistake it for github.com.
   through if missing), a `#1234 ↗` badge once the GitHub PR exists, +/− counts on the right, and one **readiness
   badge** (its tooltip has the details, e.g. "Draft · 6 of 15 done: 6/6 conversations resolved, 0/9 files viewed"):
   a small grey progress pie while the PR is a draft (a full pie at 100%: done, but not marked ready), a white tick in
-  a green circle once it's ready, and GitHub's PR icon in a purple circle once it's published. Once any PR in a stack
-  is ready, the stack's bottom border says how many (`2/4 READY`; published counts as ready). (The per-row
+  a green circle once it's ready, GitHub's PR icon in a blue circle once it's published, and GitHub's merge icon in a
+  purple circle once it has merged (purple is kept for merged alone). Once any PR in a stack is ready, the stack's
+  bottom border says how many (`2/4 READY`; published and merged count as ready), and `4/4 MERGED` in purple once
+  they've all merged. A repo with nothing live shows a purple `merged` pill instead of its branch. (The per-row
   files-viewed bar is hidden for now: `SHOW_FILES_VIEWED` in `src/App.tsx`.) Missing repos/branches show an error
   card, stack problems a warning. The project homepage's PR list shows the same badges.
 - **Follow-on stacks** (`follow_on: true`), always yellow (GitHub's attention colours: `#9a6700` text and `#bf8700`
@@ -279,8 +338,9 @@ get an amber top edge. You can't mistake it for github.com.
   has a yellow border and label with a yellow `follow-on` tag; its border and rows are drawn at 72% opacity (the
   label, the tag and a highlighted PR at full strength).
 - Commit header: the PR title with its repo position (`#3`); where GitHub shows Open / Draft, a **Draft | Ready**
-  toggle that writes `status:` to the prs file (or a purple **Published** pill with the `#1234 ↗` link once a
-  `github:` record exists), and the review progress (`6 of 15 done`, details in its tooltip); then "commit 3 of 10
+  toggle that writes `status:` to the prs file (or a blue **Published** pill with the `#1234 ↗` link once a
+  `github:` record exists, or a purple **Merged** pill once a `landed:` record does, with "merged <when> (method)"
+  in the line below), and the review progress (`6 of 15 done`, details in its tooltip); then "commit 3 of 10
   in <repo>", and a stepper of the commits in this PR stack, in its colour (`GROUNDWORK · PR 3 of 4`), each
   with its readiness badge. Toggling, agents' edits to the prs file and new Viewed marks or resolved threads update
   the sidebar, header and stepper live.
@@ -449,7 +509,8 @@ one after a rebase re-match, and the only comment deletion is the reviewer delet
 
 When a commit has no file under its own sha, the server looks at the *orphaned* files in the same repo
 directory: `<sha>.yaml` files whose sha is no longer in the repo's range. A file whose commit is still in the
-range is never taken, and neither is one whose commit is still an ancestor of the range end (it only left the
+range (landed PRs count as in it) is never taken, nor is a prs file with a `landed:` block, and landed PRs never take
+a file themselves. Neither is a file taken whose commit is still an ancestor of the range end (it only left the
 range because `base`/`from` moved, e.g. it landed upstream; it wasn't rewritten). A file without `patch_id`,
 `subject` or `change_id` (hand-written) gets them from git for its sha. A review file whose `repo_path` is a
 different repo and whose sha this repo doesn't have is skipped. The assignment is computed for the whole range, deterministically, in this order (the
@@ -502,8 +563,8 @@ isn't matched again. Nothing is deleted.
 
 | Method | Path | |
 | --- | --- | --- |
-| GET | `/api/projects` | projects: slug, title, repo names/count, commit count, unresolved count, last modified |
-| GET | `/api/projects/:p` | `description`, repos (range, errors, warnings), `stacks` (title, color, commit shas, warning, `description`, `follow_on: true` on follow-on stacks, `weight`), commits (+/−, `position`, `stack` index, PR `title`, unresolved counts, `branch`, `github`) |
+| GET | `/api/projects` | projects: slug, title, repo names/count, commit count (`commitCount`, without follow-on stacks and merged PRs; `followOnCount`, `mergedCount`), `archived`, unresolved count, last modified |
+| GET | `/api/projects/:p` | `description`, repos (range, errors, warnings), `stacks` (title, color, commit shas, warning, `description`, `follow_on: true` on follow-on stacks, `weight`), commits (+/−, `position`, `stack` index, PR `title`, unresolved counts, `branch`, `github`, `status`, `landed` on landed PRs: the record plus `diff`, and `tip`/`parent`: what's diffed) |
 | PUT | `/api/projects/:p/description` | `{description: string \| null}`: the project intro (null or blank removes it) |
 | PUT | `/api/projects/:p/repos/:r/stacks/:n/description` | `{description, title?}`: stack `n`'s note (1-based in `stacks:`); a `title` that no longer matches is a 409 |
 | GET | `/api/projects/:p/repos/:r/commits/:sha` | metadata (incl. `branch`, `github`), message body, files with old/new contents, `stack` (with position/count), project-wide `prev`/`next`, `pr`, review |
@@ -517,7 +578,7 @@ isn't matched again. Nothing is deleted.
 | PUT | `…/viewed` | `{path, viewed}` |
 | GET | `…/stack.svg`, `…/stack.png` | the stack picture with this PR highlighted: 680px-wide SVG, PNG at 2x (1360px). `?scope=project` (default) `\|repo\|stack`, `?scale=sqrt` (default) `\|linear`, `?title=0` drops the title and summary line, `?download` adds `Content-Disposition: attachment` |
 | GET | `/api/projects/:p/stack.svg`, `…/stack.png` | the same for the whole project, nothing highlighted (the homepage) |
-| | | `branch`: `{name, status: 'ok'\|'moved'\|'missing'\|'discovered', points_at?, discovered: string[]} \| null`; `github`: `{number, url, branch?, base?, created?} \| null` (`url` is `''` if the file gives only a number) |
+| | | `branch`: `{name, status: 'ok'\|'moved'\|'missing'\|'discovered'\|'merged', points_at?, discovered: string[]} \| null`; `github`: `{number, url, branch?, base?, created?, stack?, stacked_on?} \| null` (`url` is `''` if the file gives only a number) |
 | GET | `/api/events` | SSE: `{type:"review"\|"pr",project,repo,sha}`, `{type:"project",project,reason}`, `{type:"projects",reason}` |
 
 **Stack pictures** are built in `server/stackviz.ts`: an SVG string (no DOM; text is measured and truncated with
@@ -531,19 +592,21 @@ boxes.
 ```
 server/   git.ts (read-only git), config.ts (data home, port), safefs.ts (atomic writes, no-clobber renames), backups.ts
           (snapshots + pruning), commits.ts (ranges/diffs/patch-id), projects.ts (project.yaml, stack partitioning),
-          reviews.ts (YAML store, rebase re-matching), prs.ts (PR title/description/branch/github), branches.ts (branch
+          reviews.ts (YAML store, rebase re-matching), prs.ts (PR title/description/branch/github/landed), landed.ts
+          (landed PRs from project.yaml `landed:`), branches.ts (branch
           discovery + reconciliation), plan.ts + cli.ts (`npm run lr -- plan`), anchors.ts (line anchors
           + relocation), context.ts, events.ts (watch + SSE), index.ts (Hono), security.ts (localhost Host/Origin guard),
           stackviz.ts (stack picture: SVG + PNG), fonts/ (bundled OFL fonts for it)
 test/     npm test: projects/stacks/PR overrides, review store, anchors, git wrapper and HTTP API tests against throwaway git repos,
           plus the PR editors' text helpers, the stack picture (aggregation, SVG, PNG endpoints), snapshots/pruning
-          (backups.test.ts), branch tagging + the plan command (branches.test.ts) and the static never-delete guard
+          (backups.test.ts), branch tagging + the plan command (branches.test.ts), landed PRs (landed.test.ts) and the static never-delete guard
           (fsguard.test.ts)
 src/      React UI: App (header, sidebar, SSE, j/k), CommitPage (PR header, Conversation), FilesChanged (tree, cards, @pierre/diffs), Comments
           (threads, Markdown editor), PrEdit (PR title/description editing + copy), prText (their pure text helpers),
           StackTab (the Stack tab, copy/download), ProjectHome (/<project>)
 shared/   prText.ts: the full PR body composition, used by both the UI and the plan; totals.ts: aggregate
-          stats over stacks (follow-on stacks left out), used by the stack picture and the UI
+          stats over stacks (follow-on stacks and merged PRs left out), used by the stack picture and the UI;
+          readiness.ts: draft / ready / published / merged
 scripts/start.mjs   build-if-needed + serve
 AGENTS.md           the guide for agents driving Local Review from other repos
 examples/           project.example.yaml, a commented starting point (your projects live in ~/.local-review/projects/)

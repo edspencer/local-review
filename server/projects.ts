@@ -7,6 +7,9 @@ import YAML from 'yaml';
 import { PROJECTS_DIR, SAFE_NAME, expandHome, safeName } from './config.js';
 import { loadRepo, rangeEnd, type RepoInfo, type RepoRange } from './commits.js';
 import { normalizeSubject } from './reviews.js';
+import { loadLanded } from './landed.js';
+import { loadPrs, type LoadedPr } from './prs.js';
+import { inspectOrphan, liveCommits } from './context.js';
 
 // the colours a regular stack can have (auto-assigned in this order, cycling). Yellow isn't one of them: it's
 // reserved for follow-on stacks, which are always yellow whatever their `color:` says.
@@ -26,6 +29,8 @@ export interface RepoConfig extends RepoRange {
   index: number; // position in project.yaml's `repos` list (for writing back to the file)
   stacks: StackSpec[]; // empty: one implicit stack named after the branch
   warnings: string[]; // config problems (bad colour, …)
+  landed: unknown[]; // `landed:` keys of prs files (sha or prefix), bottom to top, as written; resolved in loadProject
+  github_stack?: number; // the GitHub stack the repo's PRs went up as (informational only)
 }
 
 export interface ProjectConfig {
@@ -137,6 +142,10 @@ export function parseProject(slug: string, dir: string, raw: string): ProjectCon
       const description = text(spec.description)?.replace(/\r\n/g, '\n').trim();
       stacks.push({ title, color, ...(startsAt ? { starts_at: startsAt } : {}), ...(description ? { description } : {}), ...(followOn ? { follow_on: true } : {}) });
     }
+    let landed: unknown[] = [];
+    if (Array.isArray(r.landed)) landed = r.landed;
+    else if (r.landed != null) warnings.push('`landed` must be a list of prs file keys (sha prefixes); ignored');
+    const ghStack = Number(text(r.github_stack)?.replace(/^#/, ''));
     out.repos.push({
       index,
       name,
@@ -147,6 +156,8 @@ export function parseProject(slug: string, dir: string, raw: string): ProjectCon
       from: text(r.from),
       stacks,
       warnings,
+      landed,
+      ...(Number.isSafeInteger(ghStack) && ghStack > 0 ? { github_stack: ghStack } : {}),
     });
   }
   return out;
@@ -169,8 +180,9 @@ export function loadProjectConfig(slug: string): ProjectConfig | null {
  * "Unstacked" group. A selector that matches nothing, or only commits at or before the previous stack's start
  * (out of order), gives a warning and an empty stack; it never throws.
  */
-export function partitionStacks(commits: { sha: string; subject: string }[], specs: StackSpec[], defaultTitle = 'Stack'): { stacks: StackGroup[]; warnings: string[] } {
+export function partitionStacks(commits: { sha: string; subject: string; title?: string }[], specs: StackSpec[], defaultTitle = 'Stack'): { stacks: StackGroup[]; warnings: string[]; unmatched?: boolean } {
   const warnings: string[] = [];
+  let unmatched = false;
   if (!specs.length) {
     return { stacks: [{ index: 0, number: null, title: defaultTitle, color: PALETTE[0], implicit: 'branch', shas: commits.map((c) => c.sha) }], warnings };
   }
@@ -178,6 +190,8 @@ export function partitionStacks(commits: { sha: string; subject: string }[], spe
   const declared = (s: StackSpec, i: number, index: number, shas: string[]): StackGroup => ({ index, number: i + 1, title: s.title, color: s.follow_on ? FOLLOW_ON_COLOR : s.color, shas, ...(s.description ? { description: s.description } : {}), ...(s.follow_on ? { follow_on: true } : {}) });
   if (!commits.length) return { stacks: specs.map((s, i) => declared(s, i, i, [])), warnings };
   const subjects = commits.map((c) => normalizeSubject(c.subject));
+  // a PR's title (override) is tried after the subjects: a landed multi-commit PR has no meaningful single subject
+  const titles = commits.map((c) => (c.title ? normalizeSubject(c.title) : ''));
   const starts: (number | null)[] = [];
   const specWarnings: (string | undefined)[] = [];
   let last = -1;
@@ -198,10 +212,12 @@ export function partitionStacks(commits: { sha: string; subject: string }[], spe
       if (!cands.length) {
         const n = normalizeSubject(sel);
         cands = subjects.flatMap((s, j) => (s === n ? [j] : []));
+        if (!cands.length) cands = titles.flatMap((t, j) => (t && t === n ? [j] : []));
       }
     }
     if (!cands.length) {
-      specWarnings.push(`${label}: starts_at "${sel}" doesn't match any commit (sha prefix or subject), so it is empty`);
+      unmatched = true;
+      specWarnings.push(`${label}: starts_at "${sel}" doesn't match any commit (sha prefix, subject or PR title), so it is empty`);
       starts.push(null);
       continue;
     }
@@ -244,7 +260,7 @@ export function partitionStacks(commits: { sha: string; subject: string }[], spe
     }
     groups.push(g);
   }
-  return { stacks: groups, warnings };
+  return { stacks: groups, warnings, ...(unmatched ? { unmatched } : {}) };
 }
 
 export interface LoadedRepo {
@@ -272,14 +288,42 @@ export async function loadProject(slug: string): Promise<LoadedProject | null> {
   if (!cfg) return null;
   const repos = await Promise.all(
     cfg.repos.map(async (rc): Promise<LoadedRepo> => {
-      const info = await loadRepo(rc);
-      const { stacks, warnings } = partitionStacks(info.commits, rc.stacks, rc.branch ?? rangeEnd(rc) ?? rc.name);
+      const dirs = repoDirs(cfg, rc.name);
+      // with landed PRs, a missing / deleted branch or an empty live range is fine: they still show
+      const info = await loadRepo(rc, { optional: rc.landed.length > 0 });
+      const extra: string[] = info.warning ? [info.warning] : [];
+      let titles = new Map<string, string>();
+      if (rc.landed.length && !info.error) {
+        const landed = await loadLanded(rc.path, dirs.prsDir, rc.landed);
+        extra.push(...landed.warnings);
+        titles = landed.titles;
+        // a frozen PR whose commit is still in the live range (frozen before the rebase) is shown once, as landed
+        const keys = new Set(landed.commits.map((c) => c.sha));
+        info.commits = [...landed.commits, ...info.commits.filter((c) => !keys.has(c.sha))];
+      }
+      const defaultTitle = rc.branch || rangeEnd(rc) || rc.name;
+      let part = partitionStacks(info.commits.map((c) => ({ sha: c.sha, subject: c.subject, title: titles.get(c.sha) })), rc.stacks, defaultTitle);
+      // a selector that's no sha or subject may be a live PR's title: only then read the prs files for titles
+      if (part.unmatched && info.commits.some((c) => !c.landed)) {
+        const prs = await loadPrs(dirs.prsDir, liveCommits(rc, info), inspectOrphan(rc, info)).catch(() => new Map<string, LoadedPr>());
+        part = partitionStacks(info.commits.map((c) => ({ sha: c.sha, subject: c.subject, title: titles.get(c.sha) ?? prs.get(c.sha)?.override.title })), rc.stacks, defaultTitle);
+      }
+      const { stacks, warnings } = part;
       const stackOf = new Map<string, number>();
       for (const g of stacks) for (const sha of g.shas) stackOf.set(sha, g.index);
-      return { cfg: rc, info, stacks, warnings: [...rc.warnings, ...warnings], stackOf, ...repoDirs(cfg, rc.name) };
+      return { cfg: rc, info, stacks, warnings: [...rc.warnings, ...extra, ...warnings], stackOf, ...dirs };
     }),
   );
   return { cfg, repos };
+}
+
+/**
+ * Archived: everything in the project has landed. Some repo has landed PRs, and no repo has a live (unmerged) commit
+ * or an error. The project switcher lists these in a separate, collapsed section.
+ */
+export function isArchived(p: LoadedProject): boolean {
+  if (p.cfg.error || !p.repos.length) return false;
+  return p.repos.some((r) => r.info.commits.some((c) => c.landed)) && p.repos.every((r) => !r.info.error && r.info.commits.every((c) => c.landed));
 }
 
 /** Newest mtime of anything in the project directory (project.yaml, prs/, reviews/), for "most recent". */

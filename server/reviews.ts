@@ -53,6 +53,8 @@ export interface LiveCommit {
   subject: string;
   changeId?: string | null;
   getPatchId: () => Promise<string | null>;
+  /** a landed PR: its own files are never orphans, and it never takes another commit's file */
+  frozen?: boolean;
 }
 
 export interface ReviewContext {
@@ -295,6 +297,7 @@ export interface Orphan {
   changeId?: string;
   subject: string; // normalised
   repoPath?: string; // `repo_path:` of a review file
+  landed?: boolean; // a prs file with a `landed:` block: frozen history, never re-matched
 }
 
 const orphanCache = new Map<string, { key: string; o: Orphan | null }>();
@@ -313,7 +316,7 @@ function readOrphan(file: string, sha: string): Orphan | null {
   try {
     const { doc } = readYaml(file);
     if (doc && typeof doc === 'object')
-      o = { sha, file, mtime: st.mtimeMs, patchId: str(doc.patch_id), changeId: str(doc.change_id), subject: normalizeSubject(str(doc.subject)), repoPath: str(doc.repo_path) };
+      o = { sha, file, mtime: st.mtimeMs, patchId: str(doc.patch_id), changeId: str(doc.change_id), subject: normalizeSubject(str(doc.subject)), repoPath: str(doc.repo_path), ...(doc.landed != null ? { landed: true } : {}) };
   } catch {
     o = null;
   }
@@ -343,10 +346,10 @@ export async function matchOrphans(dir: string, live: LiveCommit[], opts: { insp
     const m = SHA_FILE.exec(f);
     if (!m || liveSet.has(m[1])) continue;
     const o = readOrphan(path.join(dir, f), m[1]);
-    if (o) found.push(o);
+    if (o && !o.landed) found.push(o);
   }
   if (!found.length) return out;
-  const fileless = live.filter((c) => !fs.existsSync(path.join(dir, `${c.sha}.yaml`)));
+  const fileless = live.filter((c) => !c.frozen && !fs.existsSync(path.join(dir, `${c.sha}.yaml`)));
   if (!fileless.length) return out;
   const orphans: Orphan[] = [];
   for (const o of found) {
@@ -366,7 +369,7 @@ export async function matchOrphans(dir: string, live: LiveCommit[], opts: { insp
   }
   if (!orphans.length) return out;
   const subjectCount = new Map<string, number>();
-  for (const c of live) {
+  for (const c of live.filter((x) => !x.frozen)) {
     const s = normalizeSubject(c.subject);
     subjectCount.set(s, (subjectCount.get(s) ?? 0) + 1);
   }

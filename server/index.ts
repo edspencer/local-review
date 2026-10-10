@@ -6,14 +6,14 @@ import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { streamSSE } from 'hono/streaming';
 import { PORT, PROJECTS_DIR, ROOT, SAFE_NAME } from './config.js';
-import { changedFiles, commitDetail, type CommitSummary } from './commits.js';
+import { detailOf, filesOf, type CommitSummary } from './commits.js';
 import { prStatus, progressOf, storedStatus } from '../shared/readiness.js';
 import { ReviewConflictError, loadReview, mutateReview, randomId, reviewPath, unresolvedCount, viewReview, type Review, type ReviewContext, type Thread } from './reviews.js';
 import { branchName, githubOf, loadPr, loadPrs, prPath, prView, writePr, type GithubPr, type LoadedPr } from './prs.js';
 import { loadRefs, reconcileBranch, type RefIndex } from './branches.js';
 import { contextFor, inspectOrphan, liveCommits, prContextFor } from './context.js';
 import { emit, startWatchers, subscribe } from './events.js';
-import { listProjectSlugs, loadProject, projectModified, type LoadedProject, type LoadedRepo } from './projects.js';
+import { isArchived, listProjectSlugs, loadProject, projectModified, type LoadedProject, type LoadedRepo } from './projects.js';
 import { localOnly } from './security.js';
 import { EditNotFoundError, editProjectYaml, setProjectDescription, setStackDescription } from './projectEdit.js';
 import { aggregate, mergeAggregates } from '../shared/totals.js';
@@ -130,7 +130,7 @@ async function repoPayload(r: LoadedRepo, withWeights = false) {
     r.info.commits.map(async (cm, i) => {
       const [l, files] = await Promise.all([
         loadReview(contextFor(r.reviewsDir, r.cfg, r.info, cm)).catch(() => null),
-        changedFiles(r.info.path, cm.sha, cm.parent).catch(() => []), // cached per sha
+        filesOf(r.info.path, cm).catch(() => []), // cached per sha (a landed PR: its own diff)
       ]);
       const pr = prs.get(cm.sha);
       return {
@@ -173,8 +173,14 @@ app.get('/api/projects', async (c) => {
       const p = await loadProject(slug);
       if (!p) return null;
       const repos = await Promise.all(p.repos.map((r) => repoPayload(r)));
-      // follow-on stacks (parked work) are left out of the commit count and given beside it, as in every aggregate
-      const t = mergeAggregates(repos.map((r) => aggregate(r.stacks.map((g) => ({ follow_on: g.follow_on, prs: g.shas.length, additions: 0, deletions: 0 })))));
+      // follow-on stacks (parked work) and merged PRs are left out of the commit count and given beside it, as in every aggregate
+      const t = mergeAggregates(
+        repos.map((r) => {
+          const merged = new Set(r.commits.filter((cm) => cm.landed).map((cm) => cm.sha));
+          return aggregate(r.stacks.map((g) => ({ follow_on: g.follow_on, prs: g.shas.length, additions: 0, deletions: 0, merged: { prs: g.shas.filter((s) => merged.has(s)).length, additions: 0, deletions: 0 } })));
+        }),
+      );
+      const archived = isArchived(p); // everything has landed
       return {
         slug,
         title: p.cfg.title,
@@ -184,6 +190,8 @@ app.get('/api/projects', async (c) => {
         repos: repos.map((r) => r.name),
         commitCount: t.prs,
         followOnCount: t.followOn.prs,
+        mergedCount: t.merged.prs,
+        archived,
         unresolved: repos.reduce((a, r) => a + r.commits.reduce((b, cm) => b + cm.unresolved, 0), 0),
         modified: new Date(projectModified(p.cfg.dir) || 0).toISOString(),
       };
@@ -240,7 +248,7 @@ const COMMIT = '/api/projects/:project/repos/:repo/commits/:sha';
 app.get(COMMIT, async (c) => {
   const r = await resolveCommit(c);
   const { project, repo, commit, index } = r;
-  const detail = await commitDetail(repo.cfg.path, commit.sha);
+  const detail = await detailOf(repo.cfg.path, commit);
   // prev / next walk the whole project in sidebar order: repo by repo, commits oldest first
   const flat = project.repos.flatMap((x) => x.info.commits.map((cm) => ({ repo: x.cfg.name, sha: cm.sha })));
   const at = flat.findIndex((x) => x.repo === repo.cfg.name && x.sha === commit.sha);
@@ -257,7 +265,7 @@ app.get(COMMIT, async (c) => {
     stack: group ? { ...group, position: group.shas.indexOf(commit.sha) + 1, count: group.shas.length } : null,
     prev: flat[at - 1] ?? null,
     next: flat[at + 1] ?? null,
-    commit: { ...detail, branch: pr.branch, github: pr.github, status: pr.status },
+    commit: { ...detail, branch: pr.branch, github: pr.github, status: pr.status, landed: commit.landed ?? null },
     pr,
     review: await reviewPayload(reviewCtx(r)),
   });
@@ -267,7 +275,7 @@ app.get(`${COMMIT}/review`, async (c) => c.json(await reviewPayload(reviewCtx(aw
 
 app.get(`${COMMIT}/pr`, async (c) => {
   const r = await resolveCommit(c);
-  return c.json(await prPayload(r, (await commitDetail(r.repo.cfg.path, r.commit.sha)).body));
+  return c.json(await prPayload(r, (await detailOf(r.repo.cfg.path, r.commit)).body));
 });
 
 // ---------------- stack visualization (SVG / PNG) ----------------
@@ -454,6 +462,7 @@ function githubField(v: unknown): GithubPr | null | undefined {
   if (typeof o === 'object') {
     gh.branch = branchField(o.branch, 'github.branch') ?? undefined;
     gh.base = branchField(o.base, 'github.base') ?? undefined;
+    gh.stacked_on = branchField(o.stacked_on, 'github.stacked_on') ?? undefined;
   }
   return gh;
 }
@@ -470,7 +479,7 @@ app.put(`${COMMIT}/pr`, async (c) => {
   const r = await resolveCommit(c);
   await writePr(prCtx(r), { title, body: prBody, branch, github, status });
   emit({ type: 'pr', project: r.project.cfg.slug, repo: r.repo.cfg.name, sha: r.commit.sha });
-  return c.json(await prPayload(r, (await commitDetail(r.repo.cfg.path, r.commit.sha)).body));
+  return c.json(await prPayload(r, (await detailOf(r.repo.cfg.path, r.commit)).body));
 });
 
 // ---------------- events ----------------

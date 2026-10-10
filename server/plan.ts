@@ -1,12 +1,13 @@
 // The read-only materialization plan: for each candidate PR (commit) in scope, in order, what the real GitHub PR
 // would be: branch, base, title and the exact full body (the same composition as the UI's "Full body" button).
 // Never writes anything and never talks to GitHub; `lr plan` prints it, an agent follows it after the reviewer says go.
+import fs from 'node:fs';
 import YAML from 'yaml';
 import { fullPrBody } from '../shared/prText.js';
-import { commitBody } from './commits.js';
+import { baseSha, commitBody, isAncestor } from './commits.js';
 import { inspectOrphan, liveCommits } from './context.js';
 import { loadRefs, reconcileBranch, stripRemote, type BranchInfo } from './branches.js';
-import { loadPrs, prView, type GithubPr, type LoadedPr } from './prs.js';
+import { loadPrs, prPath, prView, readPrFile, type GithubPr, type LoadedPr } from './prs.js';
 import type { LoadedProject, LoadedRepo } from './projects.js';
 import { prStatus, type PrStatus } from '../shared/readiness.js';
 
@@ -35,6 +36,8 @@ export interface Plan {
   prs: PlanPr[];
   // follow-on stacks (project.yaml `follow_on: true`) left out because neither --include-follow-on nor --stack named them
   excluded_follow_on: { repo: string; stack: number; title: string; prs: number[] }[];
+  // landed (merged) PRs: never planned, whatever the options
+  excluded_landed: { repo: string; prs: number[] }[];
   notes: string[]; // informational, not problems: excluded follow-on stacks, a follow-on stack named by --stack
   warnings: string[]; // everything that needs attention before materializing, prefixed with where it is
 }
@@ -60,7 +63,7 @@ export async function buildPlan(project: LoadedProject, opts: PlanOpts = {}): Pr
     repos = has;
   }
   const includeFollowOn = !!opts.includeFollowOn;
-  const plan: Plan = { project: project.cfg.slug, title: project.cfg.title, scope: { repo: opts.repo ?? null, stack: opts.stack ?? null, include_follow_on: includeFollowOn }, prs: [], excluded_follow_on: [], notes: [], warnings: [] };
+  const plan: Plan = { project: project.cfg.slug, title: project.cfg.title, scope: { repo: opts.repo ?? null, stack: opts.stack ?? null, include_follow_on: includeFollowOn }, prs: [], excluded_follow_on: [], excluded_landed: [], notes: [], warnings: [] };
   if (project.cfg.error) plan.warnings.push(`project: ${project.cfg.error}`);
   for (const r of repos) {
     // an explicitly named stack is always planned; otherwise follow-on stacks only with --include-follow-on
@@ -74,9 +77,13 @@ export async function buildPlan(project: LoadedProject, opts: PlanOpts = {}): Pr
         if (g.shas.length) plan.excluded_follow_on.push({ repo: r.cfg.name, stack: g.number, title: g.title, prs: g.shas.map((s) => r.info.commits.findIndex((c) => c.sha === s) + 1) });
       }
     }
-    const { prs, warnings } = await repoPlan(project, r, opts.stack, skip);
+    const { prs, warnings, landed } = await repoPlan(project, r, opts.stack, skip);
     plan.prs.push(...prs);
     plan.warnings.push(...warnings);
+    if (landed.length) {
+      plan.excluded_landed.push({ repo: r.cfg.name, prs: landed });
+      plan.notes.push(`Skipped ${landed.length} landed (merged) PR${landed.length === 1 ? '' : 's'} in ${r.cfg.name}: ${landed.map((n) => `PR #${n}`).join(', ')}`);
+    }
   }
   const ex = plan.excluded_follow_on;
   if (ex.length) {
@@ -88,10 +95,11 @@ export async function buildPlan(project: LoadedProject, opts: PlanOpts = {}): Pr
   return plan;
 }
 
-async function repoPlan(project: LoadedProject, r: LoadedRepo, onlyStack?: number, skip = new Set<number>()): Promise<{ prs: PlanPr[]; warnings: string[] }> {
+async function repoPlan(project: LoadedProject, r: LoadedRepo, onlyStack?: number, skip = new Set<number>()): Promise<{ prs: PlanPr[]; warnings: string[]; landed: number[] }> {
   const name = r.cfg.name;
   const warnings: string[] = [];
-  if (r.info.error) return { prs: [], warnings: [`${name}: ${r.info.error}`] };
+  const landed: number[] = [];
+  if (r.info.error) return { prs: [], warnings: [`${name}: ${r.info.error}`], landed };
   for (const w of r.warnings) warnings.push(`${name}: ${w}`);
   const [loaded, refs] = await Promise.all([
     loadPrs(r.prsDir, liveCommits(r.cfg, r.info), inspectOrphan(r.cfg, r.info)).catch(() => new Map<string, LoadedPr>()),
@@ -102,11 +110,19 @@ async function repoPlan(project: LoadedProject, r: LoadedRepo, onlyStack?: numbe
   const repoBase = r.info.base ? stripRemote(refs, r.info.base) : null;
   const out: PlanPr[] = [];
   let prevBranch: string | null = null;
+  let first = true; // the first live (unmerged) PR goes onto the repo base
   for (const [i, c] of r.info.commits.entries()) {
     const g = r.stacks[r.stackOf.get(c.sha) ?? 0];
+    if (c.landed) {
+      // merged: history, never planned (and no warnings); the PRs above it go onto the repo base
+      if (onlyStack === undefined || g?.number === onlyStack) landed.push(i + 1);
+      continue;
+    }
     const l = loaded.get(c.sha);
     const branch = reconcileBranch(refs, c.sha, l?.override, tip);
-    const base = i === 0 ? repoBase : prevBranch;
+    const isFirst = first;
+    first = false;
+    const base = isFirst ? repoBase : prevBranch;
     const inScope = (onlyStack === undefined || g?.number === onlyStack) && !(g?.number != null && skip.has(g.number));
     if (inScope) {
       const view = prView(l, { subject: c.subject, body: await commitBody(r.info.path, c.sha) });
@@ -118,7 +134,9 @@ async function repoPlan(project: LoadedProject, r: LoadedRepo, onlyStack?: numbe
         w.push(`branch '${branch.name}' points at ${branch.points_at?.slice(0, 8)}${at ? ` (PR #${at})` : ', not in the range'}, not this commit (rebased without --update-refs?)`);
       }
       // (no base because the previous PR has no branch is that PR's warning, not another one)
-      if (base === null && i === 0) w.push(r.info.from ? 'no base: the range starts with `from:`; give the repo a `base:`' : 'no base branch');
+      if (base === null && isFirst) w.push(r.info.from ? 'no base: the range starts with `from:`; give the repo a `base:`' : 'no base branch');
+      const gb = l?.override.github?.base;
+      if (gb && base && gb !== base) w.push(`its GitHub PR #${l!.override.github!.number} has base '${gb}', but the plan's base is '${base}' (retarget the PR, or check the order)`);
       if (l?.parseError) w.push(`prs file doesn't parse: ${l.parseError}`);
       const pr: PlanPr = {
         repo: name,
@@ -129,7 +147,7 @@ async function repoPlan(project: LoadedProject, r: LoadedRepo, onlyStack?: numbe
         subject: c.subject,
         branch,
         base,
-        base_from: i === 0 ? 'repo-base' : 'previous-pr',
+        base_from: isFirst ? 'repo-base' : 'previous-pr',
         title: view.title,
         title_source: view.title_source,
         body: fullPrBody({ intro: project.cfg.description, stackNote: g?.description, body: view.body }),
@@ -142,7 +160,8 @@ async function repoPlan(project: LoadedProject, r: LoadedRepo, onlyStack?: numbe
     }
     prevBranch = branch?.name ?? null;
   }
-  if (onlyStack !== undefined && !out.length) warnings.push(`${name} stack ${onlyStack}: empty (no commits)`);
+  if (onlyStack !== undefined && !out.length && !landed.length) warnings.push(`${name} stack ${onlyStack}: empty (no commits)`);
+  warnings.push(...(await unfrozen(r)).map((w) => `${name}: ${w}`));
   // drafts, per stack: only the reviewer marks a PR ready, so a stack with drafts isn't ready to publish
   const stacks = new Map<string, PlanPr[]>();
   for (const p of out) {
@@ -154,7 +173,40 @@ async function repoPlan(project: LoadedProject, r: LoadedRepo, onlyStack?: numbe
     if (drafts.length)
       warnings.push(`${name} ${stackLabel(ps[0])}: ${drafts.length} of ${ps.length} PR${ps.length === 1 ? ' is' : 's are'} still draft (${drafts.map((p) => `PR #${p.number}`).join(', ')}); only the reviewer marks PRs ready`);
   }
-  return { prs: out, warnings };
+  return { prs: out, warnings, landed };
+}
+
+/**
+ * "Landed upstream but not frozen": a prs file with a `github:` record and no `landed:`, whose commit is now an
+ * ancestor of the repo's base (it merged with its sha intact, and the range moved past it). The agent should have
+ * frozen it before fetching (AGENTS.md "After merges"); Local Review only warns.
+ */
+async function unfrozen(r: LoadedRepo): Promise<string[]> {
+  let files: string[];
+  try {
+    files = fs.readdirSync(r.prsDir).filter((f) => /^[0-9a-f]{40}\.yaml$/.test(f));
+  } catch {
+    return [];
+  }
+  const live = new Set(r.info.commits.map((c) => c.sha));
+  const base = files.length ? await baseSha(r.cfg) : null;
+  if (!base) return [];
+  const out: string[] = [];
+  for (const f of files.sort()) {
+    const sha = f.slice(0, 40);
+    if (live.has(sha)) continue;
+    let l;
+    try {
+      l = readPrFile(prPath(r.prsDir, sha));
+    } catch {
+      continue;
+    }
+    const gh = l.override.github;
+    if (!gh || l.override.landed) continue;
+    if (await isAncestor(r.cfg.path, sha, base))
+      out.push(`prs file ${sha.slice(0, 8)} (GitHub PR #${gh.number}) has landed upstream (its commit is in ${r.info.base ?? 'the base'}) but isn't frozen: write its \`landed:\` record and add it to the repo's \`landed:\` list (AGENTS.md "After merges")`);
+  }
+  return out;
 }
 
 const stackLabel = (p: PlanPr) => (p.stack.number === null ? p.stack.title : `stack ${p.stack.number} "${p.stack.title}"${p.stack.follow_on ? ' (follow-on)' : ''}`);

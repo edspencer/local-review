@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, stackColor, type CommitResponse, type CommitSummary, type FileData, type GithubInfo, type Loc, type PrInfo, type RepoData, type Review, type StackGroup, type Thread } from './api';
+import { api, stackColor, type CommitResponse, type CommitSummary, type FileData, type GithubInfo, type LandedInfo, type Loc, type PrInfo, type RepoData, type Review, type StackGroup, type Thread } from './api';
 import { BranchStatusMarker, PrBadge, branchNote } from './Branch';
 import { Avatar, AuthorLabel, CommentForm, CommentView, Markdown, Octicon, ThreadView, reviewer, type ThreadActions } from './Comments';
 import { FilesChanged, StatusIcon, type Draft } from './FilesChanged';
@@ -220,7 +220,7 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
           </div>
         )}
         <div className="pr-meta">
-          <ReadinessControl status={status} progress={progress} github={data.pr.github ?? github} busy={statusBusy} onSet={setStatus} />
+          <ReadinessControl status={status} progress={progress} github={data.pr.github ?? github} busy={statusBusy} onSet={setStatus} mergedTip={landedTip(c.landed)} />
           <span>
             commit <strong>{data.index + 1}</strong> of {data.total} in <strong>{data.repo}</strong> ·{' '}
             {branch ? (
@@ -235,10 +235,19 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
             ) : (
               <span className="branch-name" title="The repo's range end (this commit has no branch of its own)">{data.branch}</span>
             )}
-            {github && status !== 'published' && <> <PrBadge github={github} /></>} · <strong>{c.author}</strong> committed{' '}
-            <span title={c.date}>{relativeTime(c.date)}</span> · <code className="sha" title={c.sha} onClick={() => navigator.clipboard?.writeText(c.sha)}>{c.short}</code>
+            {github && status !== 'published' && status !== 'merged' && <> <PrBadge github={github} /></>} · <strong>{c.author}</strong> committed{' '}
+            <span title={c.date}>{relativeTime(c.date)}</span>
+            {c.landed?.at && <> · merged <span title={c.landed.at}>{relativeTime(c.landed.at)}</span>{c.landed.method && <> ({c.landed.method})</>}</>}
+            {' '}· <code className="sha" title={c.sha} onClick={() => navigator.clipboard?.writeText(c.sha)}>{c.short}</code>
           </span>
         </div>
+        {c.landed && c.landed.diff !== 'merge-base' && (
+          <div className="flash landed-note" role="status">
+            {c.landed.diff === 'merge-commit'
+              ? <>This PR's head or base isn't in the local repo, so this is the merge commit's diff (<code>{c.landed.commit?.slice(0, 8)}</code> against its first parent).</>
+              : <>Neither this PR's head and base nor its merge commit is in the local repo, so there's no diff to show. Fetching them would bring it back.</>}
+          </div>
+        )}
         {group && stackCommits.length > 0 && <StackStepper loc={loc} group={group} commits={stackCommits} current={c.sha} tab={tab} next={data.next} />}
         {actionError && <div className="flash flash-error" role="alert">{actionError} <button className="btn-link" onClick={() => setActionError(null)}>Dismiss</button></div>}
         {data.pr.parse_error && <div className="flash flash-error">PR file <code>{data.pr.file}</code> is not valid YAML, so the commit message is shown instead: {data.pr.parse_error}</div>}
@@ -293,6 +302,16 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
       )}
     </div>
   );
+}
+
+/** The Merged pill's tooltip: what landed, and how. */
+function landedTip(l: LandedInfo | null | undefined): string | undefined {
+  if (!l) return undefined;
+  return [
+    l.at && `Merged ${l.at}${l.method ? ` (${l.method})` : ''}`,
+    l.commit && `Merge commit ${l.commit.slice(0, 8)}`,
+    l.diff === 'merge-base' ? `Diff: merge-base(base ${l.base?.slice(0, 8)}, head ${l.head?.slice(0, 8)})...head` : l.diff === 'merge-commit' ? 'Diff: the merge commit against its first parent' : 'No diff available',
+  ].filter(Boolean).join('\n');
 }
 
 /**

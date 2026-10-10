@@ -16,6 +16,8 @@ repos:
     branch: me/my-feature             # range end = this branch's head (or `to: <sha|ref>`, inclusive)
     base: origin/main                 # range start = merge-base(base, end), exclusive; default origin/HEAD, main, master
     # from: <sha|ref>                 # alternative start: the first commit included (overrides base)
+    # landed: ["0a1b2c3d"]            # after merges: PRs frozen by the agent, bottom to top (prs file keys; see
+                                      # "Landed PRs" in README.md). They come first and keep their numbers.
     stacks:                           # optional; consecutive groups of commits, in order
       - title: Groundwork
         color: blue                   # blue green purple orange pink teal red, or "#hex"; default cycles (yellow is

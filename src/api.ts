@@ -25,17 +25,29 @@ export interface CommitSummary {
   branch?: BranchInfo | null;
   /** the GitHub PR it was published as, if any */
   github?: GithubInfo | null;
-  /** draft / ready (prs/ `status:`), or published once `github` is recorded */
+  /** draft / ready (prs/ `status:`), published once `github` is recorded, merged once `landed` is */
   status: PrStatus;
   /** conversations resolved and changed files viewed, for the readiness badge */
   progress: Progress;
+  /** a landed (merged) PR: prs/ `landed:`, and how its diff was made */
+  landed?: LandedInfo | null;
+}
+
+export interface LandedInfo {
+  head?: string;
+  base?: string;
+  commit?: string;
+  method?: 'merge' | 'squash' | 'rebase';
+  at?: string;
+  /** merge-base(base, head)...head; the merge commit's first-parent diff (head or base not in the repo); or none */
+  diff: 'merge-base' | 'merge-commit' | 'none';
 }
 
 export interface BranchInfo {
   /** the display branch */
   name: string;
-  /** moved: the recorded branch now points at another commit; missing: recorded but not in git */
-  status: 'ok' | 'moved' | 'missing' | 'discovered';
+  /** moved: the recorded branch now points at another commit; missing: recorded but not in git; merged: a landed PR's (history) */
+  status: 'ok' | 'moved' | 'missing' | 'discovered' | 'merged';
   /** where a moved branch points now */
   points_at?: string;
   discovered: string[];
@@ -46,6 +58,8 @@ export interface GithubInfo {
   url: string;
   branch?: string;
   base?: string;
+  stack?: number;
+  stacked_on?: string;
 }
 
 export interface StackGroup {
@@ -103,6 +117,10 @@ export interface ProjectSummary {
   commitCount: number;
   /** commits in follow-on stacks (not in commitCount) */
   followOnCount: number;
+  /** landed (merged) PRs (not in commitCount) */
+  mergedCount: number;
+  /** everything has landed: no live commits in any repo */
+  archived: boolean;
   unresolved: number;
   modified: string;
 }
@@ -218,7 +236,7 @@ export interface CommitResponse {
   stack: (StackGroup & { position: number; count: number }) | null;
   prev: CommitRef | null;
   next: CommitRef | null;
-  commit: Omit<CommitSummary, 'title' | 'title_source' | 'position' | 'stack' | 'unresolved' | 'threads' | 'viewedCount' | 'progress'> & { body: string; committer: string; committerDate: string; files: FileData[] };
+  commit: Omit<CommitSummary, 'title' | 'title_source' | 'position' | 'stack' | 'unresolved' | 'threads' | 'viewedCount' | 'progress'> & { body: string; committer: string; committerDate: string; files: FileData[]; landed: LandedInfo | null };
   pr: PrInfo;
   review: Review;
 }

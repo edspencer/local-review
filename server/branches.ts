@@ -20,7 +20,7 @@ export interface RefIndex {
   symrefs: Map<string, string>; // e.g. origin/HEAD -> origin/main (short names)
 }
 
-export type BranchStatus = 'ok' | 'moved' | 'missing' | 'discovered';
+export type BranchStatus = 'ok' | 'moved' | 'missing' | 'discovered' | 'merged';
 
 export interface BranchInfo {
   name: string;
@@ -114,11 +114,14 @@ export function discoveredFor(idx: RefIndex, sha: string, tip: string | null): s
 /**
  * Reconcile what prs/<sha>.yaml records with git. Recorded name: `github.branch`, else `branch`. Then:
  * ok (exists, points here), moved (exists, points elsewhere: `points_at`), missing (not in git). With nothing
- * recorded: the best discovered branch (a local non-tip one first), status `discovered`; else null.
+ * recorded: the best discovered branch (a local non-tip one first), status `discovered`; else null. A landed PR's
+ * recorded branch is `merged`, whatever git says (never a warning).
  */
 export function reconcileBranch(idx: RefIndex, sha: string, override: PrOverride | undefined, tip: string | null): BranchInfo | null {
-  const discovered = discoveredFor(idx, sha, tip);
   const recorded = override?.github?.branch ?? override?.branch;
+  // a landed PR's branch is history: it may be deleted or reused by now, and that's no problem
+  if (override?.landed) return recorded ? { name: recorded, status: 'merged', discovered: [] } : null;
+  const discovered = discoveredFor(idx, sha, tip);
   if (recorded) {
     const e = lookupBranch(idx, recorded);
     if (!e) return { name: recorded, status: 'missing', discovered };

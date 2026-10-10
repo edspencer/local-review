@@ -1,9 +1,10 @@
-import { commitDetail, isAncestor, patchId, rangeEnd, summarize, type CommitSummary, type RepoInfo, type RepoRange } from './commits.js';
+import { commitDetail, detailOf, isAncestor, patchId, rangeEnd, summarize, type CommitSummary, type RepoInfo, type RepoRange } from './commits.js';
 import type { InspectOrphan, LiveCommit, ReviewContext } from './reviews.js';
 import type { PrContext } from './prs.js';
 
 export function liveCommits(cfg: RepoRange, info: RepoInfo): LiveCommit[] {
-  return info.commits.map((c) => ({ sha: c.sha, subject: c.subject, changeId: c.changeId, getPatchId: () => patchId(cfg.path, c.sha) }));
+  // landed PRs are in the list (so nothing takes their files) but frozen (so they take nothing)
+  return info.commits.map((c) => ({ sha: c.sha, subject: c.subject, changeId: c.changeId, getPatchId: () => patchId(cfg.path, c.sha), ...(c.landed ? { frozen: true } : {}) }));
 }
 
 /**
@@ -46,7 +47,8 @@ export function contextFor(dir: string, cfg: RepoRange, info: RepoInfo, commit: 
     getFiles: async (sha) => {
       if (!/^[0-9a-f]{40}$/.test(sha)) return null;
       try {
-        return (await commitDetail(cfg.path, sha)).files;
+        // a landed PR's own diff (merge-base(base, head)...head), not its key commit's
+        return (await (sha === commit.sha ? detailOf(cfg.path, commit) : commitDetail(cfg.path, sha))).files;
       } catch {
         return null;
       }

@@ -38,10 +38,11 @@
   --follow-on-border: #bf8700;
   --follow-on-line: #d4a72c;
   --follow-on-subtle: #fff8c5;
-  /* PR readiness badges: GitHub's success green (a filled circle reads as "done" even inside a green stack) and its
-     "merged" purple for published */
+  /* PR readiness badges: GitHub's success green for ready (a filled circle reads as "done" even inside a green
+     stack), its accent blue for published, and its "merged" purple, kept for merged (landed) PRs alone */
   --ready: #1f883d;
-  --published: #8250df;
+  --published: #0969da;
+  --merged: #8250df;
 }
 
 * { box-sizing: border-box; }
@@ -500,6 +501,7 @@ button { font-family: inherit; }
 .step.current a .readiness-badge .rb-fill { fill: #fff; }
 .step.current a .readiness-badge.is-ready .rb-mark { stroke: var(--ready); }
 .step.current a .readiness-badge.is-published .rb-mark { fill: var(--published); }
+.step.current a .readiness-badge.is-merged .rb-mark { fill: var(--merged); }
 .stepper-next { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .stepper-next .btn-link { font-size: 12px; }
 .pr-branch { display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; max-width: 100%; }
@@ -533,7 +535,12 @@ button { font-family: inherit; }
 .readiness-badge.is-published .rb-mark { fill: #fff; }
 .readiness-badge.is-ready .rb-fill { fill: var(--ready); }
 .readiness-badge.is-published .rb-fill { fill: var(--published); }
-.State--published .readiness-badge { box-shadow: 0 0 0 1.5px #fff; border-radius: 50%; }
+.State--published .readiness-badge, .State--merged .readiness-badge { box-shadow: 0 0 0 1.5px #fff; border-radius: 50%; }
+.readiness-badge.is-merged .rb-mark { fill: #fff; }
+.readiness-badge.is-merged .rb-fill { fill: var(--merged); }
+.State--merged { gap: 6px; background: var(--merged); }
+.State--merged .pr-badge { color: #fff; border-color: rgba(255, 255, 255, 0.6); }
+.State--merged .pr-badge:hover { color: #fff; border-color: #fff; }
 .readiness-control { display: inline-flex; align-items: center; gap: 10px; }
 .readiness-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 2em; padding: 2px; background: var(--bg-subtle); }
 .readiness-opt {
@@ -909,7 +916,8 @@ a.header-project:hover { color: #f6d29b; }
     --follow-on-line: rgba(187, 128, 9, 0.6);
     --follow-on-subtle: rgba(187, 128, 9, 0.15);
     --ready: #238636;
-    --published: #8957e5;
+    --published: #1f6feb;
+    --merged: #8957e5;
     --tooltip-bg: #3d444d;
     --tooltip-fg: #f0f6fc;
   }
@@ -1054,6 +1062,16 @@ a.header-project:hover { color: #f6d29b; }
 .project-home-list .follow-on-divider { margin: 16px 0 8px; }
 /* aggregates leave follow-on stacks out and say so beside them: "+1 follow-on stack (2 PRs)" */
 .follow-on-note { color: var(--follow-on-fg); font-weight: 600; }
+.merged-note { color: var(--merged); font-weight: 600; }
+.pr-stack-tally.is-merged { color: var(--merged); }
+.branch-name.is-merged { color: var(--merged); background: color-mix(in srgb, var(--merged) 12%, transparent); }
+.commit-branch.is-merged { color: var(--fg-muted); }
+.project-menu-section { list-style: none; margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
+.project-menu-section-toggle { display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 10px; border: 0; background: none; color: var(--fg-muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer; border-radius: var(--radius); }
+.project-menu-section-toggle:hover { background: var(--bg-subtle); color: var(--fg); }
+.project-menu-section-toggle .octicon { fill: currentColor; }
+.project-menu a.is-archived .project-menu-title { color: var(--fg-muted); }
+.landed-note { font-size: 12px; color: var(--fg-muted); }
 .totals-line { font-size: 12px; font-weight: 400; color: var(--fg-muted); }
 .totals-line .color-add, .totals-line .color-del { font-weight: 500; }
 .project-home-repo h3 .totals-line { display: block; margin-top: 2px; }

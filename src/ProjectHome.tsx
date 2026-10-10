@@ -50,7 +50,7 @@ export function ProjectHome({ project, version }: { project: ProjectData; versio
           {project.repos.map((r) => (
             <div key={r.name} className="project-home-repo">
               <h3>
-                {r.name} <span className="branch-name">{r.branch ?? r.end}</span>
+                {r.name} <span className="branch-name">{r.branch ?? (r.end || r.base || "merged")}</span>
                 {r.commits.length > 0 && <TotalsLine s={summary(aggs.get(r.name)!)} />}
               </h3>
               {r.error && <div className="flash flash-error">{r.error}</div>}

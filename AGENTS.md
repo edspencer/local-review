@@ -16,7 +16,7 @@ Everything lives in plain YAML under `~/.local-review/projects/<slug>/` (or `$LO
 ```
 project.yaml                    repos, commit ranges, PR stacks, intro and stack notes
 reviews/<repo>/<full-sha>.yaml  the reviewer's threads and your replies (schema: README "Comment files")
-prs/<repo>/<full-sha>.yaml      PR title/body overrides, status (draft / ready), branch, github
+prs/<repo>/<full-sha>.yaml      PR title/body overrides, status (draft / ready), branch, github, landed
 ```
 
 The server re-reads these files on every request and pushes changes to the browser, so edits show up live. When the
@@ -28,8 +28,9 @@ server is running, prefer its API (below): its writes are atomic and are merged 
 at `merge-base(base, branch)`). Each repo has `stacks`, consecutive groups of commits, each with a `title`, a
 `starts_at` selector and an optional `description` (the stack note). The top-level `description` is the project
 intro. `starts_at` is a commit **subject** (or a sha prefix): a stack runs from that commit up to the next stack's
-start. A stack may have `follow_on: true`: parked work for later (below). See README "Projects" for the
-full schema.
+start. A stack may have `follow_on: true`: parked work for later (below). After merges, a repo also has
+`landed:`, the keys of its merged PRs' prs files, bottom to top ("After merges"), and its `branch` becomes optional.
+See README "Projects" for the full schema.
 
 **Follow-on stacks** are parked work: PRs to get to later, not part of the stacks going up now. They're
 reviewed like any other, keep their PR numbers, and sit at the end of the repo's `stacks:`. **Don't publish or
@@ -56,16 +57,29 @@ github:                        # once the PR exists on GitHub
   url: https://github.com/<org>/my-service/pull/123
   branch: me/feature-flag
   base: me/config-loader
+  stack: 12                    # optional: the GitHub stack number
+  stacked_on: me/config-loader # optional: the branch it was stacked on before GitHub retargeted it
+landed:                        # once it has merged, written by you before any fetch ("After merges")
+  head: <full sha>             # headRefOid at merge
+  base: <full sha>             # baseRefOid (pull.base.sha) at merge
+  commit: <full sha>           # mergeCommit.oid
+  method: merge                # merge, squash or rebase
+  at: 2026-10-09T12:00:00Z     # mergedAt
 ```
 
-**Readiness: draft → ready → published.** Every PR starts as a draft. The reviewer marks it **ready** in the UI when they're happy
-with it (that writes `status: ready`). It's **published** once it has a `github:` record, whatever `status:` says. The
-API gives each commit `status` (`draft` / `ready` / `published`) and `progress` (threads resolved, files viewed).
+**Readiness: draft → ready → published → merged.** Every PR starts as a draft. The reviewer marks it **ready** in the UI when they're happy
+with it (that writes `status: ready`). It's **published** once it has a `github:` record, whatever `status:` says,
+and **merged** once it has a `landed:` record. The API gives each commit `status` (`draft` / `ready` / `published` /
+`merged`) and `progress` (threads resolved, files viewed).
 **Never set `status: ready` yourself (or `"status":"ready"` through the API) unless the reviewer asks you to: readiness is
 their call.** Don't clear it either. Recording `github:` after publishing is what makes a PR published.
 
+**Local Review comments and GitHub comments are entirely separate.** Review threads here are between the reviewer
+and you, locally. Never copy them to GitHub, and never import GitHub review threads or comments into Local Review
+files, not even for merged or historical PRs.
+
 **Files follow rebases.** A file named after an old sha is re-attached to the new commit by patch-id, then by
-Change-Id, then by **subject**. A fixup or amend changes the patch, so the subject is what carries the comments
+Change-Id, then by **subject**. Landed PRs' files never move and are never taken by another commit. A fixup or amend changes the patch, so the subject is what carries the comments
 across. **Keep subjects stable**: don't reword a reviewed commit's subject, and give every commit a unique one. The
 stack selectors (`starts_at`) depend on subjects too.
 
@@ -192,6 +206,12 @@ It lists each PR in scope, in order, with:
 
 It warns about anything that needs fixing first: unresolved `starts_at` selectors, PRs without a branch, `missing`
 and `moved` branches, and stacks that still contain draft PRs (only the reviewer can clear that one, by marking them ready). `--format json` is for scripts, e.g. `jq -r '.prs[0].body'`.
+It also warns when a live PR's recorded `github.base` differs from the plan's base (retarget the PR, or check the
+order), and when a prs file with a `github:` record and no `landed:` has a commit that's now in the repo base: it
+landed upstream but wasn't frozen (do that now; "After merges").
+
+Landed (merged) PRs are never planned, with no warnings of their own; the first live PR's base is the repo base. A
+note lists them ("Skipped 9 landed (merged) PRs …"); in JSON, `excluded_landed[]` (`repo`, `prs`).
 
 Follow-on stacks are left out by default, with none of their warnings, and a note says so ("Excluded 1 follow-on
 stack (2 PRs: …); use --include-follow-on"). `--include-follow-on` plans them too (the first one's base is the
@@ -295,24 +315,90 @@ Check `gh stack link --help` before you run it, and if anything differs from the
   This lands that PR and every unmerged PR below it, all or nothing. **`gh pr merge` can't merge a stacked PR.**
   Squash gives one commit per PR. Merging is the reviewer's call.
 - GitHub then retargets the lowest unmerged PR to the stack's base and **rebases the rest on the server**,
-  force-pushing their branches. The remote branches have moved, so fetch before pushing anything.
-- Locally, rebase what's left onto the new main. This is the one time to rebase onto `origin/main`:
+  force-pushing their branches. The remote branches have moved, so fetch before pushing anything, but **freeze the
+  merged PRs first** (below).
 
-  ```sh
-  git fetch origin
-  git rebase --update-refs origin/main        # on the tip branch
-  ```
+### Freezing merged PRs (before any fetch or rebase)
 
-  Git skips commits whose patch is already upstream (a squashed single-commit PR has the same patch). If a merged
-  commit was changed during the merge and isn't skipped, use
-  `git rebase --update-refs --onto origin/main <merged-commit-sha>`.
+Once merged, a PR's commits leave the Local Review range when you rebase onto the new main, and the stack would empty
+out and renumber. Freezing keeps it as a **landed PR**: same number, same stack, purple **Merged** badge, GitHub's diff
+of it. **This is your job, and it comes first**, while the prs files still sit under the shas the reviewer reviewed.
+Local Review only reads the result and warns (`lr plan`: "landed upstream but not frozen"); it never calls GitHub.
+
+For each merged PR, bottom to top (`N` its number, `SHA` the full sha of its prs file, i.e. the commit it was reviewed as):
+
+```sh
+P=my-feature; R=my-service; N=123; SHA=<full sha>
+F=~/.local-review/projects/$P/prs/$R/$SHA.yaml
+
+# 1. what landed (read-only GETs)
+gh pr view $N --json headRefOid,baseRefOid,mergeCommit,mergedAt > /tmp/merged.json
+PARENTS=$(gh api "repos/{owner}/{repo}/commits/$(jq -r .mergeCommit.oid /tmp/merged.json)" --jq '.parents | length')
+METHOD=$([ "$PARENTS" = 2 ] && echo merge || echo squash)   # one parent: squash, or rebase if that's how it merged
+#    optional, for github.stacked_on: the branch it was stacked on before GitHub retargeted it
+gh api graphql -F n=$N -f query='query($n:Int!){repository(owner:"<owner>",name:"<repo>"){pullRequest(number:$n){
+  timelineItems(first:5,itemTypes:[AUTOMATIC_BASE_CHANGE_SUCCEEDED_EVENT]){nodes{... on AutomaticBaseChangeSucceededEvent{oldBase newBase}}}}}}' \
+  --jq '.data.repository.pullRequest.timelineItems.nodes[0].oldBase'
+
+# 2. write the landed: record into its prs file (append it; keep everything else)
+grep -q '^landed:' "$F" 2>/dev/null || jq -r --arg m "$METHOD" \
+  '"landed:\n  head: \(.headRefOid)\n  base: \(.baseRefOid)\n  commit: \(.mergeCommit.oid)\n  method: \($m)\n  at: \(.mergedAt)"' \
+  /tmp/merged.json >> "$F"
+```
+
+3. **Append its key to the repo's `landed:` list** in `project.yaml` (bottom to top; a quoted sha prefix is fine), by
+   hand, keeping the rest of the file:
+
+   ```yaml
+   repos:
+     - path: ~/code/my-service
+       branch: me/my-feature
+       base: origin/main
+       landed: ["0a1b2c3d", "4e5f6a7b"]   # the merged PRs, bottom to top
+   ```
+
+   Make sure the prs file has `subject:` (the commit's subject; the server writes it whenever it saves the file):
+   a stack whose `starts_at` is that subject keeps matching the landed PR.
+4. **Then fetch and rebase** what's left onto the new main. This is the one time to rebase onto `origin/main`:
+
+   ```sh
+   git fetch origin
+   git rebase --update-refs origin/main        # on the tip branch
+   ```
+
+   Git skips commits whose patch is already upstream (a squashed single-commit PR has the same patch). If a merged
+   commit was changed during the merge and isn't skipped, use
+   `git rebase --update-refs --onto origin/main <merged-commit-sha>`.
+
 - Then push only the published branches whose content differs from GitHub's rebase (normally none):
   `git diff --quiet origin/$b $b || git push --force-with-lease origin $b`. `gh stack push`, `rebase` and `sync`
   would do all this, but only for stacks tracked locally (`gh stack init <branches…>`, which also turns on
   `rerere`). `link` doesn't set that up, so don't use them.
-- The merged commits drop out of the Local Review range automatically: the merge-base moved. Their review and prs
-  files stay on disk as history. If a stack is now empty, remove it from `project.yaml` (or point its `starts_at`
-  at the next stack's first commit).
+- The landed PRs stay first in the repo, in their stacks, with their numbers; their review and prs files stay where
+  they are. Don't remove or regroup the stacks. Once everything has landed, the branch can go (`branch:` is optional
+  with `landed:`) and the project is archived automatically. Review threads on landed PRs work as normal, and stay
+  in Local Review: don't carry them to GitHub, and don't import GitHub's.
+- A PR merged without being frozen (you fetched first) can still be frozen: its prs file is where it was, and `gh pr
+  view` still has the data. `lr plan` lists the ones whose commits it can see in the base.
+
+### Importing a historical, already-merged stack (for reference or demos)
+
+Only when the reviewer asks. Everything comes from read-only `gh` GETs, and **no review threads, ever** (no
+`reviews/` files; GitHub's comments stay on GitHub).
+
+1. Get the members in order from the GitHub stack API: `gh api repos/{owner}/{repo}/stacks/<n>` lists
+   `pull_requests[]` with each one's `number`, `head` (`ref`, `sha`) and `base` (`ref`, `sha` at merge) and
+   `merged_at`; `gh api repos/{owner}/{repo}/pulls/<N> --jq .stack.position` gives a PR's position, if you need to
+   check the order. Then per PR: `gh pr view <N> --json title,body,headRefName,baseRefName,headRefOid,baseRefOid,mergeCommit,mergedAt`.
+2. Write one prs file per PR, named after its head sha, `prs/<repo>/<headRefOid>.yaml`, with `commit:`, `title:`,
+   `body:`, `branch:`, `github:` (`number`, `url`, `branch`, `base`, `stack: <n>`, optionally `stacked_on`) and
+   `landed:` (as above).
+3. Write `project.yaml`: the repo's `path` and `base`, no `branch`, `github_stack: <n>` (informational), `landed:`
+   with the head shas bottom to top, and the stacks (one per GitHub stack is simplest, `starts_at` the first PR's
+   title). A neutral project intro if the reviewer wants one.
+4. The diffs need the heads and bases in the local clone (fetching is your call, in your repo; Local Review never
+   fetches). Without the head or base, a PR shows its merge commit's diff; without that either, no diff and a
+   warning. Check the files / + / − against GitHub's numbers.
 
 ## Hand-off prompt template
 

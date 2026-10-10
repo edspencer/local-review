@@ -13,6 +13,27 @@ export interface CommitSummary {
   additions: number;
   deletions: number;
   filesChanged: number;
+  /**
+   * The commit whose tree is shown (default: `sha`); `parent` is then what it's diffed against. Only differs for a
+   * landed PR, whose `sha` is its prs file's key and whose diff is merge-base(base, head)...head (or the merge
+   * commit's first-parent diff). null: neither is in the repo, so there's nothing to diff.
+   */
+  tip?: string | null;
+  landed?: LandedView; // set on landed (merged) PRs only
+}
+
+/** A merged PR, frozen by the agent before fetching: prs/<repo>/<key>.yaml `landed:`. */
+export interface Landed {
+  head?: string; // the PR's head at merge (full sha)
+  base?: string; // pull.base.sha at merge
+  commit?: string; // the merge / squash commit
+  method?: 'merge' | 'squash' | 'rebase';
+  at?: string; // ISO time
+}
+
+export interface LandedView extends Landed {
+  /** how its diff was made: merge-base(base, head)...head; the merge commit's first-parent diff (head or base not in the repo); or none */
+  diff: 'merge-base' | 'merge-commit' | 'none';
 }
 
 /** Which commits of a repo to review: (base or from) .. (to or branch). */
@@ -36,6 +57,7 @@ export interface RepoInfo {
   mergeBase: string | null; // exclusive start of the range (null for a range starting at a root commit)
   commits: CommitSummary[];
   error?: string;
+  warning?: string; // a problem with the live range that isn't an error (the repo has landed PRs to show)
 }
 
 export interface FileChange {
@@ -116,13 +138,25 @@ export async function summarize(repo: string, sha: string): Promise<Omit<CommitS
   return s;
 }
 
-export async function loadRepo(cfg: RepoRange): Promise<RepoInfo> {
+/**
+ * The repo's live range. With `optional` (the repo has landed PRs), a missing `branch`/`to`, or one that no longer
+ * resolves (deleted after the merge), is no range at all rather than an error, and other range problems are a
+ * `warning`; only a missing repo is still an error.
+ */
+export async function loadRepo(cfg: RepoRange, opts: { optional?: boolean } = {}): Promise<RepoInfo> {
   const end = rangeEnd(cfg);
   const info: RepoInfo = { name: cfg.name, path: cfg.path, branch: cfg.branch ?? null, end, base: cfg.base ?? null, from: cfg.from ?? null, head: null, mergeBase: null, commits: [] };
+  if (!fs.existsSync(cfg.path)) {
+    info.error = `repo not found: ${cfg.path}`;
+    return info;
+  }
   try {
-    if (!fs.existsSync(cfg.path)) throw new Error(`repo not found: ${cfg.path}`);
-    if (!end) throw new Error('no `branch` or `to` given');
+    if (!end) {
+      if (opts.optional) return info;
+      throw new Error('no `branch` or `to` given');
+    }
     info.head = await headOf(cfg);
+    if (!info.head && opts.optional) return info;
     if (!info.head) throw new Error(cfg.to ? `'to' ref '${cfg.to}' not found` : `branch '${end}' not found`);
     let range: string;
     if (cfg.from) {
@@ -146,9 +180,89 @@ export async function loadRepo(cfg: RepoRange): Promise<RepoInfo> {
     const shas = (await git(cfg.path, ['rev-list', '--reverse', '--end-of-options', range])).split('\n').filter(Boolean);
     info.commits = await Promise.all(shas.map(async (sha) => ({ sha, short: sha.slice(0, 8), ...(await summarize(cfg.path, sha)) })));
   } catch (e) {
-    info.error = (e as Error).message;
+    if (opts.optional) {
+      info.warning = `live range: ${(e as Error).message}`;
+      info.commits = [];
+    } else info.error = (e as Error).message;
   }
   return info;
+}
+
+/** The repo's base ref as a sha (`base`, else origin/HEAD, main, master), or null. */
+export async function baseSha(cfg: RepoRange): Promise<string | null> {
+  try {
+    return await revParse(cfg.path, await resolveBase(cfg));
+  } catch {
+    return null;
+  }
+}
+
+const isFull = (s: string | undefined): s is string => typeof s === 'string' && /^[0-9a-f]{40}$/.test(s);
+/** A full sha from a YAML file, if the repo has it as a commit; returned as git itself prints it. */
+const present = (repo: string, s: string | undefined) => (isFull(s) ? revParse(repo, s) : Promise.resolve(null));
+
+async function mergeBaseOf(repo: string, a: string, b: string): Promise<string | null> {
+  try {
+    return (await git(repo, ['merge-base', '--end-of-options', sha40(a), sha40(b)])).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+const landedCache = new Map<string, CommitSummary>(); // only complete (merge-base) results: objects don't vanish
+
+/**
+ * A landed PR as a range entry: `sha` is its prs file's key, and its diff is merge-base(base, head)...head (GitHub's
+ * view of a stacked PR once it's retargeted and rebased onto the base). If the head or base object isn't in the repo
+ * (a deleted branch, never fetched), it falls back to the merge commit's first-parent diff, else no diff at all.
+ * Subject: the prs file's stored `subject:`, else the head's (or the key commit's), else the PR title.
+ */
+export async function landedSummary(repo: string, key: string, l: Landed, stored: { subject?: string; title?: string } = {}): Promise<CommitSummary> {
+  sha40(key);
+  const ck = [repo, key, l.head, l.base, l.commit, l.method, l.at, stored.subject, stored.title].join('\0');
+  const hit = landedCache.get(ck);
+  if (hit) return hit;
+  const [head, base, merge, keyObj] = await Promise.all([present(repo, l.head), present(repo, l.base), present(repo, l.commit), present(repo, key)]);
+  let from: string | null = null;
+  let to: string | null = null;
+  let diff: LandedView['diff'] = 'none';
+  if (head && base) {
+    const mb = await mergeBaseOf(repo, base, head);
+    if (mb) [from, to, diff] = [mb, head, 'merge-base'];
+  }
+  if (!to && merge) {
+    from = (await summarize(repo, merge)).parent;
+    [to, diff] = [merge, 'merge-commit'];
+  }
+  const metaSha = head ?? keyObj; // whose author, date and subject stand for the PR (not the merge commit's)
+  const meta = metaSha ? await summarize(repo, metaSha) : merge ? await summarize(repo, merge) : null;
+  const files = to ? await changedFiles(repo, to, from) : [];
+  const s: CommitSummary = {
+    sha: key,
+    short: key.slice(0, 8),
+    parent: from,
+    subject: stored.subject?.trim() || (metaSha && meta?.subject) || stored.title || meta?.subject || '',
+    author: meta?.author ?? '',
+    authorEmail: meta?.authorEmail ?? '',
+    date: (metaSha && meta?.date) || l.at || meta?.date || '',
+    changeId: null,
+    additions: files.reduce((a, f) => a + f.additions, 0),
+    deletions: files.reduce((a, f) => a + f.deletions, 0),
+    filesChanged: files.length,
+    tip: to,
+    landed: { ...l, diff },
+  };
+  if (diff === 'merge-base') {
+    if (landedCache.size > 2000) landedCache.clear();
+    landedCache.set(ck, s);
+  }
+  return s;
+}
+
+/** The files a range entry changes: its first-parent diff, or a landed PR's diff (none if it has none). */
+export function filesOf(repo: string, c: CommitSummary): Promise<FileChange[]> {
+  if (c.tip === null) return Promise.resolve([]);
+  return changedFiles(repo, c.tip ?? c.sha, c.parent);
 }
 
 function parseStatus(code: string): FileChange['status'] {
@@ -164,7 +278,7 @@ function parseStatus(code: string): FileChange['status'] {
 
 /** Files changed by `sha` relative to its first parent (or the empty tree), with -M rename detection. */
 export async function changedFiles(repo: string, sha: string, parent: string | null): Promise<FileChange[]> {
-  const key = repo + '\0' + sha;
+  const key = repo + '\0' + sha + '\0' + (parent ?? '');
   const hit = filesCache.get(key);
   if (hit) return hit;
   const from = parent ? sha40(parent) : EMPTY_TREE;
@@ -239,12 +353,21 @@ const detailCache = new Map<string, Promise<CommitDetail>>();
 const DETAIL_CACHE_SIZE = 12;
 
 export function commitDetail(repo: string, sha: string): Promise<CommitDetail> {
-  const key = repo + '\0' + sha;
+  return cachedDetail(repo + '\0' + sha, () => loadCommitDetail(repo, sha));
+}
+
+/** A range entry's detail: a commit's, or a landed PR's (its own diff, the head's message; see landedSummary). */
+export function detailOf(repo: string, c: CommitSummary): Promise<CommitDetail> {
+  if (!c.landed) return commitDetail(repo, c.sha);
+  return cachedDetail(`${repo}\0landed\0${c.sha}\0${c.parent}\0${c.tip}\0${c.subject}`, () => loadLandedDetail(repo, c));
+}
+
+function cachedDetail(key: string, load: () => Promise<CommitDetail>): Promise<CommitDetail> {
   let p = detailCache.get(key);
   if (p) {
     detailCache.delete(key); // refresh LRU position
   } else {
-    p = loadCommitDetail(repo, sha);
+    p = load();
     p.catch(() => detailCache.delete(key));
   }
   detailCache.set(key, p);
@@ -264,8 +387,29 @@ async function loadCommitDetail(repo: string, sha: string): Promise<CommitDetail
   const meta = await git(repo, ['show', '-s', `--format=%B${SEP}%cn${SEP}%cI`, sha40(sha)]);
   const [message, committer, committerDate] = meta.split(SEP);
   const body = messageBody(message);
-  const files = await changedFiles(repo, sha, s.parent);
-  const withContents = await Promise.all(
+  const files = await withContents(repo, await changedFiles(repo, sha, s.parent), s.parent, sha);
+  return { sha, short: sha.slice(0, 8), ...s, body, committer, committerDate, files };
+}
+
+async function loadLandedDetail(repo: string, c: CommitSummary): Promise<CommitDetail> {
+  // the message of the head (or the key commit), if the repo has it; a merge commit's message isn't the PR's
+  const msgSha = (await present(repo, c.landed?.head)) ?? (await present(repo, c.sha));
+  let body = '';
+  let committer = '';
+  let committerDate = '';
+  if (msgSha) {
+    const [message, cn, cd] = (await git(repo, ['show', '-s', `--format=%B${SEP}%cn${SEP}%cI`, sha40(msgSha)])).split(SEP);
+    [body, committer, committerDate] = [messageBody(message), cn, cd.trim()];
+  }
+  const files = c.tip ? await withContents(repo, await changedFiles(repo, c.tip, c.parent), c.parent, c.tip) : [];
+  return { ...c, body, committer, committerDate, files };
+}
+
+/** Old and new contents for each changed file, `from` (null: the empty tree) .. `to`. */
+async function withContents(repo: string, files: FileChange[], from: string | null, to: string): Promise<FileWithContents[]> {
+  const s = { parent: from };
+  const sha = to;
+  return Promise.all(
     files.map(async (f): Promise<FileWithContents> => {
       const out: FileWithContents = { ...f, oldContent: null, newContent: null };
       if (f.binary) return out;
@@ -289,7 +433,6 @@ async function loadCommitDetail(repo: string, sha: string): Promise<CommitDetail
       return out;
     }),
   );
-  return { sha, short: sha.slice(0, 8), ...s, body, committer, committerDate, files: withContents };
 }
 
 const ancestorCache = new Map<string, boolean>(); // repo\0sha\0head

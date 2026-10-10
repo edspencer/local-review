@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import YAML from 'yaml';
 import { atomicWrite, renameToBak } from './safefs.js';
 import { storedStatus } from '../shared/readiness.js';
+import type { Landed } from './commits.js';
 import { ReviewConflictError, matchOrphans, readRaw, reviewPath, str, withLock, type InspectOrphan, type LiveCommit, type MatchKind } from './reviews.js';
 
 export interface PrContext {
@@ -26,6 +27,8 @@ export interface GithubPr {
   branch?: string;
   base?: string;
   created?: string;
+  stack?: number; // the GitHub stack it belongs to (informational)
+  stacked_on?: string; // the branch it was stacked on before GitHub retargeted it to the base
 }
 
 export interface PrOverride {
@@ -34,6 +37,7 @@ export interface PrOverride {
   branch?: string; // the branch an agent tagged this commit with (a plain git branch name)
   github?: GithubPr;
   status?: 'draft' | 'ready'; // the reviewer's readiness call (absent: draft); published is derived from `github`
+  landed?: Landed; // merged on GitHub and frozen by the agent: status `merged`
 }
 
 export interface LoadedPr {
@@ -74,7 +78,37 @@ export function overrideOf(doc: Record<string, unknown> | null): PrOverride {
   if (gh) o.github = gh;
   const status = storedStatus(doc.status);
   if (status) o.status = status;
+  const landed = landedOf(doc.landed);
+  if (landed) o.landed = landed;
   return o;
+}
+
+const SHA = /^[0-9a-f]{40}$/;
+const METHODS = ['merge', 'squash', 'rebase'] as const;
+
+/**
+ * The `landed:` block, tolerantly: `{head, base, commit, method, at}`, shas as full 40-hex (any case; anything else is
+ * ignored), `method` merge / squash / rebase (any case). Usable once it has a `head` or a `commit`; otherwise null.
+ */
+export function landedOf(v: unknown): Landed | null {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const sha = (x: unknown) => {
+    const s = str(x)?.trim().toLowerCase();
+    return s && SHA.test(s) ? s : undefined;
+  };
+  const l: Landed = {};
+  const head = sha(o.head);
+  if (head) l.head = head;
+  const base = sha(o.base);
+  if (base) l.base = base;
+  const commit = sha(o.commit) ?? sha(o.merge_commit);
+  if (commit) l.commit = commit;
+  const m = str(o.method)?.trim().toLowerCase();
+  if (m && (METHODS as readonly string[]).includes(m)) l.method = m as Landed['method'];
+  const at = str(o.at)?.trim();
+  if (at) l.at = at;
+  return l.head || l.commit ? l : null;
 }
 
 /** A hand-written branch name: trimmed, `refs/heads/` dropped. Blank or not a string: none. */
@@ -117,10 +151,14 @@ export function githubOf(v: unknown): GithubPr | null {
   if (base) gh.base = base;
   const created = str(o.created)?.trim();
   if (created) gh.created = created;
+  const stack = prNumber(o.stack);
+  if (stack) gh.stack = stack;
+  const stackedOn = branchName(o.stacked_on);
+  if (stackedOn) gh.stacked_on = stackedOn;
   return gh;
 }
 
-function readFile(file: string): Omit<LoadedPr, 'matchedFrom' | 'matchedBy'> {
+export function readPrFile(file: string): Omit<LoadedPr, 'matchedFrom' | 'matchedBy'> {
   const raw = fs.readFileSync(file, 'utf8');
   const { doc, error } = parse(raw);
   return { override: overrideOf(doc), doc, file, raw, ...(error ? { parseError: error } : {}) };
@@ -130,11 +168,11 @@ const none = (): LoadedPr => ({ override: {}, doc: null, file: null, raw: null }
 
 export async function loadPr(ctx: PrContext): Promise<LoadedPr> {
   const file = prPath(ctx.dir, ctx.sha);
-  if (fs.existsSync(file)) return readFile(file);
+  if (fs.existsSync(file)) return readPrFile(file);
   const live = ctx.liveCommits ?? [{ sha: ctx.sha, subject: ctx.subject, changeId: ctx.changeId, getPatchId: ctx.getPatchId }];
   const m = (await matchOrphans(ctx.dir, live, { inspect: ctx.inspectOrphan })).get(ctx.sha);
   if (m) {
-    const l = readFile(m.orphan.file);
+    const l = readPrFile(m.orphan.file);
     if (!l.parseError) return { ...l, matchedFrom: m.orphan.sha, matchedBy: m.by };
   }
   return none();
@@ -148,11 +186,11 @@ export async function loadPrs(dir: string, live: LiveCommit[], inspect?: Inspect
   for (const c of live) {
     const file = prPath(dir, c.sha);
     try {
-      if (fs.existsSync(file)) out.set(c.sha, readFile(file));
+      if (fs.existsSync(file)) out.set(c.sha, readPrFile(file));
       else {
         const m = matched.get(c.sha);
         if (m) {
-          const l = readFile(m.orphan.file);
+          const l = readPrFile(m.orphan.file);
           if (!l.parseError) out.set(c.sha, { ...l, matchedFrom: m.orphan.sha, matchedBy: m.by });
         }
       }
@@ -164,7 +202,7 @@ export async function loadPrs(dir: string, live: LiveCommit[], inspect?: Inspect
 }
 
 function toYaml(doc: Record<string, unknown>): string {
-  const { commit, patch_id, change_id, subject, previous_commits, matched_by, title, body, status, branch, github, updated, ...rest } = doc;
+  const { commit, patch_id, change_id, subject, previous_commits, matched_by, title, body, status, branch, github, landed, updated, ...rest } = doc;
   const o: Record<string, unknown> = { commit, patch_id: patch_id ?? null };
   if (change_id) o.change_id = change_id;
   o.subject = subject;
@@ -175,6 +213,7 @@ function toYaml(doc: Record<string, unknown>): string {
   if (status !== undefined) o.status = status;
   if (branch !== undefined) o.branch = branch;
   if (github !== undefined) o.github = github;
+  if (landed !== undefined) o.landed = landed;
   if (updated !== undefined) o.updated = updated;
   Object.assign(o, rest);
   const d = new YAML.Document(o);
@@ -232,8 +271,8 @@ export function writePr(ctx: PrContext, change: PrChange, now = new Date()): Pro
       if (change.github !== undefined) {
         if (change.github === null) delete doc.github;
         else {
-          const { number, url, branch, base, created } = change.github;
-          doc.github = { number, url, ...(branch ? { branch } : {}), ...(base ? { base } : {}), ...(created ? { created } : {}) };
+          const { number, url, branch, base, created, stack, stacked_on } = change.github;
+          doc.github = { number, url, ...(branch ? { branch } : {}), ...(base ? { base } : {}), ...(created ? { created } : {}), ...(stack ? { stack } : {}), ...(stacked_on ? { stacked_on } : {}) };
         }
       }
       if (change.status !== undefined) {
@@ -264,7 +303,7 @@ export function writePr(ctx: PrContext, change: PrChange, now = new Date()): Pro
           /* ignore */
         }
       }
-      return readFile(target);
+      return readPrFile(target);
     }
   });
 }

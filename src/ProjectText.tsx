@@ -136,17 +136,20 @@ export function StackWeight({ w }: { w: NonNullable<StackGroup['weight']> }) {
   );
 }
 
-/** A repo's totals with follow-on stacks left out and counted on the side (shared/totals.ts, as in the stack picture). */
+/** A repo's totals with follow-on stacks and merged PRs left out and counted on the side (shared/totals.ts, as in the stack picture). */
 export function repoAggregate(r: RepoData): Aggregate {
   const bySha = new Map(r.commits.map((c) => [c.sha, c]));
   return aggregate(
     r.stacks.map((g) => {
       const cs = g.shas.map((s) => bySha.get(s)).filter((c) => !!c);
-      return { follow_on: g.follow_on, prs: cs.length, additions: cs.reduce((a, c) => a + c.additions, 0), deletions: cs.reduce((a, c) => a + c.deletions, 0) };
+      const m = cs.filter((c) => c.landed);
+      const sum = (xs: typeof cs) => ({ prs: xs.length, additions: xs.reduce((a, c) => a + c.additions, 0), deletions: xs.reduce((a, c) => a + c.deletions, 0) });
+      return { follow_on: g.follow_on, ...sum(cs), merged: sum(m) };
     }),
   );
 }
 
+export const MERGED_TOTALS_TIP = 'Merged PRs (landed on GitHub) are left out of these totals; their stacks still show them.';
 export const FOLLOW_ON_TOTALS_TIP = 'Follow-on stacks (parked work) are left out of these totals; their own stack headers still show their numbers.';
 
 /** "2 repos · 4 stacks · 12 PRs · +3,477 −155 · +1 follow-on stack (2 PRs)" */
@@ -155,6 +158,7 @@ export function TotalsLine({ s, className = '' }: { s: Summary; className?: stri
     <span className={`totals-line ${className}`}>
       {s.counts} · <span className="color-add">+{s.additions.toLocaleString('en-US')}</span> <span className="color-del">−{s.deletions.toLocaleString('en-US')}</span>
       {s.note && <> · <span className="follow-on-note" title={FOLLOW_ON_TOTALS_TIP}>{s.note}</span></>}
+      {s.merged && <> · <span className="merged-note" title={MERGED_TOTALS_TIP}>{s.merged}</span></>}
     </span>
   );
 }

@@ -8,7 +8,7 @@ import opentype from 'opentype.js';
 import { Resvg } from '@resvg/resvg-js';
 import { ROOT } from './config.js';
 import { loadRefs, reconcileBranch } from './branches.js';
-import { changedFiles } from './commits.js';
+import { filesOf } from './commits.js';
 import { inspectOrphan, liveCommits } from './context.js';
 import { loadPrs } from './prs.js';
 import { FOLLOW_ON_COLOR, type LoadedProject, type LoadedRepo } from './projects.js';
@@ -27,6 +27,7 @@ export interface VizPr {
   branch?: string | null; // the PR's branch (display name), shown under its title
   branchMissing?: boolean; // recorded, but no longer in git: drawn struck through
   pr?: number | null; // the GitHub PR number, if it has been published
+  merged?: boolean; // landed on GitHub (prs/ `landed:`): a purple number, left out of the totals
 }
 export interface VizStack {
   label: string; // "Stack 1 · Groundwork", or "Unstacked"
@@ -111,17 +112,17 @@ export async function vizModel(project: LoadedProject, current?: { repo: string;
       const bySha = new Map(
         await Promise.all(
           r.info.commits.map(async (cm, i): Promise<[string, VizPr]> => {
-            const paths = await changedFiles(r.cfg.path, cm.sha, cm.parent).then((fs) => fs.map((f) => f.path), () => undefined);
+            const paths = await filesOf(r.cfg.path, cm).then((fs) => fs.map((f) => f.path), () => undefined);
             const override = prs.get(cm.sha)?.override;
             // the same branch the sidebar shows (recorded, reconciled with git, else discovered)
             const b = reconcileBranch(refs, cm.sha, override, tip);
-            return [cm.sha, { position: i + 1, sha: cm.sha, short: cm.short, title: override?.title ?? cm.subject, additions: cm.additions, deletions: cm.deletions, filesChanged: cm.filesChanged, paths, branch: b?.name ?? null, branchMissing: b?.status === 'missing', pr: override?.github?.number ?? null }];
+            return [cm.sha, { position: i + 1, sha: cm.sha, short: cm.short, title: override?.title ?? cm.subject, additions: cm.additions, deletions: cm.deletions, filesChanged: cm.filesChanged, paths, branch: b?.name ?? null, branchMissing: b?.status === 'missing', pr: override?.github?.number ?? null, ...(cm.landed ? { merged: true } : {}) }];
           }),
         ),
       );
       return {
         name: r.cfg.name,
-        branch: r.info.branch ?? r.info.end,
+        branch: r.info.branch ?? (r.info.end || r.info.base || 'merged'), // no live range (all landed): its base
         error: r.info.error ?? null,
         // empty stacks (a selector that matched nothing) would only be noise in a picture
         stacks: r.stacks.filter((g) => g.shas.length).map((g) => ({ label: stackLabel(g), color: g.color, implicit: g.implicit, ...(g.follow_on ? { follow_on: true } : {}), prs: g.shas.map((s) => bySha.get(s)!).filter(Boolean) })),
@@ -140,8 +141,8 @@ export async function stackWeights(r: LoadedRepo): Promise<Totals[]> {
         g.shas.map(async (sha): Promise<VizPr | null> => {
           const cm = bySha.get(sha);
           if (!cm) return null;
-          const paths = await changedFiles(r.cfg.path, cm.sha, cm.parent).then((fs) => fs.map((f) => f.path), () => undefined);
-          return { position: 0, sha, short: cm.short, title: cm.subject, additions: cm.additions, deletions: cm.deletions, filesChanged: cm.filesChanged, paths };
+          const paths = await filesOf(r.cfg.path, cm).then((fs) => fs.map((f) => f.path), () => undefined);
+          return { position: 0, sha, short: cm.short, title: cm.subject, additions: cm.additions, deletions: cm.deletions, filesChanged: cm.filesChanged, paths, ...(cm.landed ? { merged: true } : {}) };
         }),
       );
       return stackTotals(prs.filter((p): p is VizPr => !!p));
@@ -257,6 +258,7 @@ const C = {
   foBorder: '#bf8700',
   foSubtle: '#fff8c5',
   foPillLine: '#d4a72c',
+  merged: '#8250df', // GitHub's merged purple
 };
 export const STACK_HEX: Record<string, string> = {
   blue: '#0969da',
@@ -319,7 +321,15 @@ export function renderStackSvg(m: VizModel, opts: RenderOpts = {}): string {
   // one scale for every bar in the image: the heaviest stack is the full width
   const max = Math.max(1, ...all.map((x) => x.t.additions + x.t.deletions));
   // the header totals leave follow-on stacks out (shared/totals.ts, as in the UI)
-  const statOf = (s: VizStack, t: Totals) => ({ follow_on: s.follow_on, prs: t.prs, additions: t.additions, deletions: t.deletions });
+  const statOf = (s: VizStack, t: Totals) => {
+    const m = s.prs.filter((p) => p.merged);
+    return { follow_on: s.follow_on, prs: t.prs, additions: t.additions, deletions: t.deletions, merged: { prs: m.length, additions: m.reduce((a, p) => a + p.additions, 0), deletions: m.reduce((a, p) => a + p.deletions, 0) } };
+  };
+  // the side note: "+1 follow-on stack (2 PRs) · +9 merged", yellow if it mentions follow-on work, else purple
+  const sideNote = (x: { note: string | null; merged: string | null }) => {
+    const t = [x.note, x.merged].filter(Boolean).join(' · ');
+    return t ? { text: t, fill: x.note ? C.foFg : C.merged } : null;
+  };
   const grand = summary(aggregate(all.map((x) => statOf(x.s, x.t))), m.repos.length);
   // once any PR has a branch or a GitHub number, every row gets a second line for them (the sha moves there)
   const twoLine = all.some((x) => x.s.prs.some((p) => p.branch || p.pr));
@@ -357,7 +367,8 @@ export function renderStackSvg(m: VizModel, opts: RenderOpts = {}): string {
     out.push(text(PAD, y, truncate(m.title, 'bold', 19, WIDTH - 2 * PAD), { face: 'bold', size: 19 }));
     y += 22;
     // "2 repos · 4 stacks · 12 PRs · +3,477 −155 · +1 follow-on stack (2 PRs)"
-    const note = grand.note ? `<tspan fill="${C.muted}"> · </tspan><tspan ${FACE_ATTRS.semibold} fill="${C.foFg}">${esc(grand.note)}</tspan>` : '';
+    const gn = sideNote(grand);
+    const note = gn ? `<tspan fill="${C.muted}"> · </tspan><tspan ${FACE_ATTRS.semibold} fill="${gn.fill}">${esc(gn.text)}</tspan>` : '';
     out.push(
       `<text x="${PAD}" y="${y}" ${FACE_ATTRS.regular} font-size="12.5" fill="${C.muted}">${esc(grand.counts + ' · ')}<tspan ${FACE_ATTRS.semibold} fill="${C.add}">+${num(grand.additions)}</tspan><tspan ${FACE_ATTRS.semibold} fill="${C.del}" dx="5">−${num(grand.deletions)}</tspan>${note}</text>`,
     );
@@ -369,9 +380,10 @@ export function renderStackSvg(m: VizModel, opts: RenderOpts = {}): string {
     y += 30;
     // "11 PRs  +3,374 −140 · +1 follow-on stack (2 PRs)", right-aligned
     const rt = summary(aggregate(repo.stacks.map((s) => statOf(s, stackTotals(s.prs)))));
+    const rn = sideNote(rt);
     const right = rt.counts;
     const DOT_GAP = 14; // "·" centred between the − number and the note
-    const noteW = rt.note ? textWidth(rt.note, 'semibold', 12) + DOT_GAP : 0;
+    const noteW = rn ? textWidth(rn.text, 'semibold', 12) + DOT_GAP : 0;
     const rightW = textWidth(right + '  ', 'regular', 12) + addDelWidth(rt.additions, rt.deletions) + noteW;
     const name = truncate(repo.name, 'bold', 14.5, 260);
     out.push(text(PAD, y, name, { face: 'bold', size: 14.5 }));
@@ -380,7 +392,7 @@ export function renderStackSvg(m: VizModel, opts: RenderOpts = {}): string {
     const bw = textWidth(branch, 'mono', 11.5) + 14;
     out.push(`<rect x="${r1(bx)}" y="${y - 13.5}" width="${r1(bw)}" height="19" rx="9.5" fill="${C.accentSubtle}"/>`, text(bx + 7, y, branch, { face: 'mono', size: 11.5, fill: C.accent }));
     if (repo.stacks.some((s) => s.prs.length)) {
-      if (rt.note) {
+      if (rn) {
         // laid out left to right from the measured widths (an end-anchored "+a −d" ignores its dx, so would overlap)
         const adW = addDelWidth(rt.additions, rt.deletions);
         const countsW = textWidth(right, 'regular', 12);
@@ -390,7 +402,7 @@ export function renderStackSvg(m: VizModel, opts: RenderOpts = {}): string {
           text(x0, y, right, { size: 12, fill: C.muted }),
           `<text x="${r1(ax)}" y="${r1(y)}" ${FACE_ATTRS.semibold} font-size="12"><tspan fill="${C.add}">+${num(rt.additions)}</tspan><tspan fill="${C.del}" dx="6">−${num(rt.deletions)}</tspan></text>`,
           text(ax + adW + DOT_GAP / 2, y, '·', { size: 12, fill: C.muted, anchor: 'middle' }),
-          text(ax + adW + DOT_GAP, y, rt.note, { face: 'semibold', size: 12, fill: C.foFg }),
+          text(ax + adW + DOT_GAP, y, rn.text, { face: 'semibold', size: 12, fill: rn.fill }),
         );
       } else {
         out.push(addDel(BOX_R, y, rt.additions, rt.deletions));
@@ -457,9 +469,11 @@ export function renderStackSvg(m: VizModel, opts: RenderOpts = {}): string {
             `<rect x="${BOX_L + 6}" y="${cy - hh / 2}" width="3.5" height="${hh}" rx="1.75" fill="${C.plum}"/>`,
           );
         }
+        // the number's circle: plum for the highlighted PR, GitHub's merged purple for a landed one
         out.push(
-          `<circle cx="${NUM_X}" cy="${cy}" r="10.5" fill="${cur ? C.plum : C.track}"/>`,
-          text(NUM_X, cy + 4, String(p.position), { face: 'semibold', size: p.position >= 100 ? 9 : 11, fill: cur ? '#fff' : C.muted, anchor: 'middle' }),
+          `<circle cx="${NUM_X}" cy="${cy}" r="10.5" fill="${cur ? C.plum : p.merged ? C.merged : C.track}"/>`,
+          cur && p.merged ? `<circle cx="${NUM_X}" cy="${cy}" r="12" fill="none" stroke="${C.merged}" stroke-width="1.5"/>` : '',
+          text(NUM_X, cy + 4, String(p.position), { face: 'semibold', size: p.position >= 100 ? 9 : 11, fill: cur || p.merged ? '#fff' : C.muted, anchor: 'middle' }),
         );
         const markerW = cur ? textWidth(MARKER, 'bold', 12) + 10 : 0;
         const face: Face = cur ? 'semibold' : 'regular';
