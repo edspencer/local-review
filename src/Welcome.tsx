@@ -185,3 +185,57 @@ export function ExamplesStrip({ count, onRemoved }: { count: number; onRemoved: 
     </div>
   );
 }
+
+/**
+ * The last item in the project switcher, once you have projects of your own: "Add example projects" (or "Bring back
+ * …" after a remove), or, while they're there, "Remove example projects" with the same inline confirm as the strip.
+ */
+export function ExamplesMenuItem({ list, onAdded, onRemoved }: { list: ProjectsResponse; onAdded: (slug: string) => void; onRemoved: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const tilde = useTilde();
+  const present = list.examples === 'present';
+  const count = list.projects.filter((p) => p.example).length;
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setError(tilde((e as Error).message));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const add = () =>
+    run(async () => {
+      const r = await api.addExamples();
+      onAdded([...r.created, ...r.restored, ...r.existing][0] ?? '');
+    });
+  const remove = () =>
+    run(async () => {
+      await api.removeExamples();
+      setConfirming(false);
+      onRemoved();
+    });
+  return (
+    <li className="project-menu-section project-menu-examples" role="presentation">
+      {present && confirming ? (
+        <div className="project-menu-examples-confirm">
+          <span>Remove the {count} example project{count === 1 ? '' : 's'}? Nothing is deleted.</span>
+          <span className="examples-strip-actions">
+            <button className="btn btn-sm btn-danger-outline" onClick={remove} disabled={busy}>{busy ? 'Removing…' : 'Remove'}</button>
+            <button className="btn btn-sm" onClick={() => setConfirming(false)} disabled={busy}>Cancel</button>
+          </span>
+        </div>
+      ) : (
+        <button type="button" className="project-menu-examples-btn" onClick={present ? () => setConfirming(true) : add} disabled={busy}>
+          <span className="example-tag">Example</span>
+          {present ? 'Remove example projects' : busy ? 'Adding example projects…' : list.examples === 'removed' ? 'Bring back the example projects' : 'Add example projects'}
+        </button>
+      )}
+      {error && <div className="flash flash-error project-menu-examples-error" role="alert">{error}</div>}
+    </li>
+  );
+}

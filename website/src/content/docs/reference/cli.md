@@ -151,7 +151,9 @@ this exists: [Publishing: images](/agents/publishing-stacked-prs/#images).
 
 Adds the **example projects**: "Orchard", a made-up booking app in four repos (Go, TypeScript, React, Terraform),
 with three projects to click around: stacked PRs across all four repos, review threads with an agent's replies, and an
-archived project whose PRs have all merged. It's the same as **Add the example projects** on the first-run page.
+archived project whose PRs have all merged. It's the same as **Add the example projects** on the first-run page, or
+at the bottom of the project switcher once you have projects of your own (where **Remove example projects** takes
+its place while they're there).
 
 ```text
 $ npx local-review examples
@@ -164,6 +166,8 @@ The example projects are in /home/you/.local-review/projects (3). `local-review 
   `projects/example-*/`, in about a second and with no network. The history is built in memory and written with
   `git fast-import`, so it's the same everywhere. These repos are Local Review's own data, created fresh; nobody's
   work is touched, and once made they're only ever read.
+- The git work runs in the background, so a running server keeps serving while the examples are made. Asking for them
+  again meanwhile waits for the same run; removing them meanwhile is refused until it's done.
 - Every file is created, never replaced: running it again leaves existing example projects alone, and **restores**
   removed ones exactly as they were (comments you wrote on them included).
 - If a project of yours already has one of the names (`example-waitlists`, …) and isn't an example, it stops

@@ -3,7 +3,7 @@
 // (website/src/content/docs/reference/: project.yaml, PR files, comment files). Line numbers are looked up in the generated files, never hard-coded.
 import crypto from 'node:crypto';
 import YAML from 'yaml';
-import { git, type RepoBuilder } from '../lib/gitworld.ts';
+import { git, gitAsync, type RepoBuilder } from '../lib/gitworld.ts';
 import { REVIEWER, at, prUrl } from './people.ts';
 
 export interface Repos {
@@ -49,6 +49,34 @@ export interface DataHomeOptions {
   repoPath?: (name: string) => string;
   /** the project's directory name under projects/ */
   slug?: (name: string) => string;
+  /** patch ids worked out beforehand (patchIds below), by repo name and sha, so this makes no git calls of its own */
+  patchIds?: Map<string, Map<string, string>>;
+}
+
+/** `git patch-id --stable` of one commit, as the server records it (empty for a commit it gives none, e.g. a merge). */
+export async function patchIdAsync(dir: string, sha: string): Promise<string> {
+  const show = await gitAsync(dir, ['show', '--no-color', '--no-ext-diff', sha]);
+  return (await gitAsync(dir, ['patch-id', '--stable'], show)).split(' ')[0];
+}
+
+/** Every commit's patch id, by repo name and sha, without blocking (a few at a time). */
+export async function patchIds(repos: Repos, repoDir: (name: string) => string): Promise<Map<string, Map<string, string>>> {
+  const out = new Map<string, Map<string, string>>();
+  const jobs = (Object.values(repos) as RepoBuilder[]).flatMap((r) => {
+    const m = new Map<string, string>();
+    out.set(r.name, m);
+    return r.commits.map((c) => async () => {
+      try {
+        m.set(c.sha!, await patchIdAsync(repoDir(r.name), c.sha!));
+      } catch {
+        /* left out: buildDataHome works it out itself if it needs this one */
+      }
+    });
+  });
+  await Promise.all(Array.from({ length: 6 }, async () => {
+    for (let job = jobs.shift(); job; job = jobs.shift()) await job();
+  }));
+  return out;
 }
 
 /** The three projects, by their plain names (before DataHomeOptions.slug). */
@@ -67,6 +95,8 @@ export function buildDataHome(repos: Repos, repoDir: (name: string) => string, o
     throw new Error(`${r.name} ${key}: "${text}" not in ${file}`);
   };
   const patchId = (r: RepoBuilder, key: string) => {
+    const known = opts.patchIds?.get(r.name)?.get(r.sha(key));
+    if (known !== undefined) return known;
     const dir = repoDir(r.name);
     const show = git(dir, ['show', '--no-color', '--no-ext-diff', r.sha(key)]);
     return git(dir, ['patch-id', '--stable'], show).split(' ')[0];

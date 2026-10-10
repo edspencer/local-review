@@ -8,6 +8,9 @@
 //   - projects/example-<name>/: project.yaml (with `example: true`), prs/ and reviews/ files, all written
 //     create-only through safefs (a file that's already there is kept, never replaced).
 //
+// The git work is asynchronous (execFile), so the server keeps serving, and its event stream keeps flowing, while
+// they're made. Adding while an add is running joins it; removing while one is running is refused (409).
+//
 // Removing them deletes nothing: each example project.yaml is renamed (no-clobber) to
 // project.example-removed.yaml.bak, so the project drops out of the list with every file still there, including any
 // comments the user wrote on it. Adding them again renames it back. The repos stay in examples/; the docs say how to
@@ -23,7 +26,7 @@ import { buildApi } from '../demo/world/api.js';
 import { buildInfra } from '../demo/world/infra.js';
 import { buildSdk } from '../demo/world/sdk.js';
 import { buildWeb } from '../demo/world/web.js';
-import { PROJECTS, buildDataHome, type Repos } from '../demo/world/review.js';
+import { PROJECTS, buildDataHome, patchIds, type Repos } from '../demo/world/review.js';
 import type { RepoBuilder } from '../demo/lib/gitworld.js';
 
 export const EXAMPLE_PREFIX = 'example-';
@@ -121,13 +124,14 @@ function displayPath(p: string): string {
  * manifest.json exists. A folder left incomplete by an interrupted attempt is left alone (never cleared): the repos
  * go to the next free name, orchard-<id>-2, … instead.
  */
-function ensureRepos(repos: Repos): string {
+async function ensureRepos(repos: Repos): Promise<string> {
   const id = worldId(repos);
   const all = Object.values(repos) as RepoBuilder[];
   for (let n = 1; n < 100; n++) {
     const root = path.join(EXAMPLES_DIR, n === 1 ? `orchard-${id}` : `orchard-${id}-${n}`);
     if (!fs.existsSync(root)) {
-      for (const r of all) r.build(path.join(root, r.name), CHECKOUT); // fails if the directory exists: never builds over anything
+      // fails if the directory exists: never builds over anything
+      await Promise.all(all.map((r) => r.buildAsync(path.join(root, r.name), CHECKOUT)));
       const manifest: RepoManifest = { id, repos: Object.fromEntries(all.map((r) => [r.name, Object.fromEntries(r.commits.map((c) => [c.key, c.sha!]))])) };
       atomicWrite(path.join(root, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', { createOnly: true });
       return root;
@@ -145,71 +149,71 @@ function ensureRepos(repos: Repos): string {
   throw new ExamplesConflictError(`no usable folder for the example repos in ${EXAMPLES_DIR}`);
 }
 
-let queue: Promise<unknown> = Promise.resolve();
-/** One add or remove at a time (the server may get two clicks). */
-function serial<T>(fn: () => T): Promise<T> {
-  const run = queue.then(fn);
-  queue = run.catch(() => undefined);
-  return run;
-}
+/** The add in progress, if any: a second add joins it, a remove is refused until it's done. */
+let adding: Promise<ExamplesResult> | null = null;
 
 /**
  * Add the example projects: create the ones that aren't there, restore removed ones, leave existing ones alone.
  * Refuses (ExamplesConflictError, nothing written) if a project of the same name exists that isn't an example.
  */
 export function addExamples(): Promise<ExamplesResult> {
-  return serial(() => {
-    const res: ExamplesResult = { created: [], restored: [], existing: [], removed: [] };
-    for (const slug of EXAMPLE_SLUGS) {
-      const file = yamlOf(slug);
-      if (fs.existsSync(file) && !isExampleYaml(file))
-        throw new ExamplesConflictError(`there's already a project named '${slug}' (${file}) that isn't an example; not touching it. Rename it to add the examples.`);
-    }
-    const repos = world();
-    const root = ensureRepos(repos);
-    const files = buildDataHome(repos, (name) => path.join(root, name), { repoPath: (name) => displayPath(path.join(root, name)), slug: (p) => EXAMPLE_PREFIX + p });
-    for (const slug of EXAMPLE_SLUGS) {
-      const file = yamlOf(slug);
-      if (fs.existsSync(file)) {
-        res.existing.push(slug);
-        continue;
-      }
-      const removed = removedCopies(slug).pop();
-      if (removed) {
-        renameNoClobber(removed, file);
-        res.restored.push(slug);
-        continue;
-      }
-      // project.yaml last: the project shows up only once all its files are there
-      const mine = files.filter((f) => f.path.startsWith(`projects/${slug}/`)).sort((a, b) => Number(a.path.endsWith('/project.yaml')) - Number(b.path.endsWith('/project.yaml')));
-      for (const f of mine) {
-        const p = path.join(PROJECTS_DIR, f.path.slice('projects/'.length));
-        const content = f.path.endsWith("/project.yaml") ? EXAMPLE_HEADER + f.content : f.content;
-        try {
-          atomicWrite(p, content, { createOnly: true });
-        } catch (e) {
-          if (!(e instanceof ExistsError)) throw e;
-          continue; // left from an earlier attempt, or edited since: keep it
-        }
-        const t = new Date(f.mtime);
-        fs.utimesSync(p, t, t); // the demo's file times: your own projects stay the most recent
-      }
-      res.created.push(slug);
-    }
-    return res;
+  adding ??= add().finally(() => {
+    adding = null;
   });
+  return adding;
+}
+
+async function add(): Promise<ExamplesResult> {
+  const res: ExamplesResult = { created: [], restored: [], existing: [], removed: [] };
+  for (const slug of EXAMPLE_SLUGS) {
+    const file = yamlOf(slug);
+    if (fs.existsSync(file) && !isExampleYaml(file))
+      throw new ExamplesConflictError(`there's already a project named '${slug}' (${file}) that isn't an example; not touching it. Rename it to add the examples.`);
+  }
+  const repos = world();
+  const root = await ensureRepos(repos);
+  const repoDir = (name: string) => path.join(root, name);
+  const files = buildDataHome(repos, repoDir, { patchIds: await patchIds(repos, repoDir), repoPath: (name) => displayPath(path.join(root, name)), slug: (p) => EXAMPLE_PREFIX + p });
+  for (const slug of EXAMPLE_SLUGS) {
+    const file = yamlOf(slug);
+    if (fs.existsSync(file)) {
+      res.existing.push(slug);
+      continue;
+    }
+    const removed = removedCopies(slug).pop();
+    if (removed) {
+      renameNoClobber(removed, file);
+      res.restored.push(slug);
+      continue;
+    }
+    // project.yaml last: the project shows up only once all its files are there
+    const mine = files.filter((f) => f.path.startsWith(`projects/${slug}/`)).sort((a, b) => Number(a.path.endsWith('/project.yaml')) - Number(b.path.endsWith('/project.yaml')));
+    for (const f of mine) {
+      const p = path.join(PROJECTS_DIR, f.path.slice('projects/'.length));
+      const content = f.path.endsWith("/project.yaml") ? EXAMPLE_HEADER + f.content : f.content;
+      try {
+        atomicWrite(p, content, { createOnly: true });
+      } catch (e) {
+        if (!(e instanceof ExistsError)) throw e;
+        continue; // left from an earlier attempt, or edited since: keep it
+      }
+      const t = new Date(f.mtime);
+      fs.utimesSync(p, t, t); // the demo's file times: your own projects stay the most recent
+    }
+    res.created.push(slug);
+  }
+  return res;
 }
 
 /** Remove the example projects from the list, deleting nothing: each project.yaml is renamed to a `.bak`. */
-export function removeExamples(): Promise<ExamplesResult> {
-  return serial(() => {
-    const res: ExamplesResult = { created: [], restored: [], existing: [], removed: [] };
-    for (const slug of EXAMPLE_SLUGS) {
-      const file = yamlOf(slug);
-      if (!fs.existsSync(file) || !isExampleYaml(file)) continue; // never a project the user made
-      renameToBak(file, REMOVED_TAG);
-      res.removed.push(slug);
-    }
-    return res;
-  });
+export async function removeExamples(): Promise<ExamplesResult> {
+  if (adding) throw new ExamplesConflictError('the example projects are still being added; try again in a moment');
+  const res: ExamplesResult = { created: [], restored: [], existing: [], removed: [] };
+  for (const slug of EXAMPLE_SLUGS) {
+    const file = yamlOf(slug);
+    if (!fs.existsSync(file) || !isExampleYaml(file)) continue; // never a project the user made
+    renameToBak(file, REMOVED_TAG);
+    res.removed.push(slug);
+  }
+  return res;
 }

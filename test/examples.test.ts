@@ -116,30 +116,38 @@ describe('the example projects, from the CLI', () => {
   });
 });
 
+/** Run the server from source on a free port over the sandbox's data home. */
+async function serve(s: ReturnType<typeof sandbox>) {
+  const port = await new Promise<number>((res) => {
+    const srv = net.createServer().listen(0, '127.0.0.1', () => {
+      const p = (srv.address() as net.AddressInfo).port;
+      srv.close(() => res(p));
+    });
+  });
+  const server: ChildProcess = spawn(process.execPath, ['--import', 'tsx', path.join(ROOT, 'server/cli.ts'), 'serve'], { env: { ...s.env(), PORT: String(port) }, stdio: 'ignore' });
+  const url = (p: string) => `http://127.0.0.1:${port}/api${p}`;
+  for (let i = 0; i < 100; i++) {
+    try {
+      if ((await fetch(url('/health'))).ok) return { url, server };
+    } catch {
+      /* not up yet */
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  server.kill();
+  throw new Error('server did not start');
+}
+
+const JSON_POST: RequestInit = { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' };
+
 describe('the example projects, through the server', () => {
   const s = sandbox();
   let server: ChildProcess | undefined;
-  let port = 0;
-  const url = (p: string) => `http://127.0.0.1:${port}/api${p}`;
-  const post = (p: string, init: RequestInit = { headers: { 'content-type': 'application/json' }, body: '{}' }) => fetch(url(p), { method: 'POST', ...init });
+  let url = (p: string) => p;
+  const post = (p: string, init: RequestInit = JSON_POST) => fetch(url(p), { method: 'POST', ...init });
 
   before(async () => {
-    port = await new Promise<number>((res) => {
-      const srv = net.createServer().listen(0, '127.0.0.1', () => {
-        const p = (srv.address() as net.AddressInfo).port;
-        srv.close(() => res(p));
-      });
-    });
-    server = spawn(process.execPath, ['--import', 'tsx', path.join(ROOT, 'server/cli.ts'), 'serve'], { env: { ...s.env(), PORT: String(port) }, stdio: 'ignore' });
-    for (let i = 0; i < 100; i++) {
-      try {
-        if ((await fetch(url('/health'))).ok) return;
-      } catch {
-        /* not up yet */
-      }
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    throw new Error('server did not start');
+    ({ url, server } = await serve(s));
   });
   after(() => {
     server?.kill();
@@ -173,5 +181,50 @@ describe('the example projects, through the server', () => {
     const after = await list();
     assert.equal(after.examples, 'removed');
     assert.deepEqual(after.projects, []);
+  });
+});
+
+describe('adding the example projects without blocking the server', () => {
+  const s = sandbox();
+  let server: ChildProcess | undefined;
+  let url = (p: string) => p;
+
+  before(async () => {
+    ({ url, server } = await serve(s));
+  });
+  after(() => {
+    server?.kill();
+    fs.rmSync(s.home, { recursive: true, force: true });
+  });
+
+  test('the server answers while they are made; a second add joins the first; a remove meanwhile is refused', async () => {
+    let addDone = 0;
+    const first = fetch(url('/examples'), JSON_POST).then(async (r) => {
+      addDone = performance.now();
+      return { status: r.status, body: await r.json() };
+    });
+    await new Promise((r) => setTimeout(r, 30)); // the add is under way (it takes the better part of a second)
+    const second = fetch(url('/examples'), JSON_POST).then(async (r) => ({ status: r.status, body: await r.json() }));
+    const removing = await fetch(url('/examples/remove'), JSON_POST);
+    const removed = { status: removing.status, body: await removing.json() };
+    const health = await fetch(url('/health'));
+    const healthDone = performance.now();
+    assert.ok(health.ok);
+    assert.equal(addDone, 0, 'the health check was answered while the examples were still being added');
+    assert.ok(healthDone > 0);
+
+    assert.equal(removed.status, 409);
+    assert.match(removed.body.error, /still being added/);
+
+    const [a, b] = await Promise.all([first, second]);
+    assert.equal(a.status, 201);
+    assert.deepEqual(a, b, 'the second add joined the first');
+    assert.deepEqual(a.body.created, SLUGS);
+    assert.equal(fs.readdirSync(path.join(s.lrHome, 'examples')).length, 1, 'one set of repos');
+
+    // once it's done, remove works again
+    const after = await fetch(url('/examples/remove'), JSON_POST);
+    assert.equal(after.status, 200);
+    assert.deepEqual((await after.json()).removed, SLUGS);
   });
 });

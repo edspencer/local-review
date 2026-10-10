@@ -5,7 +5,7 @@ import { CommitPage } from './CommitPage';
 import { ProjectHome, RepoLabel } from './ProjectHome';
 import { FOLLOW_ON_TIP, FollowOnBadge, ReadinessBadge } from './Readiness';
 import { TextDraftsProvider, repoAggregate } from './ProjectText';
-import { ExamplesStrip, Welcome } from './Welcome';
+import { ExamplesMenuItem, ExamplesStrip, Welcome } from './Welcome';
 import { tildify } from '../shared/paths';
 import { HomeContext, ProjectContext, hashString, isTyping, navigate, relativeTime, routeUrl, useLocalStorage, useRoute, useTick, useTilde, type Route } from './util';
 
@@ -125,9 +125,15 @@ export function App() {
   const tilde = (s: string) => tildify(s, list?.home);
   const isExample = !!list?.projects.find((p) => p.slug === activeSlug)?.example;
   const exampleCount = list?.projects.filter((p) => p.example).length ?? 0;
+  const examplesAdded = (slug: string) => {
+    setNotice(null);
+    refreshList().then(() => navigate(slug ? `/${encodeURIComponent(slug)}` : '/'));
+  };
   // the list first, then `/`: with the old list, `/` would redirect straight back into a removed example
   const examplesRemoved = () => {
-    setNotice('The example projects are removed. Nothing was deleted: you can bring them back from here any time.');
+    // the notice is for the welcome page, where you land if the examples were all you had
+    if (list?.projects.every((p) => p.example)) setNotice('The example projects are removed. Nothing was deleted: you can bring them back from here any time.');
+    if (!isExample) return void refreshList(); // you're on a project of your own: stay there
     setProject(null);
     refreshList().then(() => navigate('/'));
   };
@@ -141,7 +147,7 @@ export function App() {
           LOCAL REVIEW
         </a>
         <span className="not-github-pill">not on GitHub</span>
-        {list && (project || activeSlug) && <ProjectSwitcher list={list} current={project?.slug ?? activeSlug!} title={project?.title ?? list.projects.find((p) => p.slug === activeSlug)?.title ?? ''} />}
+        {list && (project || activeSlug) && <ProjectSwitcher list={list} current={project?.slug ?? activeSlug!} title={project?.title ?? list.projects.find((p) => p.slug === activeSlug)?.title ?? ''} onExamplesAdded={examplesAdded} onExamplesRemoved={examplesRemoved} />}
         <span className="header-crumbs">{route.repo && route.sha && <>{route.repo} / <code>{route.sha.slice(0, 8)}</code></>}</span>
         <span className="spacer" />
         <span className={`live-dot ${live ? 'on' : ''}`} title={live ? 'Live: watching project files and branches' : 'Disconnected, retrying…'}>{live ? '● live' : '○ offline'}</span>
@@ -212,7 +218,7 @@ export function App() {
   );
 }
 
-function ProjectSwitcher({ list, current, title }: { list: ProjectsResponse; current: string; title: string }) {
+function ProjectSwitcher({ list, current, title, onExamplesAdded, onExamplesRemoved }: { list: ProjectsResponse; current: string; title: string; onExamplesAdded: (slug: string) => void; onExamplesRemoved: () => void }) {
   const [open, setOpen] = useState(false);
   const [archivedOpen, setArchivedOpen] = useLocalStorage('lr.archivedOpen', false);
   const ref = useRef<HTMLDivElement>(null);
@@ -225,7 +231,9 @@ function ProjectSwitcher({ list, current, title }: { list: ProjectsResponse; cur
     document.addEventListener('keydown', close);
     return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', close); };
   }, [open]);
-  if (list.projects.length < 2)
+  // a plain link when there's nothing to switch to; but the menu also offers the example projects, so it's a menu
+  // whenever they aren't there yet
+  if (list.projects.length < 2 && list.examples === 'present')
     return (
       <a className="header-project" href={`/${encodeURIComponent(current)}`} title={`Project: ${current} (overview)`} onClick={(e) => { e.preventDefault(); navigate(`/${encodeURIComponent(current)}`); }}>
         {title}
@@ -272,6 +280,7 @@ function ProjectSwitcher({ list, current, title }: { list: ProjectsResponse; cur
             </li>
           )}
           {showArchived && archived.map(item)}
+          <ExamplesMenuItem list={list} onAdded={(slug) => { setOpen(false); onExamplesAdded(slug); }} onRemoved={() => { setOpen(false); onExamplesRemoved(); }} />
         </ul>
       )}
     </div>
