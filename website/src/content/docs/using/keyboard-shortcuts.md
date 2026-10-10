@@ -32,3 +32,14 @@ across repos.
 | ⌘/Ctrl + B, I, K | Bold, italic, link, in an editor with a toolbar. |
 
 To select a range of lines for a comment, click one line number and **shift-click** another.
+
+## Image viewer
+
+Click an image to open it ([Seeing an image up close](/using/editing-pr-text/#seeing-an-image-up-close)). While it's
+open, no other shortcut on this page works.
+
+| Key | |
+| --- | --- |
+| Enter | Open the focused image. |
+| ← / → | Previous / next image in the same description, note or comment. |
+| Esc | Close the viewer. |

@@ -604,6 +604,8 @@ button { font-family: inherit; }
 .markdown-body h1 { font-size: 1.5em; } .markdown-body h2 { font-size: 1.3em; } .markdown-body h3 { font-size: 1.1em; }
 .markdown-body a { color: var(--accent); }
 .markdown-body img { max-width: 100%; box-sizing: content-box; }
+.markdown-body img[data-lightbox] { cursor: zoom-in; }
+.markdown-body img[data-lightbox]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .markdown-body table { border-collapse: collapse; }
 .markdown-body td, .markdown-body th { border: 1px solid var(--border); padding: 4px 10px; }
 
@@ -954,6 +956,34 @@ a.header-project:hover { color: #f6d29b; }
 .project-menu-examples-error { margin: 4px 6px; font-size: 12px; }
 .btn-danger-outline:hover:not(:disabled) { background: var(--danger); color: #fff; border-color: var(--danger); }
 
+/* ---------- image lightbox (Lightbox.tsx): a dimmed overlay, the image fitted or at 100%, plum controls ---------- */
+.lightbox { position: fixed; inset: 0; z-index: 100; background: rgba(31, 35, 40, 0.88); color: #fff; }
+.lightbox-stage { position: absolute; inset: 0; display: flex; overflow: auto; overscroll-behavior: contain; }
+/* margin: auto centres it without cutting off the top or left once it's bigger than the screen */
+.lightbox-stage img { margin: auto; max-width: 95vw; max-height: 95vh; object-fit: contain; background: var(--bg); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5); user-select: none; }
+.lightbox-stage.is-zoomed img { max-width: none; max-height: none; }
+/* fitted, a captioned image sits above its caption rather than under it */
+.lightbox.has-caption .lightbox-stage:not(.is-zoomed) { padding-bottom: 44px; }
+.lightbox.has-caption .lightbox-stage:not(.is-zoomed) img { max-height: calc(95vh - 44px); }
+.lightbox-stage.is-zoomed { cursor: grab; }
+.lightbox-stage.is-zoomed:active { cursor: grabbing; }
+.lightbox-stage img.zoom-in { cursor: zoom-in; }
+.lightbox-stage img.zoom-out { cursor: zoom-out; }
+.lightbox-bar { position: absolute; top: 12px; right: 12px; display: flex; align-items: center; gap: 6px; }
+.lightbox-count { padding: 0 10px; height: 32px; line-height: 32px; border-radius: 16px; background: rgba(74, 25, 66, 0.9); font-size: 13px; font-variant-numeric: tabular-nums; }
+.lightbox-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 50%; background: rgba(74, 25, 66, 0.9); color: #fff; font: inherit; font-size: 22px; line-height: 1; cursor: pointer; }
+.lightbox-btn:hover:not(:disabled) { background: var(--plum-2); }
+.lightbox-btn:focus-visible { outline: 2px solid #e8a33d; outline-offset: 2px; }
+.lightbox-btn:disabled { opacity: 0.45; cursor: default; }
+.lightbox-prev, .lightbox-next { position: absolute; top: 50%; width: 40px; height: 40px; margin-top: -20px; font-size: 28px; }
+.lightbox-prev { left: 12px; }
+.lightbox-next { right: 12px; }
+.lightbox-caption { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); max-width: min(80vw, 720px); padding: 6px 12px; border-radius: var(--radius); border-bottom: 2px solid #e8a33d; background: rgba(74, 25, 66, 0.9); font-size: 13px; line-height: 1.4; text-align: center; pointer-events: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .lightbox { animation: lightbox-in 0.12s ease-out; }
+  @keyframes lightbox-in { from { opacity: 0; } }
+}
+
 /* ---------- dark mode (follows the OS), GitHub dark colours. The plum header stays as it is. ---------- */
 :root { color-scheme: light dark; }
 @media (prefers-color-scheme: dark) {
@@ -1023,6 +1053,8 @@ a.header-project:hover { color: #f6d29b; }
   .Label--attention { border-color: rgba(187, 128, 9, 0.6); }
   .Counter:not(.Counter--attn), .markdown-body code { background: rgba(110, 118, 129, 0.4); }
   .avatar { box-shadow: 0 0 0 1px rgba(240, 246, 252, 0.1); }
+  .lightbox { background: rgba(1, 4, 9, 0.9); }
+  .lightbox-stage img { box-shadow: 0 0 0 1px rgba(240, 246, 252, 0.1), 0 8px 32px rgba(0, 0, 0, 0.6); }
   .timeline-comment.is-claude > .comment-header, .general-thread .timeline-comment.is-claude > .comment-header { background: rgba(224, 122, 85, 0.12); border-bottom-color: rgba(224, 122, 85, 0.35); }
   .review-comment.is-claude { background: rgba(224, 122, 85, 0.06); }
   .snippet tr.hl-add td.code { background: rgba(46, 160, 67, 0.15); }
