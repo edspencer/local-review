@@ -1,12 +1,14 @@
 {
-  // `npm run build:server`: compile the server (and the shared code it uses) to dist/server and dist/shared.
+  // `npm run build:server`: compile the server (and the shared code it uses) to dist/server and dist/shared, and the
+  // example projects' history (demo/lib, demo/world: server/examples.ts) to dist/demo.
   "extends": "./tsconfig.server.json",
   "compilerOptions": {
     "noEmit": false,
     "allowImportingTsExtensions": false,
     "rootDir": ".",
     "outDir": "dist",
-    "sourceMap": false
+    "sourceMap": false,
+    "rewriteRelativeImportExtensions": true
   },
-  "include": ["server", "shared"]
+  "include": ["server", "shared", "demo/lib", "demo/world"]
 }

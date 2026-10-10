@@ -8,7 +8,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const SERVER = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'server');
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const SERVER = path.join(REPO, 'server');
+// the code the server runs to create the example projects (server/examples.ts) is held to the same rules, with no
+// allowance at all: it only ever creates
+const ALSO_SCANNED = ['demo/lib', 'demo/world'].map((d) => path.join(REPO, d));
 
 const RULES: Record<string, RegExp> = {
   unlink: /\bunlink(?:Sync)?\s*\(/g,
@@ -48,16 +52,17 @@ function serverFiles(dir: string): string[] {
 const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
 
 test('no server code can delete, truncate or overwrite files outside the allowlist', () => {
-  const files = serverFiles(SERVER);
+  const files = [SERVER, ...ALSO_SCANNED].flatMap(serverFiles);
   assert.ok(files.some((f) => f.endsWith('reviews.ts')), 'scanning the right directory');
+  assert.ok(files.some((f) => f.endsWith('gitworld.ts')), 'scanning the example builder');
   const problems: string[] = [];
   for (const f of files) {
-    const rel = path.relative(SERVER, f).split(path.sep).join('/');
+    const rel = path.relative(f.startsWith(SERVER + path.sep) ? SERVER : REPO, f).split(path.sep).join('/');
     const src = stripComments(fs.readFileSync(f, 'utf8'));
     for (const [rule, re] of Object.entries(RULES)) {
       const n = src.match(re)?.length ?? 0;
       const allowed = ALLOWED[rel]?.[rule] ?? 0;
-      if (n !== allowed) problems.push(`server/${rel}: ${n} × ${rule} (allowed ${allowed})`);
+      if (n !== allowed) problems.push(`${rel}: ${n} × ${rule} (allowed ${allowed})`);
     }
   }
   assert.deepEqual(problems, []);

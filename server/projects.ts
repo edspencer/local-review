@@ -41,6 +41,7 @@ export interface ProjectConfig {
   description: string | null;
   repos: RepoConfig[];
   error?: string;
+  example?: boolean; // `example: true`: one of the example projects (server/examples.ts); the UI labels it and offers to remove it
 }
 
 export interface StackGroup {
@@ -103,6 +104,7 @@ export function parseProject(slug: string, dir: string, raw: string): ProjectCon
   }
   out.title = text(doc.title)?.trim() || slug;
   out.description = text(doc.description) ?? null;
+  if (flag(doc.example)) out.example = true;
   const list: any[] = Array.isArray(doc.repos) ? doc.repos : [];
   if (doc.repos != null && !Array.isArray(doc.repos)) out.error = `${file}: \`repos\` must be a list`;
   const used = new Set<string>();

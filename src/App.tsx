@@ -5,6 +5,7 @@ import { CommitPage } from './CommitPage';
 import { ProjectHome, RepoLabel } from './ProjectHome';
 import { FOLLOW_ON_TIP, FollowOnBadge, ReadinessBadge } from './Readiness';
 import { TextDraftsProvider, repoAggregate } from './ProjectText';
+import { ExamplesMenuItem, ExamplesStrip, Welcome } from './Welcome';
 import { tildify } from '../shared/paths';
 import { HomeContext, ProjectContext, hashString, isTyping, navigate, relativeTime, routeUrl, useLocalStorage, useRoute, useTick, useTilde, type Route } from './util';
 
@@ -19,16 +20,18 @@ export function App() {
   const [reviewBump, setReviewBump] = useState<Map<string, number>>(new Map());
   const [live, setLive] = useState(false);
   const [closedRepos, setClosedRepos] = useLocalStorage<string[]>('lr.closedRepos', []);
+  const [notice, setNotice] = useState<string | null>(null);
   useTick();
 
   const isProject = (slug: string | null) => !!slug && !!list?.projects.some((p) => p.slug === slug);
   // the project on screen: the one in the URL, or (at `/`) the most recently modified one
   const activeSlug = list ? (isProject(route.project) ? route.project : route.parts.length === 0 ? mostRecent(list)?.slug ?? null : null) : null;
 
-  const refreshList = useCallback(() => {
-    api.projects().then((l) => { setList(l); setLoadError(null); }).catch((e) => setLoadError((e as Error).message));
-  }, []);
-  useEffect(refreshList, [refreshList]);
+  const refreshList = useCallback(
+    () => api.projects().then((l) => { setList(l); setLoadError(null); }).catch((e) => setLoadError((e as Error).message)),
+    [],
+  );
+  useEffect(() => { refreshList(); }, [refreshList]);
 
   const slugRef = useRef(activeSlug);
   slugRef.current = activeSlug;
@@ -120,6 +123,20 @@ export function App() {
   );
 
   const tilde = (s: string) => tildify(s, list?.home);
+  const isExample = !!list?.projects.find((p) => p.slug === activeSlug)?.example;
+  const exampleCount = list?.projects.filter((p) => p.example).length ?? 0;
+  const examplesAdded = (slug: string) => {
+    setNotice(null);
+    refreshList().then(() => navigate(slug ? `/${encodeURIComponent(slug)}` : '/'));
+  };
+  // the list first, then `/`: with the old list, `/` would redirect straight back into a removed example
+  const examplesRemoved = () => {
+    // the notice is for the welcome page, where you land if the examples were all you had
+    if (list?.projects.every((p) => p.example)) setNotice('The example projects are removed. Nothing was deleted: you can bring them back from here any time.');
+    if (!isExample) return void refreshList(); // you're on a project of your own: stay there
+    setProject(null);
+    refreshList().then(() => navigate('/'));
+  };
 
   return (
     <HomeContext.Provider value={list?.home ?? null}>
@@ -130,7 +147,7 @@ export function App() {
           LOCAL REVIEW
         </a>
         <span className="not-github-pill">not on GitHub</span>
-        {list && (project || activeSlug) && <ProjectSwitcher list={list} current={project?.slug ?? activeSlug!} title={project?.title ?? list.projects.find((p) => p.slug === activeSlug)?.title ?? ''} />}
+        {list && (project || activeSlug) && <ProjectSwitcher list={list} current={project?.slug ?? activeSlug!} title={project?.title ?? list.projects.find((p) => p.slug === activeSlug)?.title ?? ''} onExamplesAdded={examplesAdded} onExamplesRemoved={examplesRemoved} />}
         <span className="header-crumbs">{route.repo && route.sha && <>{route.repo} / <code>{route.sha.slice(0, 8)}</code></>}</span>
         <span className="spacer" />
         <span className={`live-dot ${live ? 'on' : ''}`} title={live ? 'Live: watching project files and branches' : 'Disconnected, retrying…'}>{live ? '● live' : '○ offline'}</span>
@@ -139,6 +156,7 @@ export function App() {
       <div className="app-body">
         {sidebarOpen && (
           <aside className="sidebar">
+            {isExample && <ExamplesStrip count={exampleCount} onRemoved={examplesRemoved} />}
             {loadError && <div className="flash flash-error">{tilde(loadError)}</div>}
             {project?.error && <div className="flash flash-error">{tilde(project.error)}</div>}
             {!project && !loadError && list && list.projects.length > 0 && <div className="loading">Loading project…</div>}
@@ -185,16 +203,7 @@ export function App() {
               <button className="btn-link" onClick={() => navigate('/')}>Open the latest project</button>
             </div>
           ) : list && list.projects.length === 0 ? (
-            <div className="page blankslate">
-              <h2 style={{ color: 'var(--fg)', margin: '0 0 8px', fontSize: 18 }}>No projects yet</h2>
-              <p>A project is one <code>project.yaml</code> naming the repos and branches to review. Create one from a commented example:</p>
-              <pre style={{ display: 'inline-block', textAlign: 'left', margin: '8px 0', padding: '8px 12px', background: 'var(--bg-subtle)', borderRadius: 'var(--radius)', fontSize: 12 }}>npx local-review init my-feature</pre>
-              <p>
-                then edit <code>{tilde(list.projectsDir)}/my-feature/project.yaml</code>: its paths and branches. It shows up here as soon as it's saved, no restart needed. See the{' '}
-                <a href="https://local-review.edspencer.net/getting-started/quickstart/" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>Quickstart</a> and{' '}
-                <a href="https://local-review.edspencer.net/reference/project-yaml/" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>project.yaml</a> in the docs.
-              </p>
-            </div>
+            <Welcome list={list} notice={notice} onChanged={() => { setNotice(null); return refreshList(); }} />
           ) : project && flat.length === 0 ? (
             <div className="page blankslate">No commits to review in <strong>{project.title}</strong>. Check <code>{tilde(project.file)}</code>.</div>
           ) : (
@@ -209,7 +218,7 @@ export function App() {
   );
 }
 
-function ProjectSwitcher({ list, current, title }: { list: ProjectsResponse; current: string; title: string }) {
+function ProjectSwitcher({ list, current, title, onExamplesAdded, onExamplesRemoved }: { list: ProjectsResponse; current: string; title: string; onExamplesAdded: (slug: string) => void; onExamplesRemoved: () => void }) {
   const [open, setOpen] = useState(false);
   const [archivedOpen, setArchivedOpen] = useLocalStorage('lr.archivedOpen', false);
   const ref = useRef<HTMLDivElement>(null);
@@ -222,7 +231,9 @@ function ProjectSwitcher({ list, current, title }: { list: ProjectsResponse; cur
     document.addEventListener('keydown', close);
     return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', close); };
   }, [open]);
-  if (list.projects.length < 2)
+  // a plain link when there's nothing to switch to; but the menu also offers the example projects, so it's a menu
+  // whenever they aren't there yet
+  if (list.projects.length < 2 && list.examples === 'present')
     return (
       <a className="header-project" href={`/${encodeURIComponent(current)}`} title={`Project: ${current} (overview)`} onClick={(e) => { e.preventDefault(); navigate(`/${encodeURIComponent(current)}`); }}>
         {title}
@@ -242,7 +253,7 @@ function ProjectSwitcher({ list, current, title }: { list: ProjectsResponse; cur
         className={`${p.slug === current ? 'current' : ''} ${p.archived ? 'is-archived' : ''}`}
         onClick={(e) => { e.preventDefault(); setOpen(false); navigate(`/${encodeURIComponent(p.slug)}`); }}
       >
-        <span className="project-menu-title">{p.title}</span>
+        <span className="project-menu-title">{p.title}{p.example && <span className="example-tag">Example</span>}</span>
         <span className="project-menu-meta">
           {p.repoCount} repo{p.repoCount === 1 ? '' : 's'} · {p.archived ? <span className="merged-note">{p.mergedCount} merged</span> : <>{p.commitCount} commit{p.commitCount === 1 ? '' : 's'}</>}
           {p.followOnCount > 0 && <span className="follow-on-note"> +{p.followOnCount} follow-on</span>}
@@ -269,6 +280,7 @@ function ProjectSwitcher({ list, current, title }: { list: ProjectsResponse; cur
             </li>
           )}
           {showArchived && archived.map(item)}
+          <ExamplesMenuItem list={list} onAdded={(slug) => { setOpen(false); onExamplesAdded(slug); }} onRemoved={() => { setOpen(false); onExamplesRemoved(); }} />
         </ul>
       )}
     </div>

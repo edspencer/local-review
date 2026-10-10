@@ -1,7 +1,7 @@
 // A tiny deterministic git history builder for the demo test bed. Commits are built in memory (each one a full
 // snapshot of the tree) and written with one `git fast-import` per repo, with fixed authors and dates and git's
 // config isolated from the machine's, so every run on every machine produces the same shas.
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -39,6 +39,18 @@ export function gitEnv(): NodeJS.ProcessEnv {
 
 export function git(cwd: string, args: string[], input?: string): string {
   return execFileSync('git', args, { cwd, env: gitEnv(), input, encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['pipe', 'pipe', 'pipe'] });
+}
+
+/** `git` without blocking: the app builds the example projects with this while it keeps serving. */
+export function gitAsync(cwd: string, args: string[], input?: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = execFile('git', args, { cwd, env: gitEnv(), encoding: 'utf8', maxBuffer: 64 << 20 }, (err, stdout, stderr) =>
+      err ? reject(new Error(`git ${args[0]} failed in ${cwd}: ${stderr || err.message}`)) : resolve(stdout),
+    );
+    // commands that don't read stdin may exit before it's written (EPIPE): their exit status is what counts
+    child.stdin?.on('error', () => {});
+    child.stdin?.end(input ?? '');
+  });
 }
 
 /** Replace exactly one occurrence of `from` (fails loudly if it isn't there, so content edits can't silently drift). */
@@ -170,14 +182,22 @@ export class RepoBuilder {
 
   /** `git init`, one fast-import, then check out `checkout` (the work tree a developer would have). */
   build(dir: string, checkout: string) {
+    const { steps, marks } = this.plan(dir, checkout);
+    for (const [args, input] of steps) git(dir, args, input);
+    this.readMarks(marks);
+  }
+
+  /** The same as `build`, without blocking the event loop. */
+  async buildAsync(dir: string, checkout: string) {
+    const { steps, marks } = this.plan(dir, checkout);
+    for (const [args, input] of steps) await gitAsync(dir, args, input);
+    this.readMarks(marks);
+  }
+
+  /** Create `dir` (it mustn't exist: never builds over anything) and list the git commands that fill it. */
+  private plan(dir: string, checkout: string): { steps: [string[], string?][]; marks: string } {
     if (fs.existsSync(dir)) throw new Error(`${dir} already exists`);
     fs.mkdirSync(dir, { recursive: true });
-    git(dir, ['init', '-q', '-b', 'main']);
-    git(dir, ['config', 'core.hooksPath', '/dev/null']);
-    git(dir, ['config', 'commit.gpgSign', 'false']);
-    git(dir, ['config', 'gc.auto', '0']); // keep rewritten-away commits (anchors and moved branches point at them)
-    git(dir, ['config', 'rebase.updateRefs', 'true']); // AGENTS.md "Branch tagging"
-    git(dir, ['remote', 'add', 'origin', this.remoteUrl]);
     const chunks: Buffer[] = [];
     const w = (s: string) => chunks.push(Buffer.from(s, 'utf8'));
     const data = (s: string) => {
@@ -202,15 +222,30 @@ export class RepoBuilder {
     }
     for (const [name, c] of [...this.refs].sort(([a], [b]) => a.localeCompare(b))) w(`reset ${name}\nfrom :${c.mark}\n\n`);
     const marks = path.join(dir, '.git', 'lr-demo-marks');
-    git(dir, ['fast-import', '--quiet', '--date-format=raw', `--export-marks=${marks}`], Buffer.concat(chunks).toString('utf8'));
-    git(dir, ['update-ref', '-d', 'refs/lr-demo/build']);
+    return {
+      marks,
+      steps: [
+        [['init', '-q', '-b', 'main']],
+        [['config', 'core.hooksPath', '/dev/null']],
+        [['config', 'commit.gpgSign', 'false']],
+        [['config', 'gc.auto', '0']], // keep rewritten-away commits (anchors and moved branches point at them)
+        [['config', 'rebase.updateRefs', 'true']], // AGENTS.md "Branch tagging"
+        [['remote', 'add', 'origin', this.remoteUrl]],
+        [['fast-import', '--quiet', '--date-format=raw', `--export-marks=${marks}`], Buffer.concat(chunks).toString('utf8')],
+        [['update-ref', '-d', 'refs/lr-demo/build']],
+        [['checkout', '-q', '-f', checkout]],
+      ],
+    };
+  }
+
+  /** Every commit's sha, from fast-import's marks. The file stays in .git: nothing reads it, and this code never
+   * deletes a file (the app runs it to create the example projects, so test/fsguard.test.ts scans it like the server). */
+  private readMarks(marks: string) {
     const markShas = new Map<number, string>();
     for (const line of fs.readFileSync(marks, 'utf8').split('\n').filter(Boolean)) {
       const [m, sha] = line.split(' ');
       markShas.set(Number(m.slice(1)), sha);
     }
-    fs.rmSync(marks);
     for (const c of this.commits) c.sha = markShas.get(c.mark);
-    git(dir, ['checkout', '-q', '-f', checkout]);
   }
 }

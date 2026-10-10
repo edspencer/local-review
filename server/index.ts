@@ -22,6 +22,7 @@ import { aggregate, mergeAggregates } from '../shared/totals.js';
 import { REVIEWER } from './reviewer.js';
 import { AssetError, addAsset, assetFile } from './assets.js';
 import { ASSET_MIME, MAX_ASSET_BYTES, typeOfMime, typeOfName } from '../shared/assets.js';
+import { ExamplesConflictError, addExamples, examplesState, removeExamples } from './examples.js';
 import { renderStackSvg, scopeModel, stackWeights, svgToPng, vizModel, type VizScale, type VizScope } from './stackviz.js';
 
 const app = new Hono();
@@ -35,7 +36,7 @@ class HttpError extends Error {
 app.use('*', localOnly);
 
 app.onError((err, c) => {
-  const status = err instanceof HttpError || err instanceof AssetError ? err.status : err instanceof ReviewConflictError ? 409 : err instanceof EditNotFoundError ? 404 : 500;
+  const status = err instanceof HttpError || err instanceof AssetError || err instanceof ExamplesConflictError ? err.status : err instanceof ReviewConflictError ? 409 : err instanceof EditNotFoundError ? 404 : 500;
   if (status === 500) console.error(err);
   return c.json({ error: err.message }, status as any);
 });
@@ -195,12 +196,28 @@ app.get('/api/projects', async (c) => {
         followOnCount: t.followOn.prs,
         mergedCount: t.merged.prs,
         archived,
+        example: !!p.cfg.example,
         unresolved: repos.reduce((a, r) => a + r.commits.reduce((b, cm) => b + cm.unresolved, 0), 0),
         modified: new Date(projectModified(p.cfg.dir) || 0).toISOString(),
       };
     }),
   );
-  return c.json({ projectsDir: PROJECTS_DIR, home: os.homedir(), projects: projects.filter(Boolean) });
+  return c.json({ projectsDir: PROJECTS_DIR, home: os.homedir(), examples: examplesState(), projects: projects.filter(Boolean) });
+});
+
+// ---------------- the example projects (server/examples.ts): create-only; removing renames, never deletes ----------------
+app.post('/api/examples', async (c) => {
+  await body(c); // JSON only, like every write (security.ts)
+  const r = await addExamples();
+  emit({ type: 'projects', reason: 'examples' });
+  return c.json(r, r.created.length ? 201 : 200);
+});
+
+app.post('/api/examples/remove', async (c) => {
+  await body(c);
+  const r = await removeExamples();
+  emit({ type: 'projects', reason: 'examples' });
+  return c.json(r);
 });
 
 app.get('/api/projects/:project', async (c) => {

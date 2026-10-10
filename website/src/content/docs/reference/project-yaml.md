@@ -45,6 +45,7 @@ repos:
 | `title` | string | The project's name in the header, the project switcher and the homepage. |
 | `description` | markdown, optional | The **project intro**: context for the whole effort. Shown on the homepage and in each PR's Project context box, and first in every [full PR body](/using/editing-pr-text/#copying-text-for-the-real-pr). Editable in the UI; can show [images](/using/editing-pr-text/#images). |
 | `repos` | list | One entry per repo, below. |
+| `example` | boolean, optional | Marks one of the [example projects](/reference/cli/#local-review-examples-remove): the UI labels it **Example** and offers to remove it. Set by `local-review examples`; you don't need it. |
 
 The project's **slug** is its directory name (not a field): it's used in URLs, `/<slug>/<repo>/<sha>`.
 

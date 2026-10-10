@@ -19,6 +19,8 @@ version-controlled; [snapshots](#snapshots) cover that.
       assets/<hash>.<ext>.yaml          # optional: where an image is published (url:), for plan
   backups/
     2026-10-09T08-45-12Z/               # automatic snapshots: a plain copy of projects/ at that time (UTC)
+  examples/                             # only if you added the example projects
+    orchard-<id>/                       # their git repos (made by Local Review; see below)
 ```
 
 | File | Written by | Reference |
@@ -32,8 +34,13 @@ version-controlled; [snapshots](#snapshots) cover that.
 Every file under `projects/` is re-read on each request and watched, so edits from an agent or an editor show up in
 the browser within about a second, with no restart.
 
+**The example projects** (`local-review examples`, or the button on the first-run page) are ordinary projects named
+`projects/example-*`, with `example: true` in their `project.yaml`, reviewing four git repos that Local Review creates
+under `examples/`. Removing them renames each `project.yaml` to `project.example-removed.yaml.bak`; nothing is deleted
+([details](/reference/cli/#local-review-examples-remove)).
+
 **Getting started:** `npx local-review init my-feature` creates `~/.local-review/projects/my-feature/project.yaml`
-from a commented example (it never replaces an existing one); then edit it. With no projects, the UI says the same.
+from a commented example (it never replaces an existing one); then edit it. With no projects, the UI's first-run page says the same, and offers the example projects.
 
 ## Images
 

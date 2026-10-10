@@ -2,6 +2,7 @@
 // `local-review [command] …`: the command-line entry point (the package's bin; `npm run lr -- …` from a checkout).
 // With no command it serves the UI. `plan` and `guide` are read-only: they never write a file and never run gh (or
 // anything but read-only git, via server/git.ts). `init` only ever creates a new project.yaml, never replaces one.
+// `examples` only ever creates (the example projects and their repos); `examples remove` renames, never deletes.
 // `asset add` only ever creates a new, content-named image file; `asset url` writes only the asset's own <name>.yaml.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,6 +18,7 @@ const USAGE = `Usage: local-review [serve] [--port <n>]
        local-review init <project>
        local-review asset add <project> <file> [--alt <text>]
        local-review asset url <project> <name> <url>
+       local-review examples [remove]
        local-review guide
        local-review --version | --help
 
@@ -43,6 +45,12 @@ const USAGE = `Usage: local-review [serve] [--port <n>]
   asset url
           Record where an asset is published (a URL GitHub's readers can reach), so \`plan\` puts that URL in
           the bodies instead of the local assets/<name> reference.
+  examples
+          Add the example projects: "Orchard", a made-up app in four repos, to click around before reviewing your
+          own work. Makes the repos in <data>/examples/ and the projects as projects/example-*. Running it again
+          restores removed ones and leaves existing ones alone.
+  examples remove
+          Hide the example projects again. Nothing is deleted: each one's project.yaml is renamed to a .bak.
   guide   Print the guide for agents using Local Review to get their work reviewed (AGENT-GUIDE.md).
 
 Data: $LOCAL_REVIEW_HOME/projects (default ~/.local-review/projects). Agents: run \`local-review guide\`.`;
@@ -164,6 +172,25 @@ function asset(args: string[], flags: Record<string, string>) {
   throw new UsageError(sub ? `unknown asset command '${sub}' (add or url)` : 'asset needs a command: add or url');
 }
 
+async function examples(sub: string | undefined) {
+  const { addExamples, removeExamples } = await import('./examples.js');
+  if (sub === undefined || sub === 'add') {
+    const r = await addExamples();
+    const all = [...r.created, ...r.restored, ...r.existing];
+    process.stdout.write(
+      `${r.created.length ? `Created ${r.created.join(', ')}\n` : ''}${r.restored.length ? `Restored ${r.restored.join(', ')}\n` : ''}${r.existing.length ? `Already there: ${r.existing.join(', ')}\n` : ''}` +
+        `\nThe example projects are in ${PROJECTS_DIR} (${all.length}). \`local-review examples remove\` hides them again.\n`,
+    );
+    return;
+  }
+  if (sub === 'remove') {
+    const r = await removeExamples();
+    process.stdout.write(r.removed.length ? `Removed ${r.removed.join(', ')} (renamed to project.example-removed.yaml.bak; nothing deleted)\n` : 'No example projects to remove.\n');
+    return;
+  }
+  throw new UsageError(`unknown examples command '${sub}' (add or remove)`);
+}
+
 async function serve(flags: Record<string, string>) {
   const given = flags.port ?? process.env.PORT;
   // `npm run dev`: the API sits next to Vite's UI port (see vite.config.ts)
@@ -208,6 +235,10 @@ async function main(argv: string[]): Promise<number | undefined> {
     case 'asset':
       check(cmd, flags, ['alt'], args, 4);
       asset(args, flags);
+      return 0;
+    case 'examples':
+      check(cmd, flags, [], args, 1);
+      await examples(args[0]);
       return 0;
     case 'guide':
       check(cmd, flags, [], args, 0);

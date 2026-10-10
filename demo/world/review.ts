@@ -3,7 +3,7 @@
 // (website/src/content/docs/reference/: project.yaml, PR files, comment files). Line numbers are looked up in the generated files, never hard-coded.
 import crypto from 'node:crypto';
 import YAML from 'yaml';
-import { git, type RepoBuilder } from '../lib/gitworld.ts';
+import { git, gitAsync, type RepoBuilder } from '../lib/gitworld.ts';
 import { REVIEWER, at, prUrl } from './people.ts';
 
 export interface Repos {
@@ -40,8 +40,52 @@ interface ThreadSpec {
   comments: C[];
 }
 
-export function buildDataHome(repos: Repos, repoDir: (name: string) => string): DataFile[] {
+/**
+ * Where the data home's names point. The demo seed uses the defaults (`~/code/<repo>`, the plain slugs); the example
+ * projects the app can create (server/examples.ts) put the repos in the data home and prefix the slugs.
+ */
+export interface DataHomeOptions {
+  /** the `path:` written into project.yaml for a repo */
+  repoPath?: (name: string) => string;
+  /** the project's directory name under projects/ */
+  slug?: (name: string) => string;
+  /** patch ids worked out beforehand (patchIds below), by repo name and sha, so this makes no git calls of its own */
+  patchIds?: Map<string, Map<string, string>>;
+}
+
+/** `git patch-id --stable` of one commit, as the server records it (empty for a commit it gives none, e.g. a merge). */
+export async function patchIdAsync(dir: string, sha: string): Promise<string> {
+  const show = await gitAsync(dir, ['show', '--no-color', '--no-ext-diff', sha]);
+  return (await gitAsync(dir, ['patch-id', '--stable'], show)).split(' ')[0];
+}
+
+/** Every commit's patch id, by repo name and sha, without blocking (a few at a time). */
+export async function patchIds(repos: Repos, repoDir: (name: string) => string): Promise<Map<string, Map<string, string>>> {
+  const out = new Map<string, Map<string, string>>();
+  const jobs = (Object.values(repos) as RepoBuilder[]).flatMap((r) => {
+    const m = new Map<string, string>();
+    out.set(r.name, m);
+    return r.commits.map((c) => async () => {
+      try {
+        m.set(c.sha!, await patchIdAsync(repoDir(r.name), c.sha!));
+      } catch {
+        /* left out: buildDataHome works it out itself if it needs this one */
+      }
+    });
+  });
+  await Promise.all(Array.from({ length: 6 }, async () => {
+    for (let job = jobs.shift(); job; job = jobs.shift()) await job();
+  }));
+  return out;
+}
+
+/** The three projects, by their plain names (before DataHomeOptions.slug). */
+export const PROJECTS = ['waitlists', 'calendar-feed', 'webhook-retries'] as const;
+
+export function buildDataHome(repos: Repos, repoDir: (name: string) => string, opts: DataHomeOptions = {}): DataFile[] {
   const out: DataFile[] = [];
+  const repoPath = opts.repoPath ?? ((name: string) => `~/code/${name}`);
+  const slug = opts.slug ?? ((name: string) => name);
   const { api, sdk, web, infra } = repos;
 
   /** 1-based line number of the first line containing `text` in `file` at commit `key` (on disk). */
@@ -51,6 +95,8 @@ export function buildDataHome(repos: Repos, repoDir: (name: string) => string): 
     throw new Error(`${r.name} ${key}: "${text}" not in ${file}`);
   };
   const patchId = (r: RepoBuilder, key: string) => {
+    const known = opts.patchIds?.get(r.name)?.get(r.sha(key));
+    if (known !== undefined) return known;
     const dir = repoDir(r.name);
     const show = git(dir, ['show', '--no-color', '--no-ext-diff', r.sha(key)]);
     return git(dir, ['patch-id', '--stable'], show).split(' ')[0];
@@ -98,7 +144,7 @@ export function buildDataHome(repos: Repos, repoDir: (name: string) => string): 
   const prefix = (r: RepoBuilder, key: string) => r.sha(key).slice(0, 12);
 
   // ======================================================================== waitlists (the flagship)
-  const P = 'waitlists';
+  const P = slug('waitlists');
   const BR = 'maya/waitlists';
   out.push({
     path: `projects/${P}/project.yaml`,
@@ -114,7 +160,7 @@ description: |
   It spans the API (data model, promotion, expiry), the SDK, the web app and the infra (the expiry
   sweep and the rollout flag), and ships behind the \`waitlists\` flag, on for three beta studios first.
 repos:
-  - path: ~/code/orchard-api
+  - path: ${repoPath('orchard-api')}
     branch: ${BR}
     base: origin/main
     github_stack: 117
@@ -144,7 +190,7 @@ repos:
         description: |
           Parked until the beta studios have used the basic waitlist for a few weeks. Next after these:
           a per-studio hold window (it's a constant, two hours, for now).
-  - path: ~/code/orchard-sdk
+  - path: ${repoPath('orchard-sdk')}
     branch: ${BR}
     base: origin/main
     stacks:
@@ -152,7 +198,7 @@ repos:
         color: teal
         description: |
           Types and calls for the new endpoints. Released as 0.8.0-beta.1 for the web app to build on.
-  - path: ~/code/orchard-web
+  - path: ${repoPath('orchard-web')}
     branch: ${BR}
     base: origin/main
     stacks:
@@ -164,7 +210,7 @@ repos:
         starts_at: "Explain the hold window in the offer banner"
         description: |
           Split out so the copy can be reviewed with June without holding up the UI.
-  - path: ~/code/orchard-infra
+  - path: ${repoPath('orchard-infra')}
     branch: ${BR}
     base: origin/main
     stacks:
@@ -491,7 +537,7 @@ Promotion runs inside the cancel transaction, holding the class lock, so two can
   review(P, infra, 'i3', BR, { mtime: at('2026-09-17 15:10'), viewed: ['flags/flags.yaml'] });
 
   // ======================================================================== calendar-feed (one repo, no stacks)
-  const C = 'calendar-feed';
+  const C = slug('calendar-feed');
   out.push({
     path: `projects/${C}/project.yaml`,
     mtime: at('2026-09-11 16:00'),
@@ -499,7 +545,7 @@ Promotion runs inside the cancel transaction, holding the class lock, so two can
 description: |
   Theo's private iCalendar feed of each member's bookings, so classes show up in their own calendar app.
 repos:
-  - path: ~/code/orchard-api
+  - path: ${repoPath('orchard-api')}
     branch: theo/calendar-feed
     base: origin/main
 `,
@@ -537,7 +583,7 @@ repos:
   });
 
   // ======================================================================== webhook-retries (archived: all landed)
-  const W = 'webhook-retries';
+  const W = slug('webhook-retries');
   out.push({
     path: `projects/${W}/project.yaml`,
     mtime: at('2026-08-06 17:10'),
@@ -547,7 +593,7 @@ description: |
   retry failures with backoff, and list the ones that never succeed for staff. Went up as GitHub
   stack #87 and merged in August; kept here for reference.
 repos:
-  - path: ~/code/orchard-api
+  - path: ${repoPath('orchard-api')}
     base: origin/main
     github_stack: 87
     landed: ["${api.sha('Record webhook deliveries before processing them').slice(0, 12)}", "${api.sha('Retry failed deliveries with exponential backoff').slice(0, 12)}", "${api.sha('List deliveries that keep failing for staff').slice(0, 12)}"]

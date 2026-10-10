@@ -55,6 +55,7 @@ Run `npm test` and `npm run typecheck` before committing, and `npm run smoke:pac
 ## Packaging
 
 The npm package is the compiled CLI (`bin: local-review` → `dist/server/cli.js`), the built UI (`dist/web`), the
+example projects' history (`demo/lib` and `demo/world`, compiled to `dist/demo`, for `server/examples.ts`), the
 fonts the stack picture renders with (`server/fonts/`), `examples/project.example.yaml` (for `init`) and
 `AGENT-GUIDE.md` (for `guide`). `server/config.ts` finds them from the package root, so they work both from source
 and installed. Only what the server needs at run time is a `dependency`; the frontend's libraries (React,

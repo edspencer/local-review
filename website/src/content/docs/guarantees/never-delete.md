@@ -22,6 +22,10 @@ A test fails the build if any code gains a way around that.
 - **Images are created once.** An image in a project's `assets/` folder is named by its content and written
   create-only, so it's never replaced, and nothing removes one. Adding the same image again is a no-op; a file under
   the same name with different bytes (changed by hand) is left alone and reported.
+- **The example projects are created, never cleared.** Adding them only creates files and four new git repos under
+  `examples/` (a folder left incomplete by an interrupted attempt is left alone, and the repos go to the next free
+  name). "Remove examples" renames each example's `project.yaml` to a `.bak` (no-clobber), so it drops out of the list
+  with all its files still there; adding them again renames it back.
 - **The only deletion anywhere is snapshot pruning**, guarded as below.
 
 The one thing that removes your words is you: deleting your own comment in the UI removes it from the file, as you'd
@@ -44,7 +48,8 @@ Restoring is copying files back by hand: see [Restoring](/reference/data-directo
 ## How it's enforced
 
 All of this lives in `server/safefs.ts` and `server/backups.ts`. `test/fsguard.test.ts` statically scans
-`server/**/*.ts` and fails if any other code (or more code there) calls `unlink`, `rm`, `rmdir`, `truncate`,
+`server/**/*.ts` (and `demo/lib`, `demo/world`: the code that builds the example projects, which is allowed none of
+these) and fails if any other code (or more code there) calls `unlink`, `rm`, `rmdir`, `truncate`,
 `writeFile`, `rename`, `copyFile`/`cp`, or shells out to `rm`/`mv`/….
 
 Contributors: if the guard fails on your change, route the write through `server/safefs.ts`; don't widen the test.
