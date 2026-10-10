@@ -21,6 +21,8 @@
   --claude: #c15f3c;
   --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
   --radius: 6px;
+  /* how wide a tab is, everywhere code is shown: @pierre/diffs reads this one for the diff, the rest use it below */
+  --diffs-tab-size: 2;
   --tooltip-bg: #24292f;
   --tooltip-fg: #ffffff;
   /* PR stack colours (project.yaml `color:`); dark-mode variants below */
@@ -55,6 +57,7 @@ body {
   background: var(--bg);
 }
 code, pre, .sha { font-family: var(--mono); font-size: 12px; }
+code, pre, textarea, .snippet td.code { tab-size: var(--diffs-tab-size); }
 button { font-family: inherit; }
 .muted { color: var(--fg-muted); }
 .spacer { flex: 1; }
