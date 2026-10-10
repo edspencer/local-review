@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A new push to a PR cancels that PR's older run. Pushes to main get a group per commit, so they never cancel (or,
+# as a pending run in a shared group would be, get superseded by) each other: release.yml's verify-ci job waits for
+# the CI run on the exact commit it's releasing, and a cancelled run there would block the release.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (Node ${{ matrix.node }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      # Node 22 bundles npm 10 and the lockfile was written by npm 11; `npm ci` reads it fine with both.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      # Packs the package, installs the tarball into a temp prefix and runs it as a user would (scripts/smoke-pack.mjs).
+      - name: Smoke-test the npm package
+        run: npm run smoke:pack
+
+  website:
+    name: Docs site build
+    runs-on: ubuntu-latest
+    # paths-filter reads the PR's changed-file list through the API.
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+      # Cloudflare Pages builds website/ on its own, so this catches a broken docs build before it merges. Only when
+      # website/ changes; until website/ exists it never matches, and the job passes with its build steps skipped.
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            docs:
+              - 'website/**'
+      - uses: actions/setup-node@v7
+        if: steps.filter.outputs.docs == 'true'
+        with:
+          node-version: 22
+      # `npm install`, not `npm ci`: it's what Cloudflare Pages runs.
+      - name: Install docs-site deps
+        if: steps.filter.outputs.docs == 'true'
+        run: npm install
+        working-directory: website
+      - name: Build docs site
+        if: steps.filter.outputs.docs == 'true'
+        run: npm run build
+        working-directory: website
+
+  # One stable check name to require in branch rules, so the matrix can change without editing them.
+  ci-passed:
+    name: CI passed
+    if: always()
+    needs: [test, website]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every job to have passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: ${RESULTS}"
+          for r in ${RESULTS}; do
+            if [ "${r}" != "success" ]; then
+              echo "::error::a required job concluded '${r}'"
+              exit 1
+            fi
+          done

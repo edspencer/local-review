@@ -2,6 +2,7 @@
 
 These are for agents (and people) developing Local Review itself. Agents *using* Local Review to get work on other
 repos reviewed should read [AGENT-GUIDE.md](AGENT-GUIDE.md) instead (`npx local-review guide` prints it).
+The human-facing version, with setup, CI and pull request expectations, is [CONTRIBUTING.md](CONTRIBUTING.md).
 
 - **Reviewed repos are read-only.** Local Review reads other repos (for example `~/code/my-service`) and must never
   commit to, rebase, push, check out or otherwise modify them or their branches. All git access goes through
