@@ -56,7 +56,10 @@
     "prepack": "npm run build",
     "smoke:pack": "node scripts/smoke-pack.mjs",
     "changeset": "changeset",
-    "changeset:version": "changeset version && npm install --package-lock-only --ignore-scripts"
+    "changeset:version": "changeset version && npm install --package-lock-only --ignore-scripts",
+    "demo:seed": "tsx demo/seed.ts",
+    "demo:check": "tsx demo/seed.ts check",
+    "docs:media": "tsx tools/docs-media/capture.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.4",
@@ -78,6 +81,7 @@
     "concurrently": "^10.0.6",
     "dompurify": "^3.4.16",
     "marked": "^18.1.0",
+    "playwright": "^1.64.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "tsx": "^4.23.15",

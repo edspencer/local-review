@@ -10,3 +10,6 @@ dist/
 /projects/
 # Personal agent rules for this checkout (Claude Code reads it next to CLAUDE.md); never committed.
 CLAUDE.local.md
+# The demo test bed's default output (npm run demo:seed) and the capture rig's screenshots.
+/demo/out/
+/tools/docs-media/out/
