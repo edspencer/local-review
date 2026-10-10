@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://local-review.edspencer.net
+    about: How to set up projects, review stacks and have your agent reply to comments.
+  - name: Report a security vulnerability
+    url: https://github.com/edspencer/local-review/security/advisories/new
+    about: Please report security problems privately, not as an issue.
