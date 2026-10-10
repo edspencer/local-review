@@ -28,11 +28,11 @@ updates:
       actions:
         patterns: ["*"]
 
-  # The docs site. Uncomment once website/ is on main: Dependabot fails the whole config on a missing directory.
-  # - package-ecosystem: npm
-  #   directory: /website
-  #   schedule:
-  #     interval: weekly
-  #   groups:
-  #     website:
-  #       update-types: [minor, patch]
+  # The docs site (a standalone package with its own lockfile; Cloudflare Pages builds it).
+  - package-ecosystem: npm
+    directory: /website
+    schedule:
+      interval: weekly
+    groups:
+      website:
+        update-types: [minor, patch]
