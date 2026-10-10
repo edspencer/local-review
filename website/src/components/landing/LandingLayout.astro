@@ -15,6 +15,9 @@
 import '../../styles/landing.css';
 import { REPO_URL } from './copy';
 import { posthogSnippet, TITLE } from '../../site.mjs';
+// The white-wordmark lockup with a faint tile edge, for plum and near-plum
+// grounds. Copied from ../brand by scripts/sync-brand.mjs.
+import lockup from '../../assets/lockup-on-plum.svg';
 
 interface Props {
 	title: string;
@@ -47,6 +50,7 @@ const posthog = posthogSnippet(import.meta.env.PUBLIC_POSTHOG_KEY);
 		<link rel="canonical" href={canonical} />
 		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 		<link rel="icon" href="/favicon.ico" sizes="32x32" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
 		<meta property="og:type" content="website" />
 		<meta property="og:title" content={title} />
@@ -58,11 +62,11 @@ const posthog = posthogSnippet(import.meta.env.PUBLIC_POSTHOG_KEY);
 		<meta name="twitter:card" content="summary_large_image" />
 		<meta name="twitter:image" content={ogImage} />
 
-		<!--
+		{/*
 			Fonts: Inter + JetBrains Mono, the same two families the app bundles
 			for its stack pictures. Preconnect because they are render-blocking for
 			the H1, which is the largest paint on the page.
-		-->
+		*/}
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link
@@ -70,11 +74,11 @@ const posthog = posthogSnippet(import.meta.env.PUBLIC_POSTHOG_KEY);
 			href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
 		/>
 
-		<!--
+		{/*
 			PostHog, OFF by default. The Starlight pages get the same snippet from
 			astro.config.mjs; this page is outside Starlight, so it emits its own,
 			from the same helper. See src/site.mjs.
-		-->
+		*/}
 		{posthog && <script is:inline set:html={posthog} />}
 	</head>
 
@@ -84,8 +88,7 @@ const posthog = posthogSnippet(import.meta.env.PUBLIC_POSTHOG_KEY);
 		<header class="nav">
 			<div class="nav-inner container">
 				<a class="brand" href="/">
-					<img src="/favicon.svg" alt="" width="26" height="26" />
-					<span>{TITLE}</span>
+					<img src={lockup.src} alt={TITLE} width="158" height="30" />
 				</a>
 				<nav class="nav-links" aria-label="Main">
 					{navLinks.map((l) => <a href={l.href}>{l.text}</a>)}

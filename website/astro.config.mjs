@@ -29,17 +29,20 @@ export default defineConfig({
 			title: TITLE,
 			tagline: TAGLINE,
 			customCss: ['./src/styles/tailwind.css', './src/styles/custom.css'],
-			// PLACEHOLDER brand assets: logo.svg, public/favicon.svg, public/favicon.ico
-			// and public/og-image.png are stand-ins until the branding work lands.
-			// Swap the files in place; nothing here needs to change.
+			// Brand assets are COPIED from ../brand by `npm run sync-brand` (Cloudflare
+			// builds with website/ as its root, so ../brand is out of reach). One logo
+			// for both themes, on purpose: the header is plum in both, and brand/README.md
+			// picks the lockup by background, so it is always the white wordmark.
 			logo: {
-				src: './src/assets/logo.svg',
+				src: './src/assets/lockup-on-plum.svg',
 				alt: TITLE,
+				replacesTitle: true,
 			},
 			favicon: '/favicon.svg',
 			head: [
 				// .ico fallback for the browsers and crawlers that ignore SVG icons.
 				{ tag: 'link', attrs: { rel: 'icon', href: '/favicon.ico', sizes: '32x32' } },
+				{ tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' } },
 				// Mermaid: themed from Starlight, and kept legible rather than scaled
 				// down to fit. Lives in public/mermaid-init.js (copied from Paddock's site).
 				{ tag: 'script', attrs: { type: 'module', src: '/mermaid-init.js' } },

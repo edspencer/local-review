@@ -78,9 +78,10 @@ import { hero, HERO_LINKS } from './copy';
 
 	@media (min-width: 940px) {
 		.hero-inner {
-			/* Slightly wider on the left than the reference's 42/58, because our
-			   headline is a full sentence rather than three words. */
-			grid-template-columns: 47fr 53fr;
+			/* Even halves (Paddock uses 47/53), plus slightly tighter button padding
+			   below: together they keep our three hero buttons on one row at
+			   1440px, where 47fr left them ~30px short. */
+			grid-template-columns: 1fr 1fr;
 		}
 	}
 
@@ -101,6 +102,10 @@ import { hero, HERO_LINKS } from './copy';
 
 	.hero-btns {
 		margin-top: 2.25rem;
+	}
+
+	.hero-btns .btn {
+		padding-inline: 1.1rem;
 	}
 
 	.hero-aside {

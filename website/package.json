@@ -8,7 +8,8 @@
     "start": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "sync-brand": "node scripts/sync-brand.mjs"
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.2.1",
