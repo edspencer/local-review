@@ -1,7 +1,10 @@
 # Local Review documentation site
 
-The [Astro](https://astro.build) + [Starlight](https://starlight.astro.build) documentation site for Local Review,
-served at **https://local-review.edspencer.net**.
+The [Astro](https://astro.build) 7 + [Starlight](https://starlight.astro.build) 0.42 documentation site for Local
+Review, served at **https://local-review.edspencer.net**. It needs Node 22.12 or later.
+
+It began as a copy of Paddock's docs site (Astro 5), and has since been upgraded past it; see
+[CLAUDE.md](CLAUDE.md) for what changed in the upgrade and why.
 
 A standalone package: it is not part of the root `local-review` package, so it never affects the app's build, tests
 or npm tarball.
@@ -60,6 +63,7 @@ Built and served by **Cloudflare Pages** from the GitHub repo (git integration, 
 | Build command | `npm install && npm run build` |
 | Build output directory | `dist` |
 | Custom domain | `local-review.edspencer.net` |
+| Node version | 22, from `website/.node-version` (no setting needed) |
 
 Every PR that touches the repo also gets a preview deployment.
 
