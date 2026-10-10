@@ -5,7 +5,7 @@ import type { Context } from 'hono';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { streamSSE } from 'hono/streaming';
-import { PORT, PROJECTS_DIR, ROOT, SAFE_NAME } from './config.js';
+import { PROJECTS_DIR, ROOT, SAFE_NAME, WEB_DIST } from './config.js';
 import { detailOf, filesOf, type CommitSummary } from './commits.js';
 import { prStatus, progressOf, storedStatus } from '../shared/readiness.js';
 import { ReviewConflictError, loadReview, mutateReview, randomId, reviewPath, unresolvedCount, viewReview, type Review, type ReviewContext, type Thread } from './reviews.js';
@@ -515,17 +515,27 @@ app.get('/api/me', (c) => c.json(REVIEWER));
 app.all('/api/*', (c) => c.json({ error: 'not found' }, 404));
 
 // ---------------- frontend ----------------
-const DIST = path.join(ROOT, 'dist');
 if (!process.env.LOCAL_REVIEW_DEV) {
-  app.use('/assets/*', serveStatic({ root: path.relative(process.cwd(), DIST) || '.' }));
+  app.use('/assets/*', serveStatic({ root: path.relative(process.cwd(), WEB_DIST) || '.' }));
   app.get('*', (c) => {
-    const index = path.join(DIST, 'index.html');
+    const index = path.join(WEB_DIST, 'index.html');
     if (!fs.existsSync(index)) return c.text('Frontend not built. Run `npm run build` (or `npm start`).', 500);
     return c.html(fs.readFileSync(index, 'utf8'));
   });
 }
 
-startWatchers();
-serve({ fetch: app.fetch, port: PORT, hostname: '127.0.0.1' }, (i) => {
-  console.log(`Local Review on http://localhost:${i.port}  (projects: ${PROJECTS_DIR})`);
-});
+/**
+ * Serve the UI and API on 127.0.0.1:`port` (only ever loopback: see security.ts) and watch the data for changes.
+ * Resolves with the bound port once listening; rejects if it can't bind (e.g. the port is taken).
+ */
+export function startServer(port: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, (i) => {
+      server.off('error', reject);
+      startWatchers();
+      console.log(`Local Review on http://localhost:${i.port}  (projects: ${PROJECTS_DIR})`);
+      resolve(i.port);
+    });
+    server.once('error', reject);
+  });
+}
