@@ -7,7 +7,7 @@ A PR's title and description start as its commit's subject and body. You can rew
 saved to the PR's [prs file](/reference/pr-files/), **never to the commit**, so the reviewed repo is untouched. The copy
 buttons then give you exactly the text the real GitHub PR should have, project context included.
 
-<!-- SHOT: crop-pr-edit — the description's Write/Preview editor with its toolbar open on a PR; crop to the editor -->
+![The description editor open on a PR: Write and Preview tabs, a formatting toolbar, the text, and Cancel and Save buttons](../../../assets/shots/crop-pr-edit.png)
 
 ## Editing
 
@@ -59,7 +59,7 @@ PR's stack note, each with **Copy** and **Edit**. Edit opens the same editor as 
 toolbar, ⌘↵ saves, Esc cancels, and a "changed elsewhere" notice). Collapse the box with its chevron; that's remembered
 (in localStorage, for every PR and project). **Project overview** goes to the homepage.
 
-<!-- SHOT: crop-project-context — the Project context box: the project intro and the stack note, each with Copy / Edit; crop -->
+![The Project context box: the project intro and the stack note, each with copy and edit buttons](../../../assets/shots/crop-project-context.png)
 
 - The **project intro** is `description:` at the top of `project.yaml`: context for the whole effort.
 - The **stack note** is `description:` on the stack: how this stack relates to the others.

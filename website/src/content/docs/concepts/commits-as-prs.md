@@ -7,7 +7,7 @@ In Local Review, **one commit is one PR**. Each commit in a project's range is s
 a Conversation tab, a Files changed tab and a Stack tab, just like a GitHub PR. That is the shape it will have when it
 goes up as a GitHub stacked PR: one PR per commit, each on the branch of the one below.
 
-<!-- SHOT: crop-pr-header — a PR page header: title with #3, the Draft | Ready toggle, `6 of 15 done`, "commit 3 of 10 in my-service" and the stack stepper; crop to the header -->
+![A PR header: the title with its number #6, the Draft | Ready toggle, "4 of 11 done", "commit 6 of 10 in orchard-api" with its branches, and the stack stepper 6, 7, 8](../../../assets/shots/crop-pr-header.png "A commit as a PR: its title and number, readiness, where it sits in the range, its branch and base, and a stepper through its stack.")
 
 ## What a PR is made of
 

@@ -99,3 +99,34 @@ header.header button[data-open-modal] kbd {
 	margin-inline: auto;
 	height: auto;
 }
+
+/*
+ * Screenshots (tools/docs-media). They are light-mode captures of the app, so on
+ * the dark theme a hairline edge and a little shadow keep their white from
+ * bleeding into the page. Crops can be narrower than the column: they sit at
+ * their natural size (Astro sets width/height), never stretched.
+ */
+.sl-markdown-content figure.shot {
+	margin-block: 1.5rem;
+}
+
+.sl-markdown-content figure.shot img,
+.sl-markdown-content p > img {
+	display: block;
+	max-width: 100%;
+	height: auto;
+	border: 1px solid var(--sl-color-gray-5);
+	border-radius: 0.5rem;
+}
+
+:root[data-theme='dark'] .sl-markdown-content figure.shot img,
+:root[data-theme='dark'] .sl-markdown-content p > img {
+	border-color: var(--sl-color-gray-4);
+	box-shadow: 0 8px 24px -12px rgb(0 0 0 / 0.6);
+}
+
+.sl-markdown-content figure.shot figcaption {
+	margin-top: 0.5rem;
+	font-size: var(--sl-text-sm);
+	color: var(--sl-color-gray-3);
+}
