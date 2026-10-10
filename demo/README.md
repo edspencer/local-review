@@ -2,8 +2,12 @@
 
 A reproducible world to run Local Review on, for screenshots, GIFs, manual testing and demos. Everything in it is
 made up: **Orchard**, a booking app for fitness studios, its four repos, its team (Maya, Theo, Sam and June, all
-`@orchard.example`), and a GitHub org (`orchard-studio-demo`) whose PR links go nowhere. None of it ships in the npm
-package (`files` in `package.json` lists what does).
+`@orchard.example`), and a GitHub org (`orchard-studio-demo`) whose PR links go nowhere.
+
+`lib/` and `world/` also ship in the npm package (compiled to `dist/demo`): they're the **example projects** a new
+user can add from the first-run page or with `local-review examples` (`server/examples.ts`, which puts the repos in
+the data home and prefixes the slugs with `example-`). So that code runs in the app: `test/fsguard.test.ts` scans it,
+and it may only create files. The seed script, the lock and the capture rig don't ship.
 
 ```sh
 npm run demo:seed                    # → demo/out (git-ignored); --force replaces an earlier seed

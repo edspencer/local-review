@@ -1,7 +1,8 @@
 // `npm run smoke:pack`: check the npm package as a user gets it. Packs it (prepack builds it), installs the tarball
 // globally into a temp prefix, then runs the installed `local-review` from a temp directory with a throwaway HOME and
 // LOCAL_REVIEW_HOME: --version, --help, guide, init, asset add, and the server (on a free port: /api/me, /, a UI
-// asset, the favicons, the project list, a stack PNG drawn with the bundled fonts, the added image). Cleans up after itself. Linux and macOS.
+// asset, the favicons, the project list, a stack PNG drawn with the bundled fonts, the added image, adding and
+// removing the example projects). Cleans up after itself. Linux and macOS.
 import { execFileSync, spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -115,6 +116,18 @@ try {
   const img = await get(base, `/api/projects/demo/assets/${assetName}`, /^image\/png$/);
   assert.equal(img.headers.get('x-content-type-options'), 'nosniff');
   assert.deepEqual(Buffer.from(await img.arrayBuffer()), fs.readFileSync(image), 'the added image, as added');
+
+  step('the example projects (built from dist/demo, no network)');
+  const post = (p) => fetch(base + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+  const added = await post('/api/examples');
+  assert.equal(added.status, 201, await added.clone().text());
+  const withExamples = await (await get(base, '/api/projects', /json/)).json();
+  assert.equal(withExamples.examples, 'present');
+  assert.deepEqual(withExamples.projects.map((p) => p.slug).sort(), ['demo', 'example-calendar-feed', 'example-waitlists', 'example-webhook-retries']);
+  const waitlists = await (await get(base, '/api/projects/example-waitlists', /json/)).json();
+  assert.deepEqual(waitlists.repos.map((r) => [r.name, r.error, r.commits.length]), [['orchard-api', null, 10], ['orchard-sdk', null, 4], ['orchard-web', null, 5], ['orchard-infra', null, 3]]);
+  assert.equal((await post('/api/examples/remove')).status, 200);
+  assert.deepEqual((await (await get(base, '/api/projects', /json/)).json()).projects.map((p) => p.slug), ['demo']);
   console.log('smoke:pack: ok');
 } finally {
   if (server && server.exitCode === null) {

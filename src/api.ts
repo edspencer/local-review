@@ -121,6 +121,8 @@ export interface ProjectSummary {
   mergedCount: number;
   /** everything has landed: no live commits in any repo */
   archived: boolean;
+  /** one of the example projects (`example: true`, server/examples.ts) */
+  example: boolean;
   unresolved: number;
   modified: string;
 }
@@ -129,7 +131,17 @@ export interface ProjectsResponse {
   projectsDir: string;
   /** the server's home directory: paths under it are shown as ~/… (shared/paths.ts) */
   home: string;
+  /** the example projects: some listed ('present'), removed earlier and restorable ('removed'), or never added */
+  examples: 'none' | 'present' | 'removed';
   projects: ProjectSummary[];
+}
+
+/** What adding or removing the example projects did, by project slug. */
+export interface ExamplesResult {
+  created: string[];
+  restored: string[];
+  existing: string[];
+  removed: string[];
 }
 
 export interface PrInfo {
@@ -281,6 +293,8 @@ export const api = {
   uploadAsset,
   me: () => req<Reviewer>('GET', '/api/me'),
   projects: () => req<ProjectsResponse>('GET', '/api/projects'),
+  addExamples: () => req<ExamplesResult>('POST', '/api/examples', {}),
+  removeExamples: () => req<ExamplesResult>('POST', '/api/examples/remove', {}),
   project: (slug: string) => req<ProjectData>('GET', `/api/projects/${enc(slug)}`),
   commit: (l: Loc, sha: string) => req<CommitResponse>('GET', base(l, sha)),
   review: (l: Loc, sha: string) => req<Review>('GET', `${base(l, sha)}/review`),

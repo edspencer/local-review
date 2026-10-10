@@ -887,6 +887,66 @@ a.header-project:hover { color: #f6d29b; }
 .project-home-stack li a:hover { color: var(--accent); text-decoration: underline; }
 .project-home-stack .commit-num { flex: none; min-width: 18px; color: var(--fg-muted); font-size: 12px; text-align: right; }
 
+/* ---------- first run (Welcome.tsx): plum and amber, like the header ---------- */
+.welcome { max-width: 980px; padding-top: 32px; }
+.welcome-hero {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  padding: 28px 32px;
+  border-radius: 12px;
+  color: #fff;
+  background: radial-gradient(120% 140% at 100% 0%, #6b2a60 0%, var(--plum) 55%, #2b0f27 100%);
+  border-bottom: 3px solid #e8a33d;
+  box-shadow: 0 8px 24px rgba(74, 25, 66, 0.18);
+}
+.welcome-hero > div { flex: 1; min-width: 0; }
+.welcome-hero img { flex: none; border-radius: 12px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18); }
+.welcome-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: #f0b960; margin-bottom: 6px; }
+.welcome-hero h1 { margin: 0 0 10px; font-size: 24px; line-height: 1.25; font-weight: 700; max-width: 38em; text-wrap: balance; }
+.welcome-hero p { margin: 0; font-size: 15px; line-height: 1.55; color: rgba(255, 255, 255, 0.82); max-width: 44em; }
+.welcome-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 24px; }
+@media (max-width: 860px) { .welcome-cards { grid-template-columns: 1fr; } .welcome-hero img { display: none; } }
+.welcome-card { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 22px 24px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+.welcome-card.is-tour { border-color: #e8a33d; background: linear-gradient(180deg, #fff8ec 0%, var(--bg) 70%); }
+.welcome-card h2 { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 17px; }
+.welcome-card p { margin: 0; line-height: 1.55; }
+.welcome-icon { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--plum); color: #fff; flex: none; }
+.welcome-card.is-tour .welcome-icon { background: #e8a33d; color: #2b0f27; }
+.welcome-repos { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.welcome-repos li { display: inline-flex; align-items: baseline; gap: 6px; padding: 3px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg); font-size: 12px; }
+.welcome-repos code { font-size: 12px; font-weight: 600; }
+.welcome-repos span { color: var(--fg-muted); }
+.btn-plum { background: var(--plum); color: #fff; border-color: rgba(31, 35, 40, 0.15); padding: 7px 18px; font-weight: 600; }
+.btn-plum:hover:not(:disabled) { background: var(--plum-2); border-color: rgba(31, 35, 40, 0.15); }
+.btn-plum:disabled { background: #a8749d; color: #fff; }
+.welcome-fine { font-size: 12px; color: var(--fg-muted); }
+.welcome-fine code { font-size: 11.5px; }
+.welcome-path { display: block; width: fit-content; max-width: 100%; margin-top: 6px; padding: 2px 8px; font-size: 12px; background: var(--bg-subtle); border-radius: 4px; overflow-wrap: anywhere; }
+.welcome-error { margin: 0; align-self: stretch; }
+.welcome-notice { background: #fff8ec; border-color: #e8a33d; color: #4d2d00; margin: 0 0 16px; }
+.welcome-steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; line-height: 1.5; align-self: stretch; }
+.welcome-steps li::marker { color: var(--plum); font-weight: 700; }
+.copy-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; padding: 6px 6px 6px 12px; background: var(--bg-subtle); border: 1px solid var(--border-muted); border-radius: var(--radius); }
+.copy-line code { font-size: 12.5px; line-height: 1.45; white-space: pre-wrap; }
+.copy-line .btn-octicon { flex: none; white-space: nowrap; }
+.welcome-agent { align-self: stretch; margin-top: 4px; padding-top: 14px; border-top: 1px dashed var(--border); }
+.welcome-agent-label { font-size: 12px; font-weight: 600; color: var(--fg-muted); }
+.welcome-links { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin-top: 24px; padding: 14px 4px 0; border-top: 1px solid var(--border-muted); font-size: 13px; }
+.welcome-links a { color: var(--accent); text-decoration: none; }
+.welcome-links a:hover { text-decoration: underline; }
+.welcome-promise { margin-left: auto; color: var(--fg-muted); font-size: 12px; }
+/* the example projects: a tag in the switcher, and a strip at the top of the sidebar */
+.example-tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px; background: #e8a33d; color: #2b0f27; font-size: 10px; font-weight: 700; line-height: 16px; letter-spacing: 0.04em; text-transform: uppercase; vertical-align: 1px; }
+.examples-strip { margin: 8px 12px 4px; padding: 8px 10px; border: 1px solid #e8a33d; border-radius: var(--radius); background: #fff8ec; font-size: 12px; color: #4d2d00; display: flex; flex-direction: column; gap: 6px; }
+.examples-strip-head { display: flex; align-items: center; gap: 6px; }
+.examples-strip-head .example-tag { margin-left: 0; }
+.examples-strip-remove { align-self: flex-start; font-size: 12px; }
+.examples-strip-confirm { display: flex; flex-direction: column; gap: 6px; line-height: 1.4; }
+.examples-strip-actions { display: flex; gap: 6px; }
+.btn-danger-outline { color: var(--danger); }
+.btn-danger-outline:hover:not(:disabled) { background: var(--danger); color: #fff; border-color: var(--danger); }
+
 /* ---------- dark mode (follows the OS), GitHub dark colours. The plum header stays as it is. ---------- */
 :root { color-scheme: light dark; }
 @media (prefers-color-scheme: dark) {
@@ -1086,3 +1146,14 @@ a.header-project:hover { color: #f6d29b; }
 /* the sidebar repo heading: "9/11 +2", the follow-on PRs not in the viewed count */
 /* dashed and outlined like the follow-on badge, so it doesn't read as the solid amber open-threads counter beside it */
 .repo-progress-follow-on { color: var(--follow-on-fg); font-weight: 600; line-height: 14px; padding: 0 4px; border: 1px dashed var(--follow-on-line); border-radius: 2em; }
+
+@media (prefers-color-scheme: dark) {
+  .welcome-card.is-tour { background: linear-gradient(180deg, rgba(232, 163, 61, 0.1) 0%, var(--bg) 70%); }
+  .welcome-notice, .examples-strip { background: rgba(232, 163, 61, 0.1); color: #f0c47a; }
+  .welcome-repos li { background: var(--bg-subtle); }
+  .btn-plum { background: #7a2f6e; border-color: rgba(240, 246, 252, 0.1); color: #fff; }
+  .btn-plum:hover:not(:disabled) { background: #8f3a82; }
+  .btn-plum:disabled { background: #4a1942; color: rgba(255, 255, 255, 0.6); }
+  .welcome-icon { background: #7a2f6e; }
+  .welcome-steps li::marker { color: #d9a6cf; }
+}

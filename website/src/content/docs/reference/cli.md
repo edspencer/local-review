@@ -24,6 +24,7 @@ Usage: local-review [serve] [--port <n>]
        local-review init <project>
        local-review asset add <project> <file> [--alt <text>]
        local-review asset url <project> <name> <url>
+       local-review examples [remove]
        local-review guide
        local-review --version | --help
 
@@ -50,6 +51,12 @@ Usage: local-review [serve] [--port <n>]
   asset url
           Record where an asset is published (a URL GitHub's readers can reach), so `plan` puts that URL in
           the bodies instead of the local assets/<name> reference.
+  examples
+          Add the example projects: "Orchard", a made-up app in four repos, to click around before reviewing your
+          own work. Makes the repos in <data>/examples/ and the projects as projects/example-*. Running it again
+          restores removed ones and leaves existing ones alone.
+  examples remove
+          Hide the example projects again. Nothing is deleted: each one's project.yaml is renamed to a .bak.
   guide   Print the guide for agents using Local Review to get their work reviewed (AGENT-GUIDE.md).
 
 Data: $LOCAL_REVIEW_HOME/projects (default ~/.local-review/projects). Agents: run `local-review guide`.
@@ -139,6 +146,33 @@ Records where an image is published, a URL the PR's readers can reach, in `asset
 on `local-review plan` writes that URL into the PR bodies in place of `assets/<name>`. `<name>` can also be written as
 it appears in markdown (`assets/<name>`). Running it again changes the URL; other fields in the file are kept. Why
 this exists: [Publishing: images](/agents/publishing-stacked-prs/#images).
+
+## `local-review examples [remove]`
+
+Adds the **example projects**: "Orchard", a made-up booking app in four repos (Go, TypeScript, React, Terraform),
+with three projects to click around: stacked PRs across all four repos, review threads with an agent's replies, and an
+archived project whose PRs have all merged. It's the same as **Add the example projects** on the first-run page.
+
+```text
+$ npx local-review examples
+Created example-waitlists, example-calendar-feed, example-webhook-retries
+
+The example projects are in /home/you/.local-review/projects (3). `local-review examples remove` hides them again.
+```
+
+- It writes four small git repos into `~/.local-review/examples/orchard-<id>/` and the projects as
+  `projects/example-*/`, in about a second and with no network. The history is built in memory and written with
+  `git fast-import`, so it's the same everywhere. These repos are Local Review's own data, created fresh; nobody's
+  work is touched, and once made they're only ever read.
+- Every file is created, never replaced: running it again leaves existing example projects alone, and **restores**
+  removed ones exactly as they were (comments you wrote on them included).
+- If a project of yours already has one of the names (`example-waitlists`, …) and isn't an example, it stops
+  without writing anything.
+
+`local-review examples remove` hides them again, **deleting nothing**: each example's `project.yaml` is renamed to
+`project.example-removed.yaml.bak`, so the project drops out of the list and every other file stays. Only projects
+whose `project.yaml` says `example: true` are touched. To reclaim the disk space (a few MB), delete
+`~/.local-review/examples/` and the `projects/example-*` directories yourself.
 
 ## `local-review guide`
 

@@ -31,6 +31,7 @@
   "files": [
     "dist/server/",
     "dist/shared/",
+    "dist/demo/",
     "dist/web/",
     "server/fonts/",
     "examples/project.example.yaml",
@@ -48,7 +49,7 @@
     "start": "node scripts/start.mjs",
     "build": "npm run build:web && npm run build:server",
     "build:web": "vite build",
-    "build:server": "node -e \"fs.rmSync('dist/server',{recursive:true,force:true});fs.rmSync('dist/shared',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+    "build:server": "node -e \"fs.rmSync('dist/server',{recursive:true,force:true});fs.rmSync('dist/shared',{recursive:true,force:true});fs.rmSync('dist/demo',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "dev": "concurrently -k -n api,web \"LOCAL_REVIEW_DEV=1 PORT=$LOCAL_REVIEW_API_PORT tsx watch server/cli.ts serve\" \"vite\"",
     "typecheck": "tsc -p tsconfig.server.json && tsc -p tsconfig.json",
     "test": "node --import tsx --test test/*.test.ts",

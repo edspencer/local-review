@@ -209,7 +209,8 @@ export class RepoBuilder {
       const [m, sha] = line.split(' ');
       markShas.set(Number(m.slice(1)), sha);
     }
-    fs.rmSync(marks);
+    // the marks file stays in .git: nothing reads it, and this code never deletes a file (the app runs it to create
+    // the example projects, so test/fsguard.test.ts scans it like the server)
     for (const c of this.commits) c.sha = markShas.get(c.mark);
     git(dir, ['checkout', '-q', '-f', checkout]);
   }
