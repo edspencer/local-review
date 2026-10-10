@@ -6,6 +6,7 @@ import type { Context } from 'hono';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { streamSSE } from 'hono/streaming';
+import { bodyLimit } from 'hono/body-limit';
 import { PROJECTS_DIR, SAFE_NAME, WEB_DIST } from './config.js';
 import { detailOf, filesOf, type CommitSummary } from './commits.js';
 import { prStatus, progressOf, storedStatus } from '../shared/readiness.js';
@@ -19,6 +20,8 @@ import { localOnly } from './security.js';
 import { EditNotFoundError, editProjectYaml, setProjectDescription, setStackDescription } from './projectEdit.js';
 import { aggregate, mergeAggregates } from '../shared/totals.js';
 import { REVIEWER } from './reviewer.js';
+import { AssetError, addAsset, assetFile } from './assets.js';
+import { ASSET_MIME, MAX_ASSET_BYTES, typeOfMime, typeOfName } from '../shared/assets.js';
 import { renderStackSvg, scopeModel, stackWeights, svgToPng, vizModel, type VizScale, type VizScope } from './stackviz.js';
 
 const app = new Hono();
@@ -32,7 +35,7 @@ class HttpError extends Error {
 app.use('*', localOnly);
 
 app.onError((err, c) => {
-  const status = err instanceof HttpError ? err.status : err instanceof ReviewConflictError ? 409 : err instanceof EditNotFoundError ? 404 : 500;
+  const status = err instanceof HttpError || err instanceof AssetError ? err.status : err instanceof ReviewConflictError ? 409 : err instanceof EditNotFoundError ? 404 : 500;
   if (status === 500) console.error(err);
   return c.json({ error: err.message }, status as any);
 });
@@ -279,6 +282,9 @@ app.get(`${COMMIT}/pr`, async (c) => {
 });
 
 // ---------------- stack visualization (SVG / PNG) ----------------
+/** For an SVG opened directly (a stack picture, an image asset): inline styles only, no script, nothing loaded. */
+const VIZ_CSP = "default-src 'none'; style-src 'unsafe-inline'";
+
 function vizOpts(c: Context) {
   const s = c.req.query('scope');
   const scope: VizScope = s === 'repo' || s === 'stack' ? s : 'project';
@@ -288,12 +294,52 @@ function vizOpts(c: Context) {
   return { scope, scale, title };
 }
 
+// ---------------- images (assets/) ----------------
+/** The project directory for a slug that names an existing project, without loading its repos (no git). */
+function projectDirOf(slug: string): string {
+  const dir = path.join(PROJECTS_DIR, slug);
+  if (!SAFE_NAME.test(slug) || !fs.existsSync(path.join(dir, 'project.yaml'))) throw new HttpError(404, `no project '${slug}' in ${PROJECTS_DIR}`);
+  return dir;
+}
+
+/** What every image response gets, SVG or not: never sniffed, never runs anything, not embeddable cross-site. */
+const ASSET_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'Content-Security-Policy': VIZ_CSP,
+  'Cross-Origin-Resource-Policy': 'same-origin',
+  // content-addressed: a name always means the same bytes
+  'Cache-Control': 'private, max-age=31536000, immutable',
+};
+
+app.get('/api/projects/:project/assets/:name', (c) => {
+  const dir = projectDirOf(c.req.param('project'));
+  const name = c.req.param('name');
+  const type = typeOfName(name);
+  const file = assetFile(dir, name);
+  if (!file || !type) throw new HttpError(404, `no asset '${name}'`);
+  return c.body(new Uint8Array(fs.readFileSync(file)), 200, { ...ASSET_HEADERS, 'Content-Type': ASSET_MIME[type] });
+});
+
+// the body is the image itself (security.ts only lets image Content-Types through here); bodyLimit refuses an
+// over-size upload from its Content-Length, or as soon as a streamed body passes the limit, before buffering it
+app.post(
+  '/api/projects/:project/assets',
+  bodyLimit({ maxSize: MAX_ASSET_BYTES, onError: (c) => c.json({ error: `the image is too large; the limit is ${MAX_ASSET_BYTES / 1024 / 1024} MB` }, 413) }),
+  async (c) => {
+    const dir = projectDirOf(c.req.param('project'));
+    const bytes = new Uint8Array(await c.req.arrayBuffer());
+    const alt = c.req.query('alt');
+    const a = addAsset(dir, bytes, typeOfMime(c.req.header('content-type') ?? ''), alt);
+    return c.json({ name: a.name, markdown: a.markdown, created: a.created }, a.created ? 201 : 200);
+  },
+);
+
 function sendViz(c: Context, svg: string, kind: 'svg' | 'png', name: string) {
   const headers: Record<string, string> = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
   if (c.req.query('download') !== undefined) headers['Content-Disposition'] = `attachment; filename="${name.replace(/[^A-Za-z0-9._-]/g, '-')}.${kind}"`;
   if (kind === 'svg') {
     // the SVG is all escaped text and shapes; still, never let it run anything if opened directly
-    headers['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'";
+    headers['Content-Security-Policy'] = VIZ_CSP;
     return c.body(svg, 200, { ...headers, 'Content-Type': 'image/svg+xml; charset=utf-8' });
   }
   return c.body(new Uint8Array(svgToPng(svg)), 200, { ...headers, 'Content-Type': 'image/png' });

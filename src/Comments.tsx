@@ -1,17 +1,34 @@
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { api, type Anchor, type Comment, type Reviewer, type Thread } from './api';
-import { relativeTime } from './util';
+import { ProjectContext, relativeTime } from './util';
 import { applyFormat, type Format } from './prText';
+import { MAX_ASSET_BYTES, assetNameOf, assetUrl } from '../shared/assets';
 
 marked.setOptions({ gfm: true, breaks: false });
 
+// `assets/<name>` images (and links to them) point at the project's asset route. Set only for the duration of one
+// sanitize call; the rewrite happens after DOMPurify has checked the attribute, and only ever produces our own URL.
+let assetProject: string | null = null;
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (!assetProject) return;
+  const attr = node.tagName === 'IMG' ? 'src' : node.tagName === 'A' ? 'href' : null;
+  const name = attr && assetNameOf(node.getAttribute(attr) ?? '');
+  if (attr && name) node.setAttribute(attr, assetUrl(assetProject, name));
+});
+
 export function Markdown({ text, className }: { text: string; className?: string }) {
+  const project = useContext(ProjectContext);
   const html = useMemo(() => {
     const raw = marked.parse(text ?? '', { async: false }) as string;
-    return DOMPurify.sanitize(raw, { ADD_ATTR: ['target'] });
-  }, [text]);
+    assetProject = project;
+    try {
+      return DOMPurify.sanitize(raw, { ADD_ATTR: ['target'] });
+    } finally {
+      assetProject = null;
+    }
+  }, [text, project]);
   if (!text?.trim()) return <div className={`markdown-body muted ${className ?? ''}`}><em>No description provided.</em></div>;
   return <div className={`markdown-body ${className ?? ''}`} dangerouslySetInnerHTML={{ __html: html }} />;
 }
@@ -107,6 +124,7 @@ export function CommentForm({
 }
 
 const ICONS = {
+  image: 'M16 13.25A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25V2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75ZM1.75 2.5a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h.94l.03-.03 6.077-6.078a1.75 1.75 0 0 1 2.412-.06L14.5 10.31V2.75a.25.25 0 0 0-.25-.25Zm12.5 11a.25.25 0 0 0 .25-.25v-.917l-4.298-3.889a.25.25 0 0 0-.344.009L4.81 13.5ZM7 6a2 2 0 1 1-3.999.001A2 2 0 0 1 7 6ZM5.5 6a.5.5 0 1 0-1 0 .5.5 0 0 0 1 0Z',
   code: 'm11.28 3.22 4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.275-.326.749.749 0 0 1 .215-.734L13.94 8l-3.72-3.72a.749.749 0 0 1 .326-1.275.749.749 0 0 1 .734.215Zm-6.56 0a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042L2.06 8l3.72 3.72a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L.47 8.53a.75.75 0 0 1 0-1.06Z',
   link: 'm7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z',
   list: 'M5.75 2.5h8.5a.75.75 0 0 1 0 1.5h-8.5a.75.75 0 0 1 0-1.5Zm0 5h8.5a.75.75 0 0 1 0 1.5h-8.5a.75.75 0 0 1 0-1.5Zm0 5h8.5a.75.75 0 0 1 0 1.5h-8.5a.75.75 0 0 1 0-1.5ZM2 14a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm1-6a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM2 4a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z',
@@ -119,6 +137,74 @@ export function Octicon({ d, size = 16, className }: { d: string | string[]; siz
       {(Array.isArray(d) ? d : [d]).map((p, i) => <path key={i} d={p} />)}
     </svg>
   );
+}
+
+let uploadSeq = 0;
+
+/**
+ * Image uploads into a markdown textarea: each file gets an `![Uploading …]()` placeholder at the cursor, replaced
+ * by its `![alt](assets/<name>)` once the server has it (or removed, with an error, if it refused it). `project`
+ * null: no uploads (`upload` is null).
+ */
+function useImageUpload(project: string | null, value: string, onChange: (v: string) => void, ta: React.RefObject<HTMLTextAreaElement | null>) {
+  const [uploading, setUploading] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [dropping, setDropping] = useState(false);
+  // the upload finishes later: replace the placeholder in the text as it is then, through the current onChange
+  const latest = useRef({ value, onChange });
+  latest.current = { value, onChange };
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  const replace = (token: string, by: string) => {
+    if (!mounted.current) return;
+    const { value: v, onChange: set } = latest.current;
+    const i = v.indexOf(token);
+    if (i < 0) return; // deleted by hand meanwhile
+    const rest = v.slice(i + token.length);
+    set(v.slice(0, i) + by + (by ? rest : rest.replace(/^\n/, ''))); // a failed one goes with its line break
+  };
+  const upload = (files: File[]) => {
+    if (!project) return;
+    setUploadError(null);
+    const el = ta.current;
+    const v = latest.current.value;
+    const [start, end] = el ? [el.selectionStart, el.selectionEnd] : [v.length, v.length];
+    const jobs = files.map((f) => ({ f, token: `![Uploading ${(f.name || 'image').replace(/[\[\]]/g, '')}…](#upload-${++uploadSeq})` }));
+    const before = v.slice(0, start);
+    const insert = (before && !before.endsWith('\n') ? '\n' : '') + jobs.map((j) => j.token).join('\n') + '\n';
+    latest.current.onChange(before + insert + v.slice(end));
+    if (el) {
+      const at = start + insert.length;
+      requestAnimationFrame(() => { el.focus(); el.setSelectionRange(at, at); });
+    }
+    for (const { f, token } of jobs) {
+      const fail = (msg: string) => { replace(token, ''); if (mounted.current) setUploadError(`Couldn't add ${f.name || 'the image'}: ${msg}`); };
+      if (f.size > MAX_ASSET_BYTES) { fail(`it's ${(f.size / 1024 / 1024).toFixed(1)} MB; the limit is ${MAX_ASSET_BYTES / 1024 / 1024} MB`); continue; }
+      setUploading((n) => n + 1);
+      api
+        .uploadAsset(project, f, (f.name || 'image').replace(/\.[^.]*$/, ''))
+        .then((r) => replace(token, r.markdown), (e) => fail((e as Error).message))
+        .finally(() => { if (mounted.current) setUploading((n) => n - 1); });
+    }
+  };
+  const hasFiles = (e: React.DragEvent) => e.dataTransfer.types.includes('Files');
+  const dropProps = project
+    ? {
+        onDragOver: (e: React.DragEvent) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setDropping(true); },
+        onDragLeave: (e: React.DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false); },
+        onDrop: (e: React.DragEvent) => {
+          setDropping(false);
+          const files = [...e.dataTransfer.files];
+          if (!files.length) return;
+          e.preventDefault();
+          upload(files);
+        },
+      }
+    : {};
+  return { upload: project ? upload : null, uploading, uploadError, dropping, dropProps };
 }
 
 /**
@@ -138,6 +224,7 @@ export function MarkdownEditor({
   error,
   canSubmit = true,
   toolbar,
+  images,
   notice,
   className,
 }: {
@@ -153,11 +240,15 @@ export function MarkdownEditor({
   error?: string | null;
   canSubmit?: boolean;
   toolbar?: boolean;
+  /** paste, drop or attach images: each is uploaded to the project's assets and its markdown inserted */
+  images?: boolean;
   notice?: ReactNode;
   className?: string;
 }) {
   const [tab, setTab] = useState<'write' | 'preview'>('write');
   const ref = useRef<HTMLTextAreaElement>(null);
+  const project = useContext(ProjectContext);
+  const { upload, uploading, uploadError, dropping, dropProps } = useImageUpload(images ? project : null, value, onChange, ref);
   const format = (f: Format) => {
     const ta = ref.current;
     if (!ta) return;
@@ -182,6 +273,7 @@ export function MarkdownEditor({
     ['list', 'Bulleted list', <Octicon d={ICONS.list} />],
     ['quote', 'Quote', <Octicon d={ICONS.quote} />],
   ];
+  const fileInput = useRef<HTMLInputElement>(null);
   return (
     <div className={`comment-form ${compact ? 'compact' : ''} ${className ?? ''}`}>
       <div className="comment-form-tabs">
@@ -192,10 +284,27 @@ export function MarkdownEditor({
             {tools.map(([f, label, icon]) => (
               <button key={f} type="button" className="md-tool" title={label} aria-label={label} onMouseDown={(e) => e.preventDefault()} onClick={() => format(f)}>{icon}</button>
             ))}
+            {upload && (
+              <>
+                <button type="button" className="md-tool" title="Add an image (or paste or drop one)" aria-label="Add an image" onMouseDown={(e) => e.preventDefault()} onClick={() => fileInput.current?.click()}><Octicon d={ICONS.image} /></button>
+                <input
+                  ref={fileInput}
+                  type="file"
+                  hidden
+                  multiple
+                  accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+                  onChange={(e) => {
+                    const files = [...(e.target.files ?? [])];
+                    e.target.value = '';
+                    if (files.length) upload(files);
+                  }}
+                />
+              </>
+            )}
           </span>
         )}
       </div>
-      <div className="comment-form-body">
+      <div className={`comment-form-body ${dropping ? 'is-dropping' : ''}`} {...dropProps}>
         {notice}
         {tab === 'write' ? (
           <textarea
@@ -204,11 +313,18 @@ export function MarkdownEditor({
             value={value}
             placeholder={placeholder}
             onChange={(e) => onChange(e.target.value)}
+            onPaste={(e) => {
+              // an image on the clipboard (a screenshot, a copied image), unless there's text to paste as well
+              const files = [...e.clipboardData.files];
+              if (!upload || !files.length || e.clipboardData.types.includes('text/plain')) return;
+              e.preventDefault();
+              upload(files);
+            }}
             onKeyDown={(e) => {
               const mod = e.metaKey || e.ctrlKey;
               if (e.key === 'Enter' && mod) {
                 e.preventDefault();
-                if (canSubmit && !busy) onSubmit();
+                if (canSubmit && !busy && !uploading) onSubmit();
               } else if (e.key === 'Escape' && onCancel) {
                 e.preventDefault();
                 onCancel();
@@ -222,10 +338,17 @@ export function MarkdownEditor({
           <div className="comment-preview"><Markdown text={value || 'Nothing to preview'} /></div>
         )}
         {error && <div className="flash flash-error">{error}</div>}
+        {uploadError && <div className="flash flash-error" role="alert">{uploadError}</div>}
         <div className="comment-form-actions">
-          <span className="hint">Markdown supported · ⌘↵ to {submitLabel === 'Comment' || submitLabel === 'Reply' ? 'submit' : 'save'}</span>
+          <span className="hint">
+            {uploading ? (
+              <span className="uploading" role="status">Uploading {uploading === 1 ? 'image' : `${uploading} images`}…</span>
+            ) : (
+              <>Markdown supported{upload && ' · paste, drop or attach images'} · ⌘↵ to {submitLabel === 'Comment' || submitLabel === 'Reply' ? 'submit' : 'save'}</>
+            )}
+          </span>
           {onCancel && <button type="button" className="btn" onClick={onCancel} disabled={busy}>Cancel</button>}
-          <button type="button" className="btn btn-primary" onClick={onSubmit} disabled={busy || !canSubmit}>{busy ? 'Saving…' : submitLabel}</button>
+          <button type="button" className="btn btn-primary" onClick={onSubmit} disabled={busy || !canSubmit || uploading > 0} title={uploading ? 'Wait for the images to upload' : undefined}>{busy ? 'Saving…' : submitLabel}</button>
         </div>
       </div>
     </div>
