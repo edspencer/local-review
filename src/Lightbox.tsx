@@ -32,7 +32,9 @@ export function ImageLightbox() {
     };
     const onClick = (e: MouseEvent) => {
       if (e.button !== 0 || e.defaultPrevented) return;
-      const img = (e.target as Element | null)?.closest?.(SELECTOR);
+      const target = e.target as Element | null;
+      // Enter on an image linked to itself clicks its <a> (the Tab stop), not the <img>: detail 0 means a keyboard click
+      const img = target?.closest?.(SELECTOR) ?? (e.detail === 0 ? target?.closest?.('a')?.querySelector(SELECTOR) : null);
       if (!(img instanceof HTMLImageElement)) return;
       // an image linked to itself: a modifier-click still opens the link (new tab, download, …)
       if (img.closest('a') && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)) return;
@@ -166,7 +168,7 @@ function LightboxDialog({ images, start, onClose }: { images: Image[]; start: nu
     <div className={`lightbox ${image.caption ? 'has-caption' : ''}`} role="dialog" aria-modal="true" aria-label={image.caption ? `Image: ${image.caption}` : 'Image'} ref={dialogRef}>
       <div className={`lightbox-stage ${zoomed ? 'is-zoomed' : ''}`} ref={stageRef} onPointerDown={onPointerDown} onClick={onStageClick}>
         <img
-          key={image.src}
+          key={`${index}:${image.src}`} // per position, so the same image twice in a block is measured again
           ref={imgRef}
           className={zoomed ? 'zoom-out' : zoomable ? 'zoom-in' : ''}
           src={image.src}
