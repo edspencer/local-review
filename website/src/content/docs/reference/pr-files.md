@@ -45,7 +45,7 @@ Hand-written files only need the fields they set.
 | Field | Notes |
 | --- | --- |
 | `commit`, `patch_id`, `subject` | Server-maintained, used to [follow the commit across rebases](/concepts/following-rebases/). For a landed PR, `subject:` is its stored subject, which [stack selectors](/concepts/pr-stacks/#how-starts_at-picks-a-commit) match. |
-| `title` | The PR title. Absent or blank: the commit subject. |
+| `title` | The PR title. Absent or blank: the commit subject. A `title` identical to the commit subject (or a `body` identical to the commit body) counts as unedited. |
 | `body` (or `description`) | The PR description, Markdown. Absent: the commit body. |
 | `status` | `draft` (the default when absent) or `ready`. Case-insensitive (`Ready`, `READY`); any other value counts as absent. Setting it is the reviewer's call: see [Readiness](/concepts/readiness/). |
 | `branch` | The plain git branch an agent tagged this commit with. See [Branches](/concepts/branches/). |

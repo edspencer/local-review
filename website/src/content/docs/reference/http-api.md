@@ -27,12 +27,12 @@ More recipes are in the [agent guide](/agents/agent-guide/#api-httplocalhost5622
 
 | Method | Path | |
 | --- | --- | --- |
-| GET | `/api/projects` | Projects: slug, title, repo names/count, commit count (`commitCount`, without follow-on stacks and merged PRs; `followOnCount`, `mergedCount`), `archived`, unresolved count, last modified. |
+| GET | `/api/projects` | Projects: slug, title, repo names/count, commit count (`commitCount`, without follow-on stacks and merged PRs; `followOnCount`, `mergedCount`), `archived`, unresolved count, last modified; plus `projectsDir` and `home` (the user's home directory, so a client can show paths as `~/…`). |
 | GET | `/api/projects/:p` | `description`, repos (range, errors, warnings), `stacks` (title, color, commit shas, warning, `description`, `follow_on: true` on follow-on stacks, `weight`), commits (+/−, `position`, `stack` index, PR `title`, unresolved counts, `branch`, `github`, `status`, `progress`, `landed` on landed PRs: the record plus `diff`, and `tip`/`parent`: what's diffed). |
 | PUT | `/api/projects/:p/description` | `{description: string \| null}`: the project intro (null or blank removes it). |
 | PUT | `/api/projects/:p/repos/:r/stacks/:n/description` | `{description, title?}`: stack `n`'s note (1-based in `stacks:`). A `title` that no longer matches is a 409. |
 | GET | `…` | Metadata (including `branch`, `github`), message body, files with old/new contents, `stack` (with position/count), project-wide `prev`/`next`, `pr`, review. |
-| GET | `…/review` | The review: the file's contents with threads placed on this commit (`outdated`, relocated `line`), plus `file`, `target_file`, `matched_from`, `matched_by`, `carried_over`, `parse_error`. |
+| GET | `…/review` | The review: the file's contents with threads placed on this commit (`outdated`, relocated `line`), plus `file`, `target_file` (absolute paths), `matched_from`, `matched_by`, `carried_over`, `parse_error`. |
 | GET | `…/pr` | `{title, body, title_source, body_source: 'commit'\|'override', commit_subject, commit_body, branch, github, file, …}` |
 | PUT | `…/pr` | `{title?, body?, branch?, github?, status?}`. `null` clears a field; `status` is `"draft"`, `"ready"` or `null`. See [PR files](/reference/pr-files/#writing-it). |
 | POST | `…/threads` | New thread: `{body, path?, side?, line?, start_line?, start_side?, author?}`. Without `path`/`side`/`line` it's a general thread. |
