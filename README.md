@@ -114,8 +114,8 @@ And so you can't mistake it for github.com, its header is deep plum with an ambe
 ## Contributing
 
 Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md), and [AGENTS.md](AGENTS.md) for coding agents
-working on this repo. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md). Everyone taking
-part follows the [Code of Conduct](CODE_OF_CONDUCT.md). How AI was used to build it: [AI-DECLARATION.md](AI-DECLARATION.md).
+working on this repo. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+How AI was used to build it: [AI-DECLARATION.md](AI-DECLARATION.md).
 Releases: [RELEASING.md](RELEASING.md).
 
 ## License

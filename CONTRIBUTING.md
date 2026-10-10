@@ -110,7 +110,3 @@ release on npm: [RELEASING.md](RELEASING.md).
 ## Security
 
 Please don't open a public issue for a vulnerability; see [SECURITY.md](SECURITY.md).
-
-## Code of conduct
-
-Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
