@@ -32,8 +32,8 @@ Docs pages are `.md` / `.mdx` files under `src/content/docs/`. Every page needs 
 Most pages are **stubs** (a summary plus a "TODO: content" note naming the README section the content will come
 from). The README is still the working source; migrating it here is a separate piece of work.
 
-**The default port.** Never type the port number into a page. It is `DEFAULT_PORT` in `src/site.mjs` (it is going to
-change from 5000); MDX pages import it from there (see `getting-started/quickstart.mdx`).
+**The default port.** Never type the port number into a page. It is `DEFAULT_PORT` in `src/site.mjs`, a copy of the
+app's `server/port.ts` (keep the two in step); MDX pages import it from there (see `getting-started/quickstart.mdx`).
 
 ## Sidebar
 

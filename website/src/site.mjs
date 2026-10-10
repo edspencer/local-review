@@ -14,12 +14,14 @@ export const TAGLINE = 'Review your PR stacks before you create them';
 /**
  * The port Local Review serves on by default.
  *
- * NOT FINAL. 5000 clashes with macOS's AirPlay Receiver and is going to change;
- * the new number has not been picked yet. Every mention of the default port on
- * this site comes from this constant (MDX pages import it), so the switch is one
- * edit here. Do not type the number into a page by hand.
+ * A copy of DEFAULT_PORT in server/port.ts (5622 spells "LOCA" on a phone
+ * keypad). It can't be imported from there: Cloudflare builds with website/ as
+ * its root, so ../server is out of reach. Every mention of the default port on
+ * this site comes from this constant (MDX pages import it), so if the app's
+ * default ever changes, this is the one edit here. Do not type the number into
+ * a page by hand.
  */
-export const DEFAULT_PORT = 5000;
+export const DEFAULT_PORT = 5622;
 export const LOCAL_URL = `http://localhost:${DEFAULT_PORT}`;
 
 /**
