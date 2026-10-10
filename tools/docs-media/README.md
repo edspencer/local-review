@@ -9,11 +9,53 @@ npx playwright install chromium                  # once
 npm run docs:media                               # seed demo/out if needed, boot the rig, take every shot
 npm run docs:media -- --only crop-readiness,pr-threads
 npm run docs:media -- --base http://localhost:5050   # a rig you started yourself
+npm run docs:media:gif                           # the demo GIF and the landing page's video (needs ffmpeg)
+npm run docs:media:sync                          # copy what the site and the README use into place (needs ffmpeg)
 ```
+
+So a full re-shoot is `npm run docs:media && npm run docs:media:gif && npm run docs:media:sync`, then look at the
+contact sheet and `git diff --stat`, and commit.
 
 Output goes to `tools/docs-media/out/` (git-ignored): `<shot>.png`, `provenance.json` (each shot's route, viewport,
 scale and crop, the app version and a hash of the seed) and `contact-sheet.png` (every shot on one page, labelled).
-What gets copied into `website/` or the README is decided there, not here.
+
+## Where the images go
+
+`docs:media:sync` copies them into the places they're committed. **What it copies is read from the pages**, so there
+is no second list: every `assets/shots/<shot>.png` or `assets/landing/<shot>.png` mentioned anywhere under
+`website/src/` is copied from `out/<shot>.png` (and a copy nothing mentions any more is deleted). To use a shot on a
+docs page, reference it and re-run the sync; `npm test` fails if a page uses a shot that isn't in `shots.ts`, or whose
+copy isn't committed, or if a `SHOT:` placeholder is left anywhere.
+
+| Destination | What | Served |
+| --- | --- | --- |
+| `website/src/assets/shots/` | docs page images: `![alt](../../../assets/shots/<shot>.png "caption")` | by Astro as webp, 1x and 2x, at half the PNG's size (`website/src/plugins/rehype-shots.mjs`) |
+| `website/src/assets/landing/` | the landing page's feature images and the hero video's poster | by Astro, the same way (`ScrollFeatures.astro`, `Hero.astro`) |
+| `website/public/demo/demo.mp4` | the landing hero's video | as is |
+| `docs/media/demo.gif`, `docs/media/readme-hero.png` | the README's images (the hero is `pr-conversation` scaled to 1600px and palette-quantised) | from `raw.githubusercontent.com/…/main/`, as is, on GitHub and npm |
+
+The README's images are absolute URLs on `main`, so a new one 404s until its PR merges.
+
+## The demo GIF (`gif.ts`)
+
+One review round trip, about 16 seconds: the reviewer drags across five line numbers and comments, the agent's reply
+lands in the thread (written into the review's YAML file, as an agent does), the reviewer resolves it and marks the PR
+ready, and the sidebar's tally goes from 1/3 to 2/3 ready. It mutates its data, so it seeds a fresh copy of the demo in
+the system temp dir every run, never `demo/out`. Frames are 2x screenshots of each beat (with a drawn pointer, since
+screenshots have none), held for set times and encoded by ffmpeg: a GIF (1400px wide, 128 colours, under 1 MB) and an
+H.264 MP4 the same size. `--skip-shoot` re-encodes the last run's frames.
+
+The browser's clock is pinned to the demo's "now", as for the stills, but the server stamps the new comment with the
+real time, which would read as weeks old. So the script re-dates that one comment to the demo's "now" in the YAML
+before the next frame. That is the only thing in it that is staged.
+
+## Composed shots
+
+Two of the landing page's pictures put a crop beside something that isn't a page of the app: the project.yaml that
+made the sidebar (`landing-project-yaml`), and what `local-review plan` prints for a ready PR (`landing-plan`). A shot
+with `compose` instead of a `route` builds its page from earlier shots, seed files and CLI output (`ComposeContext`
+in `shots.ts`), all real, then gets cropped and leak-scanned like the rest. They are styled square and borderless,
+because the landing page frames them.
 
 ## The pieces
 
@@ -21,6 +63,8 @@ What gets copied into `website/` or the README is decided there, not here.
 | --- | --- |
 | `shots.ts` | The shot list. Each shot has a route, actions to reach the state (click, hover, scroll, wait), and a capture: the viewport, the whole page, or a crop around one or more elements with padding and zoom. Each says what it's for. **Edit this to add a shot.** |
 | `capture.ts` | Runs the shots: boots the rig, opens each in a fresh browser context and writes the PNGs. |
+| `gif.ts` | The demo GIF and the landing hero's video, from a scripted review round trip. |
+| `sync.ts` | Copies the outputs the site and the README use into place. |
 | `serve.sh` | Runs Local Review on a seed with a scrubbed environment. **The one place that says how the rig launches the app**: from source today (`scripts/start.mjs`, the compiled CLI); point `LAUNCH` at an installed `local-review` to shoot a release. |
 
 ## What makes the shots deterministic

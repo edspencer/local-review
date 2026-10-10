@@ -8,7 +8,7 @@
 // Output: <out>/<name>.png (light mode, 2x), <out>/provenance.json (what each shot is of, and from which build and
 // seed), <out>/contact-sheet.png (all of them on one page, for checking at a glance). Needs Chromium:
 // `npx playwright install chromium` (README.md).
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium, type Browser, type Page } from 'playwright';
 import { DEFAULT_PORT } from '../../server/port.ts';
 import { seed, type Manifest } from '../../demo/seed.ts';
-import { DEFAULT_VIEWPORT, SHOTS, type Crop, type Shot } from './shots.ts';
+import { DEFAULT_VIEWPORT, SHOTS, type ComposeContext, type Crop, type Shot } from './shots.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../..');
@@ -112,6 +112,24 @@ const STILL_CSS = `
 
 // ------------------------------------------------------------------------------------------------ shooting
 
+/** For composed shots: earlier shots, seed files, and the CLI run against the seed (from source, scrubbed env). */
+function composeContext(m: Manifest): ComposeContext {
+  return {
+    shot: (name) => {
+      const f = path.join(OUT, `${name}.png`);
+      if (!fs.existsSync(f)) throw new Error(`compose: no ${name}.png yet (shoot it first, earlier in SHOTS)`);
+      return `data:image/png;base64,${fs.readFileSync(f).toString('base64')}`;
+    },
+    seedFile: (rel) => fs.readFileSync(path.join(m.home, rel), 'utf8'),
+    cli: (args) =>
+      execFileSync(process.execPath, ['--import', 'tsx', path.join(ROOT, 'server/cli.ts'), ...args], {
+        cwd: ROOT,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, HOME: m.home, LOCAL_REVIEW_HOME: m.localReviewHome, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', TZ: 'UTC', LANG: 'C.UTF-8' },
+      }),
+  };
+}
+
 function resolveRoute(route: string, m: Manifest) {
   return route.replace(/\{([^:}]+):([^}]+)\}/g, (_, repo: string, key: string) => {
     const sha = m.lock.repos[repo]?.[key];
@@ -173,10 +191,22 @@ async function takeShot(browser: Browser, shot: Shot, m: Manifest, base: string)
   }, shot.storage ?? {});
   const page = await context.newPage();
   try {
-    const route = resolveRoute(shot.route, m);
-    await page.goto(base + route, { waitUntil: 'domcontentloaded' });
-    await page.addStyleTag({ content: STILL_CSS });
-    await settle(page);
+    let route: string;
+    if (shot.compose) {
+      route = '(composed)';
+      await page.setContent(shot.compose(composeContext(m)), { waitUntil: 'load' });
+      await page.addStyleTag({ content: STILL_CSS });
+      await page.evaluate(async () => {
+        await document.fonts.ready;
+        await Promise.all([...document.images].map((i) => i.decode().catch(() => null)));
+      });
+    } else {
+      if (!shot.route) throw new Error(`${shot.name}: no route (and no compose)`);
+      route = resolveRoute(shot.route, m);
+      await page.goto(base + route, { waitUntil: 'domcontentloaded' });
+      await page.addStyleTag({ content: STILL_CSS });
+      await settle(page);
+    }
     for (const a of shot.actions ?? []) {
       if ('click' in a) await page.locator(a.click).first().click();
       else if ('hover' in a) await page.locator(a.hover).first().hover();
@@ -194,7 +224,7 @@ async function takeShot(browser: Browser, shot: Shot, m: Manifest, base: string)
       await page.waitForTimeout(150);
     }
     await page.mouse.move(0, viewport.height - 1); // no stray hover state
-    await settle(page);
+    if (!shot.compose) await settle(page);
     await assertClean(page, shot.name, port);
     const file = path.join(OUT, `${shot.name}.png`);
     let clip: { x: number; y: number; width: number; height: number } | undefined;

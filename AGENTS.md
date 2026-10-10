@@ -42,6 +42,8 @@ npm run build         # dist/web (Vite) + dist/server, dist/shared (tsc)
 npm run smoke:pack    # npm pack, install the tarball into a temp prefix, run it, check it serves
 npm run demo:seed     # the demo test bed: fake repos + a data home, in demo/out (demo/README.md)
 npm run docs:media    # screenshots of it for the docs (tools/docs-media/README.md)
+npm run docs:media:gif   # the demo GIF and the landing page's video (ffmpeg)
+npm run docs:media:sync  # copy the captures the site and the README use into place
 ```
 
 To try a change by hand, run it on the demo test bed (`tools/docs-media/serve.sh`) rather than on real data. If you
