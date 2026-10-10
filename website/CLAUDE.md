@@ -1,8 +1,29 @@
 # website/CLAUDE.md
 
 Astro + Starlight documentation site for Local Review, deployed to **https://local-review.edspencer.net** by
-**Cloudflare Pages**. Its stack and structure deliberately match Paddock's docs site (`edspencer/paddock`,
-`website/`), with much less content.
+**Cloudflare Pages**. Its structure deliberately matches Paddock's docs site (`edspencer/paddock`, `website/`), with
+much less content.
+
+**Versions: Astro 7 + Starlight 0.42 (Node >= 22.12).** This site started as a copy of Paddock's (Astro 5.18 +
+Starlight 0.37) and has **deliberately diverged** from it: it was upgraded to clear the Dependabot advisories against
+Astro 5 (one critical) and its transitive deps. So don't copy config or lockfile changes back and forth with Paddock's
+site without checking the version. What the upgrade changed, and why:
+
+- `markdown.processor: unified({ rehypePlugins })` in `astro.config.mjs`. Astro 7 renders Markdown with Sätteri by
+  default, which doesn't run rehype plugins, so `@astrojs/markdown-remark` is a dependency to keep the unified one.
+- Mermaid fences go through `src/plugins/rehype-pre-mermaid.mjs`, a local copy of what `rehype-mermaid`'s
+  `pre-mermaid` strategy does. `rehype-mermaid` needs Playwright installed just to load, and pulled mermaid and KaTeX
+  into the build tree, although that strategy never renders anything at build time.
+- `compressHTML: true`. Astro 7's default (`'jsx'`) strips whitespace between elements, which glued inline text
+  together; `true` keeps the Astro 5/6 output.
+- `overrides: { "postcss-nested": "^7.0.2" }` in `package.json`, so Expressive Code gets a `postcss-selector-parser`
+  without GHSA-rj75-hqrm-r3gf (the build output is byte-identical with and without it). Drop it once
+  `@expressive-code/core` depends on `postcss-nested` 7 itself.
+- The build prints two warnings, `The collection "i18n" does not exist or is empty` and `Entry docs → 404 was not
+  found`. They are Starlight looking up its optional i18n collection and 404 override, and the stock Starlight 0.42
+  template prints them too. Expected; ignore them.
+
+`npm audit` in `website/` should report 0 vulnerabilities. Check it when you change dependencies.
 
 This package is **standalone**: it is NOT part of the root `local-review` package, so it never touches the app's
 build, install, tests or npm tarball. Build it on its own from `website/`.
@@ -16,7 +37,7 @@ npm run dev                        # local dev server
 npm run build && npm run preview   # build + preview the built site
 ```
 
-`rehype-mermaid` runs with `strategy: 'pre-mermaid'`, which only tags the `<pre>`; all rendering happens client-side
+`src/plugins/rehype-pre-mermaid.mjs` only turns a fence into `<pre class="mermaid">`; all rendering happens client-side
 (`public/mermaid-init.js`, from the CDN), identically in dev and in the built output. Check diagrams in **both**
 colour themes: Mermaid re-renders on every change to `<html data-theme>`.
 
@@ -111,3 +132,4 @@ Cloudflare Pages builds this directory directly from the GitHub repo (git integr
 - Build output directory: `dist` (i.e. `website/dist`)
 - Custom domain: `local-review.edspencer.net`
 - Optional variable: `PUBLIC_POSTHOG_KEY`
+- Node: 22, from `.node-version` (Astro 7 needs >= 22.12; Cloudflare reads that file)

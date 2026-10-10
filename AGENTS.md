@@ -40,7 +40,12 @@ npm test              # node:test, from source via tsx
 npm run typecheck     # server + frontend
 npm run build         # dist/web (Vite) + dist/server, dist/shared (tsc)
 npm run smoke:pack    # npm pack, install the tarball into a temp prefix, run it, check it serves
+npm run demo:seed     # the demo test bed: fake repos + a data home, in demo/out (demo/README.md)
+npm run docs:media    # screenshots of it for the docs (tools/docs-media/README.md)
 ```
+
+To try a change by hand, run it on the demo test bed (`tools/docs-media/serve.sh`) rather than on real data. If you
+change what the demo shows, update its lock: `npm run demo:check -- --update`.
 
 Run `npm test` and `npm run typecheck` before committing, and `npm run smoke:pack` when you change the build,
 `package.json` (`files`, `bin`, dependencies) or anything the CLI reads at run time (`server/config.ts` paths).
