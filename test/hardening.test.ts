@@ -180,9 +180,9 @@ describe('read-only git wrapper', () => {
 // ---------------------------------------------------------------- request guard (pure)
 describe('localhost guard', () => {
   test('hosts and origins', () => {
-    for (const h of ['localhost', 'localhost:5000', '127.0.0.1:5030', '[::1]:5000']) assert.ok(isLocalHost(h), h);
-    for (const h of ['evil.com', 'localhost.evil.com', '127.0.0.1.nip.io:5000', '', undefined]) assert.ok(!isLocalHost(h), String(h));
-    assert.ok(isLocalOrigin('http://localhost:5000'));
+    for (const h of ['localhost', 'localhost:5622', '127.0.0.1:5030', '[::1]:5622']) assert.ok(isLocalHost(h), h);
+    for (const h of ['evil.com', 'localhost.evil.com', '127.0.0.1.nip.io:5622', '', undefined]) assert.ok(!isLocalHost(h), String(h));
+    assert.ok(isLocalOrigin('http://localhost:5622'));
     assert.ok(!isLocalOrigin('http://evil.com'));
     assert.ok(!isLocalOrigin('null'));
   });
@@ -241,7 +241,7 @@ describe('HTTP API', () => {
         s.close(() => res(p));
       });
     });
-    server = spawn(process.execPath, ['--import', 'tsx', path.join(ROOT, 'server/index.ts')], {
+    server = spawn(process.execPath, ['--import', 'tsx', path.join(ROOT, 'server/cli.ts'), 'serve'], {
       env: { ...process.env, PORT: String(port), LOCAL_REVIEW_DEV: '1', LOCAL_REVIEW_PROJECTS_DIR: projectsDir, LOCAL_REVIEW_USER: 'Ada Lovelace' },
       stdio: 'ignore',
     });
@@ -295,7 +295,7 @@ describe('HTTP API', () => {
   });
 
   test('non-localhost Host, cross-site Origin and non-JSON writes are refused', async () => {
-    assert.equal((await req('GET', '/api/projects', { headers: { host: 'evil.example:5000' } })).status, 403);
+    assert.equal((await req('GET', '/api/projects', { headers: { host: 'evil.example:5622' } })).status, 403);
     const p = `${P}/${sha}/threads`;
     assert.equal((await req('POST', p, { body: { body: 'x' }, headers: { origin: 'http://evil.example' } })).status, 403);
     assert.equal((await req('POST', p, { body: '{"body":"x"}', headers: { 'content-type': 'text/plain' } })).status, 415);

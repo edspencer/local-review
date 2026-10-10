@@ -22,7 +22,7 @@ export interface StackSpec {
   color: string; // a PALETTE name or #hex
   starts_at?: string; // commit selector: sha prefix (>= 7 hex) or commit subject
   description?: string; // optional markdown note: inter-stack context, shown on the homepage and PR pages
-  follow_on?: boolean; // parked work: held back from the stacks going up now (advisory; `lr plan` skips it)
+  follow_on?: boolean; // parked work: held back from the stacks going up now (advisory; `local-review plan` skips it)
 }
 
 export interface RepoConfig extends RepoRange {

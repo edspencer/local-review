@@ -1,6 +1,10 @@
 node_modules/
 dist/
 *.log
+# `npm pack` output
+*.tgz
+# Playwright MCP scratch (snapshots, screenshots from driving the UI)
+.playwright-mcp/
 .DS_Store
 # User data lives in ~/.local-review (see "Where your data lives" in README.md), never in this repo.
 /projects/

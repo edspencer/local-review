@@ -95,7 +95,7 @@ export function ReadinessControl({ status, progress, github, busy, onSet, merged
   );
 }
 
-export const FOLLOW_ON_TIP = 'Follow-on stack: parked work, held back from the stacks going up now (project.yaml follow_on: true). Review it as normal; `lr plan` leaves it out unless asked.';
+export const FOLLOW_ON_TIP = 'Follow-on stack: parked work, held back from the stacks going up now (project.yaml follow_on: true). Review it as normal; `local-review plan` leaves it out unless asked.';
 
 /** The small "follow-on" pill on a held-back stack's title and on each of its PRs. */
 export function FollowOnBadge({ className = '' }: { className?: string }) {

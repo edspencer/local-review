@@ -1,10 +1,9 @@
-# An example review project. To use it:
+# A Local Review project. `npx local-review init my-feature` creates one like this, in
+# ~/.local-review/projects/my-feature/project.yaml (or under $LOCAL_REVIEW_HOME/projects/);
+# it is also a commented reference for writing one by hand.
 #
-#   mkdir -p ~/.local-review/projects/my-feature
-#   cp examples/project.example.yaml ~/.local-review/projects/my-feature/project.yaml
-#
-# then edit the paths and branches below. The directory name ("my-feature") is the project's slug, used in
-# URLs: http://localhost:5000/my-feature. Edits are picked up live, no restart needed.
+# Edit the paths and branches below. The directory name ("my-feature") is the project's slug, used in
+# URLs: http://localhost:5622/my-feature. Edits are picked up live, no restart needed.
 # The full schema and the stack selector rules are under "Projects" in README.md.
 title: My feature
 description: |                        # optional: the project intro (Markdown), editable in the UI too.
@@ -33,7 +32,7 @@ repos:
       - title: Later
         starts_at: "Polish the feature"
         follow_on: true               # optional: parked work, shown yellow and faded, left out of totals and of
-                                      # `lr plan` by default. Advisory only; keep follow-on stacks at the end.
+                                      # `local-review plan` by default. Advisory only; keep follow-on stacks at the end.
                                       # Always yellow: a `color:` here is ignored.
   # More repos can follow, each with its own range and stacks:
   # - path: ~/code/my-client
