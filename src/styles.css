@@ -690,6 +690,7 @@ button { font-family: inherit; }
 .comment-form-body { padding: 8px; }
 .comment-form-body.is-dropping { outline: 2px dashed var(--accent); outline-offset: -4px; border-radius: var(--radius); }
 .comment-form-actions .hint .uploading { color: var(--accent); }
+.flash.upload-error { white-space: pre-line; }
 .comment-form textarea {
   width: 100%;
   min-height: 100px;

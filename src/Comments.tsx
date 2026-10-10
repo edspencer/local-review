@@ -166,9 +166,14 @@ function useImageUpload(project: string | null, value: string, onChange: (v: str
     const rest = v.slice(i + token.length);
     set(v.slice(0, i) + by + (by ? rest : rest.replace(/^\n/, ''))); // a failed one goes with its line break
   };
-  const upload = (files: File[]) => {
+  const upload = (all: File[]) => {
     if (!project) return;
     setUploadError(null);
+    // too big: refused here, before any placeholder goes in (the server would refuse it too)
+    const tooBig = all.filter((f) => f.size > MAX_ASSET_BYTES);
+    if (tooBig.length) setUploadError(tooBig.map((f) => `Couldn't add ${f.name || 'the image'}: it's ${(f.size / 1024 / 1024).toFixed(1)} MB; the limit is ${MAX_ASSET_BYTES / 1024 / 1024} MB`).join('\n'));
+    const files = all.filter((f) => f.size <= MAX_ASSET_BYTES);
+    if (!files.length) return;
     const el = ta.current;
     const v = latest.current.value;
     const [start, end] = el ? [el.selectionStart, el.selectionEnd] : [v.length, v.length];
@@ -181,8 +186,7 @@ function useImageUpload(project: string | null, value: string, onChange: (v: str
       requestAnimationFrame(() => { el.focus(); el.setSelectionRange(at, at); });
     }
     for (const { f, token } of jobs) {
-      const fail = (msg: string) => { replace(token, ''); if (mounted.current) setUploadError(`Couldn't add ${f.name || 'the image'}: ${msg}`); };
-      if (f.size > MAX_ASSET_BYTES) { fail(`it's ${(f.size / 1024 / 1024).toFixed(1)} MB; the limit is ${MAX_ASSET_BYTES / 1024 / 1024} MB`); continue; }
+      const fail = (msg: string) => { replace(token, ''); if (mounted.current) setUploadError((prev) => [prev, `Couldn't add ${f.name || 'the image'}: ${msg}`].filter(Boolean).join('\n')); };
       setUploading((n) => n + 1);
       api
         .uploadAsset(project, f, (f.name || 'image').replace(/\.[^.]*$/, ''))
@@ -338,7 +342,7 @@ export function MarkdownEditor({
           <div className="comment-preview"><Markdown text={value || 'Nothing to preview'} /></div>
         )}
         {error && <div className="flash flash-error">{error}</div>}
-        {uploadError && <div className="flash flash-error" role="alert">{uploadError}</div>}
+        {uploadError && <div className="flash flash-error upload-error" role="alert">{uploadError}</div>}
         <div className="comment-form-actions">
           <span className="hint">
             {uploading ? (
