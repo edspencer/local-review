@@ -3,9 +3,13 @@
 // newest snapshot. Pruning keeps the newest KEEP_RECENT snapshots plus the first snapshot of each (UTC) day for
 // KEEP_DAYS days, and can only ever remove directories directly inside the backups dir whose names are
 // snapshot timestamps (see assertPrunable).
+// Image assets (projects/<slug>/assets/<hash>.<ext>) are hard-linked into a snapshot rather than copied: they're
+// named by their content and never rewritten in place (safefs writes a new file and renames it), so every
+// snapshot can share the one copy on disk. Where linking fails (another file system), they're copied.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { ASSET_NAME } from '../shared/assets.js';
 
 export const KEEP_RECENT = 50;
 export const KEEP_DAYS = 30;
@@ -20,6 +24,12 @@ export function snapshotName(d: Date) {
 
 /** Our own atomic-write temp files: never worth backing up. */
 const isTemp = (name: string) => name.startsWith('.') && name.endsWith('.tmp');
+
+/** An image asset: `<slug>/assets/<content hash>.<ext>` relative to the projects dir (see server/assets.ts). */
+const isAsset = (rel: string) => {
+  const parts = rel.split('/');
+  return parts.length === 3 && parts[1] === 'assets' && ASSET_NAME.test(parts[2]);
+};
 
 /** A hash of every file's relative path and contents (symlinks are skipped, as cpSync would copy them as links). */
 export function fingerprint(dir: string): string | null {
@@ -40,7 +50,9 @@ export function fingerprint(dir: string): string | null {
       if (e.isDirectory()) walk(p, r);
       else if (e.isFile()) {
         files++;
-        h.update(`${r}\0`).update(fs.readFileSync(p)).update('\0');
+        // an asset's name is its content hash, so its name and size stand for its bytes (no need to read MBs hourly)
+        if (isAsset(r)) h.update(`${r}\0${fs.statSync(p).size}\0`);
+        else h.update(`${r}\0`).update(fs.readFileSync(p)).update('\0');
       }
     }
   };
@@ -93,12 +105,24 @@ export function takeSnapshot(projectsDir: string, backupsDir: string, now = new 
     preserveTimestamps: true,
     errorOnExist: true,
     force: false,
-    filter: (src) => !isTemp(path.basename(src)),
+    filter: (src, dst) => !isTemp(path.basename(src)) && !(isAsset(path.relative(projectsDir, src).split(path.sep).join('/')) && linked(src, dst)),
   });
   const dest = path.join(backupsDir, name);
   if (fs.existsSync(dest)) throw new Error(`${dest} appeared while snapshotting; leaving the copy at ${partial}`);
   fs.renameSync(partial, dest); // fs-guard: a fresh dot-dir onto a name we just checked is free
   return name;
+}
+
+/** Hard-link an asset into the snapshot being made; false (so it's copied instead) if that isn't possible. */
+function linked(src: string, dst: string): boolean {
+  try {
+    if (!fs.lstatSync(src).isFile()) return false;
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.linkSync(src, dst); // fails rather than replace anything (the snapshot dir is brand new anyway)
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Which snapshots to keep: the newest KEEP_RECENT, plus the first of each UTC day in the last KEEP_DAYS days. */

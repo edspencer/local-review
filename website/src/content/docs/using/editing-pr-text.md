@@ -24,6 +24,34 @@ buttons then give you exactly the text the real GitHub PR should have, project c
 
 An agent can do the same by writing `title:` / `body:` into the prs file, or with `PUT …/pr`; the UI shows it live.
 
+## Images
+
+PR descriptions, stack notes and the project intro can show images: a diagram, a screenshot, a before and after.
+In any of their editors, **paste** an image (a screenshot from the clipboard), **drop** an image file onto it, or use
+the **image button** in the toolbar. Each one is uploaded into the project's `assets/` folder, and its markdown goes
+in at the cursor:
+
+```markdown
+![Architecture diagram](assets/3f2a9c1e0b7d4a65.png)
+```
+
+- While it uploads, an `![Uploading …]()` placeholder holds its place and **Save** waits.
+- PNG, JPEG, GIF, WebP and SVG, up to 5 MB. Anything else is refused with a message under the editor
+  (`Couldn't add notes.png: the file isn't a PNG image …`), and its placeholder is removed.
+- The same image added twice is stored once: files are named by their content.
+- An agent adds one with `local-review asset add <project> <file>`, which prints the same markdown
+  ([CLI](/reference/cli/#local-review-asset-add-project-file)).
+- Images on the web (`![x](https://…)`) work as in any markdown. Comments show `assets/` images too, but have no upload.
+
+Where the files live, and why they're never deleted: [Images](/reference/data-directory/#images).
+
+:::caution[GitHub can't see them]
+The images are on your machine, so the **Full body** you copy still says `assets/<name>`, which GitHub can't show.
+Drag the image into the PR on GitHub when you create it, or record where it's published with
+`local-review asset url`, so [`local-review plan`](/agents/plan-command/) puts that URL in the body instead. The plan
+warns about every image that has no URL. More: [Publishing: images](/agents/publishing-stacked-prs/#images).
+:::
+
 ## Project context
 
 On the Conversation tab, above the description, a compact **Project context** box shows the project intro and this

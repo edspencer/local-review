@@ -122,6 +122,10 @@ export function hashString(s: string): string {
   return (h >>> 0).toString(36);
 }
 
+// ---------- the project ----------
+/** The project being shown: Markdown resolves `assets/<name>` images against it, and editors upload to it. */
+export const ProjectContext = createContext<string | null>(null);
+
 // ---------- paths ----------
 /** The server's home directory (from /api/projects), so paths under it can be shown as `~/…`. */
 export const HomeContext = createContext<string | null>(null);

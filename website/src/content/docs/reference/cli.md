@@ -4,13 +4,14 @@ description: Every local-review command and flag.
 ---
 
 One command, `local-review`, does everything: with no arguments it serves the UI, and its subcommands create
-projects, print a project's publishing plan and print the agent guide. Run it with `npx local-review …`, or install
+projects, add images, print a project's publishing plan and print the agent guide. Run it with `npx local-review …`, or install
 it once with `npm i -g local-review` and run `local-review …`.
 
 ```sh
 npx local-review                          # serve the UI on http://localhost:5622
 npx local-review --port 5050              # …on another port
 npx local-review init my-feature          # create ~/.local-review/projects/my-feature/project.yaml
+npx local-review asset add my-feature diagram.png   # prints ![diagram](assets/<hash>.png)
 npx local-review plan my-feature --stack 1 --format json
 npx local-review guide                    # print the guide for agents
 ```
@@ -21,6 +22,8 @@ npx local-review guide                    # print the guide for agents
 Usage: local-review [serve] [--port <n>]
        local-review plan <project> [--repo <name>] [--stack <n>] [--include-follow-on] [--format md|json|yaml]
        local-review init <project>
+       local-review asset add <project> <file> [--alt <text>]
+       local-review asset url <project> <name> <url>
        local-review guide
        local-review --version | --help
 
@@ -39,6 +42,14 @@ Usage: local-review [serve] [--port <n>]
           --format <f>     md (default), json or yaml
   init    Create a project to review: <projects>/<project>/project.yaml, a commented example to edit.
           Never replaces an existing one.
+  asset add
+          Copy an image (PNG, JPEG, GIF, WebP or SVG, up to 5 MB) into the project's assets folder, named by its
+          content, and print the markdown that shows it, e.g. ![alt](assets/3f2a9c1e0b7d4a65.png), for a PR
+          description, stack note or project intro. Adding the same image again is a no-op.
+          --alt <text>     the alt text (default: the file name)
+  asset url
+          Record where an asset is published (a URL GitHub's readers can reach), so `plan` puts that URL in
+          the bodies instead of the local assets/<name> reference.
   guide   Print the guide for agents using Local Review to get their work reviewed (AGENT-GUIDE.md).
 
 Data: $LOCAL_REVIEW_HOME/projects (default ~/.local-review/projects). Agents: run `local-review guide`.
@@ -99,6 +110,36 @@ writes a file, pushes, or calls GitHub. What it prints and warns about: [The pla
 | `--include-follow-on` | Also plan [follow-on stacks](/concepts/follow-on-stacks/), which are left out by default. |
 | `--format <f>` | `md` (the default), `json` or `yaml`. JSON is for scripts, e.g. `jq -r '.prs[0].body'`. |
 
+## `local-review asset add <project> <file>`
+
+Copies an image into the project's `assets/` folder and prints the markdown that shows it, ready to paste into a PR
+description (its prs file's `body:`), a stack note or the project intro:
+
+```text
+$ npx local-review asset add my-feature "Architecture diagram.png"
+Added /home/you/.local-review/projects/my-feature/assets/3f2a9c1e0b7d4a65.png
+![Architecture diagram](assets/3f2a9c1e0b7d4a65.png)
+```
+
+The snippet is the only thing on stdout (the `Added …` line is on stderr), so
+`snippet=$(npx local-review asset add my-feature shot.png)` works.
+
+| Option | |
+| --- | --- |
+| `--alt <text>` | The alt text. The default is the file name without its extension. |
+
+- PNG, JPEG, GIF, WebP and SVG, up to 5 MB. The file's extension says what it is, and its contents must agree
+  (`… says it's PNG but its contents are JPG` otherwise).
+- The file is named by its content, so adding the same image again prints the same snippet and adds nothing
+  (`Already there: …`). It never replaces or removes a file. More: [Images](/reference/data-directory/#images).
+
+## `local-review asset url <project> <name> <url>`
+
+Records where an image is published, a URL the PR's readers can reach, in `assets/<name>.yaml` (`url: …`). From then
+on `local-review plan` writes that URL into the PR bodies in place of `assets/<name>`. `<name>` can also be written as
+it appears in markdown (`assets/<name>`). Running it again changes the URL; other fields in the file are kept. Why
+this exists: [Publishing: images](/agents/publishing-stacked-prs/#images).
+
 ## `local-review guide`
 
 Prints the [agent guide](/agents/agent-guide/) (`AGENT-GUIDE.md`, which ships in the package), so an agent reads the
@@ -113,7 +154,7 @@ version that matches the Local Review it is driving, without a checkout.
 | Code | When |
 | --- | --- |
 | `0` | Success. |
-| `1` | An error, printed as `local-review: <message>` (no such project, the port is in use, `init`'s file exists, …). |
+| `1` | An error, printed as `local-review: <message>` (no such project, the port is in use, `init`'s file exists, a file that isn't an image, …). |
 | `2` | Bad usage (an unknown command or option, a missing argument): the message, then the usage. |
 
 ## Environment

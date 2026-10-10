@@ -269,7 +269,16 @@ export interface Reviewer {
   name: string;
 }
 
+/** Upload an image into a project's assets folder (the body is the image itself). */
+async function uploadAsset(slug: string, file: Blob, alt: string): Promise<{ name: string; markdown: string; created: boolean }> {
+  const r = await fetch(`/api/projects/${enc(slug)}/assets?alt=${enc(alt)}`, { method: 'POST', headers: { 'content-type': file.type || 'application/octet-stream' }, body: file });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error ?? `${r.status} ${r.statusText}`);
+  return data;
+}
+
 export const api = {
+  uploadAsset,
   me: () => req<Reviewer>('GET', '/api/me'),
   projects: () => req<ProjectsResponse>('GET', '/api/projects'),
   project: (slug: string) => req<ProjectData>('GET', `/api/projects/${enc(slug)}`),

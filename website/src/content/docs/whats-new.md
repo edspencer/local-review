@@ -17,14 +17,18 @@ or agent prompts that say `localhost:5000`, update them, or keep the old port wi
 
 - **`npx local-review`.** Local Review is now an installable npm package. Run it with `npx local-review`, or install it
   once with `npm i -g local-review`. See [Installation](/getting-started/installation/).
-- **Four commands** ([CLI](/reference/cli/)):
+- **Five commands** ([CLI](/reference/cli/)):
   - `local-review [serve] [--port <n>]` serves the UI (the default command);
   - `local-review init <project>` creates a project from a commented example;
   - `local-review plan <project>` prints the read-only [materialization plan](/agents/plan-command/);
+  - `local-review asset add|url` adds an image to a project, or records where one is published;
   - `local-review guide` prints the guide for coding agents.
 - **No build step at run time.** The package ships compiled JavaScript and a prebuilt UI, so it no longer needs `tsx`,
   and it installs only its runtime dependencies. It needs Node.js 22 or later.
 - **The agent guide moved** from `AGENTS.md` to `AGENT-GUIDE.md`, and `local-review guide` prints it, so an agent can
   read it without a checkout. It's also [on this site](/agents/agent-guide/). `AGENTS.md` now holds the conventions
   for contributing to Local Review itself.
+- **Images in PR descriptions, stack notes and the project intro.** Paste, drop or attach one in the editor, or add
+  it with `local-review asset add`. GitHub can't show a local image, so `plan` warns about each one until you record
+  where it's published. See [Images](/using/editing-pr-text/#images).
 - **A new logo and favicon**, and this documentation site.

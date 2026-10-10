@@ -6,7 +6,7 @@ import { ProjectHome, RepoLabel } from './ProjectHome';
 import { FOLLOW_ON_TIP, FollowOnBadge, ReadinessBadge } from './Readiness';
 import { TextDraftsProvider, repoAggregate } from './ProjectText';
 import { tildify } from '../shared/paths';
-import { HomeContext, hashString, isTyping, navigate, relativeTime, routeUrl, useLocalStorage, useRoute, useTick, useTilde, type Route } from './util';
+import { HomeContext, ProjectContext, hashString, isTyping, navigate, relativeTime, routeUrl, useLocalStorage, useRoute, useTick, useTilde, type Route } from './util';
 
 const mostRecent = (l: ProjectsResponse | null) => (l?.projects ?? []).slice().sort((a, b) => b.modified.localeCompare(a.modified))[0] ?? null;
 
@@ -162,6 +162,7 @@ export function App() {
           </aside>
         )}
         <main className="main">
+          <ProjectContext.Provider value={project?.slug ?? null}>
           <TextDraftsProvider refresh={refreshAll}>
           {onCommit ? (
             <CommitPage
@@ -200,6 +201,7 @@ export function App() {
             <div className="page loading">Loading…</div>
           )}
           </TextDraftsProvider>
+          </ProjectContext.Provider>
         </main>
       </div>
     </div>

@@ -27,13 +27,16 @@ It lists each PR in scope, in order, with:
 - the base: the previous PR's branch, or the repo's base (remote prefix stripped, e.g. `main`) for the first PR;
 - the title, and the **exact full body**: project intro, stack note, `---`, PR description, the same as the UI's
   "Full body" button;
-- any recorded `github:` info.
+- any recorded `github:` info;
+- the images the body shows (`images[]` in JSON: `name`, `file`, `url`).
 
 It warns about anything that needs fixing first: unresolved `starts_at` selectors, PRs without a branch, `missing`
 and `moved` branches, and stacks that still contain draft PRs (only the reviewer can clear that one, by marking them ready). `--format json` is for scripts, e.g. `jq -r '.prs[0].body'`.
 It also warns when a live PR's recorded `github.base` differs from the plan's base (retarget the PR, or check the
 order), and when a prs file with a `github:` record and no `landed:` has a commit that's now in the repo base: it
-landed upstream but wasn't frozen (do that now; "After merges").
+landed upstream but wasn't frozen (do that now; "After merges"). And for each image (`assets/<name>`) in a body with
+no published URL, since GitHub can't show a file on this machine ("Images" under "Materializing"). Where a URL is
+recorded, the body already has it in place of `assets/<name>`.
 
 Landed (merged) PRs are never planned, with no warnings of their own; the first live PR's base is the repo base. A
 note lists them ("Skipped 9 landed (merged) PRs …"); in JSON, `excluded_landed[]` (`repo`, `prs`).

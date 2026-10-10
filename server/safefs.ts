@@ -12,15 +12,15 @@ import path from 'node:path';
 const TEMP_NAME = /^\..+\.\d+\.\d+\.[0-9a-f]{6}\.tmp$/;
 
 /**
- * Write `text` to `file` atomically: temp file in the same directory, then rename. With `createOnly`, never
- * replace an existing `file` (fails with ExistsError instead), even one that appears while writing.
+ * Write `text` (or bytes) to `file` atomically: temp file in the same directory, then rename. With `createOnly`,
+ * never replace an existing `file` (fails with ExistsError instead), even one that appears while writing.
  */
-export function atomicWrite(file: string, text: string, { createOnly = false } = {}) {
+export function atomicWrite(file: string, text: string | Uint8Array, { createOnly = false } = {}) {
   const dir = path.dirname(file);
   fs.mkdirSync(dir, { recursive: true });
   const tmp = path.join(dir, `.${path.basename(file)}.${process.pid}.${Date.now()}.${crypto.randomBytes(3).toString('hex')}.tmp`);
   try {
-    fs.writeFileSync(tmp, text, { encoding: 'utf8', flag: 'wx' }); // 'wx': never over an existing file
+    fs.writeFileSync(tmp, text, { encoding: 'utf8', flag: 'wx' }); // 'wx': never over an existing file (bytes ignore the encoding)
     if (!createOnly && fs.existsSync(file)) fs.renameSync(tmp, file); // the update itself: replaces the previous version of `file`
     else renameNoClobber(tmp, file); // creating: fails rather than replace a file that appeared meanwhile
   } catch (e) {

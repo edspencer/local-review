@@ -43,7 +43,7 @@ repos:
 | Field | | |
 | --- | --- | --- |
 | `title` | string | The project's name in the header, the project switcher and the homepage. |
-| `description` | markdown, optional | The **project intro**: context for the whole effort. Shown on the homepage and in each PR's Project context box, and first in every [full PR body](/using/editing-pr-text/#copying-text-for-the-real-pr). Editable in the UI. |
+| `description` | markdown, optional | The **project intro**: context for the whole effort. Shown on the homepage and in each PR's Project context box, and first in every [full PR body](/using/editing-pr-text/#copying-text-for-the-real-pr). Editable in the UI; can show [images](/using/editing-pr-text/#images). |
 | `repos` | list | One entry per repo, below. |
 
 The project's **slug** is its directory name (not a field): it's used in URLs, `/<slug>/<repo>/<sha>`.
@@ -71,7 +71,7 @@ Refs must not start with `-` or contain `..`; they're passed to git after `--end
 | `title` | string | The stack's name (`STACK 1 · GROUNDWORK` in the sidebar). A stack can also be written as just `- Title`. |
 | `starts_at` | selector | The commit the stack starts at: a commit **subject**, a hex **sha prefix** (7+ characters; quote it), or a PR title. The first stack may leave it out. [The rules](/concepts/pr-stacks/#how-starts_at-picks-a-commit). |
 | `color` | optional | `blue`, `green`, `purple`, `orange`, `pink`, `teal`, `red`, or a `"#hex"`. Default: cycles through that list in order. `yellow` is reserved for follow-on stacks. [Colours](/concepts/pr-stacks/#colours). |
-| `description` | markdown, optional | The **stack note**: how this stack relates to the others. After the intro in this stack's full PR bodies. Editable in the UI. |
+| `description` | markdown, optional | The **stack note**: how this stack relates to the others. After the intro in this stack's full PR bodies. Editable in the UI; can show [images](/using/editing-pr-text/#images). |
 | `follow_on` | `true`/`yes`, optional | Marks the stack as [parked work](/concepts/follow-on-stacks/). `false`, `no` or absent: a regular stack. Any other value is ignored, with a warning. |
 
 ## How the UI edits it

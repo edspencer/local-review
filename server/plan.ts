@@ -10,6 +10,7 @@ import { loadRefs, reconcileBranch, stripRemote, type BranchInfo } from './branc
 import { loadPrs, prPath, prView, readPrFile, type GithubPr, type LoadedPr } from './prs.js';
 import type { LoadedProject, LoadedRepo } from './projects.js';
 import { prStatus, type PrStatus } from '../shared/readiness.js';
+import { assetsDir, resolveAssetRefs, type AssetUse } from './assets.js';
 
 export interface PlanPr {
   repo: string;
@@ -23,7 +24,8 @@ export interface PlanPr {
   base_from: 'previous-pr' | 'repo-base';
   title: string;
   title_source: 'commit' | 'override';
-  body: string; // the full PR body: intro, stack note, ---, PR description
+  body: string; // the full PR body: intro, stack note, ---, PR description (images with a published URL point at it)
+  images: AssetUse[]; // the project assets the body shows: each one's file here, and its published URL if recorded
   github: GithubPr | null;
   status: PrStatus; // draft / ready (the reviewer's call, prs/ `status:`), or published once `github` is recorded
   warnings: string[];
@@ -138,6 +140,13 @@ async function repoPlan(project: LoadedProject, r: LoadedRepo, onlyStack?: numbe
       const gb = l?.override.github?.base;
       if (gb && base && gb !== base) w.push(`its GitHub PR #${l!.override.github!.number} has base '${gb}', but the plan's base is '${base}' (retarget the PR, or check the order)`);
       if (l?.parseError) w.push(`prs file doesn't parse: ${l.parseError}`);
+      // images: GitHub can't show a file on this machine, so each needs a published URL (or a manual upload)
+      const { body, assets: images } = resolveAssetRefs(project.cfg.dir, fullPrBody({ intro: project.cfg.description, stackNote: g?.description, body: view.body }));
+      for (const a of images) {
+        if (a.url) continue;
+        if (!a.file) w.push(`image assets/${a.name} isn't in the project's assets folder (${assetsDir(project.cfg.dir)}); add it with \`local-review asset add\`, or fix the reference`);
+        else w.push(`image assets/${a.name} has no published URL, so GitHub can't show it: drag ${a.file} into the PR on GitHub (which replaces the reference), or record a URL with \`local-review asset url ${project.cfg.slug} ${a.name} <url>\``);
+      }
       const pr: PlanPr = {
         repo: name,
         stack: { number: g?.number ?? null, title: g?.title ?? '', position: (g?.shas.indexOf(c.sha) ?? 0) + 1, count: g?.shas.length ?? 0, follow_on: !!g?.follow_on },
@@ -150,7 +159,8 @@ async function repoPlan(project: LoadedProject, r: LoadedRepo, onlyStack?: numbe
         base_from: isFirst ? 'repo-base' : 'previous-pr',
         title: view.title,
         title_source: view.title_source,
-        body: fullPrBody({ intro: project.cfg.description, stackNote: g?.description, body: view.body }),
+        body,
+        images,
         github: l?.override.github ?? null,
         status: prStatus(l?.override),
         warnings: w,
@@ -244,6 +254,7 @@ export function planMarkdown(plan: Plan): string {
     o.push(`- Status: ${p.status}`);
     o.push(`- Title: ${p.title}${p.title_source === 'override' ? ' (edited)' : ''}`);
     o.push(`- GitHub: ${p.github ? `#${p.github.number}${p.github.url ? ` ${p.github.url}` : ''}${p.github.branch ? ` (branch ${p.github.branch}${p.github.base ? ` → ${p.github.base}` : ''})` : ''}` : 'not created'}`);
+    if (p.images.length) o.push(`- Images: ${p.images.map((a) => `\`assets/${a.name}\` ${a.url ? `→ ${a.url}` : a.file ? '(no published URL)' : '(missing)'}`).join(', ')}`);
     for (const w of p.warnings) o.push(`- **Warning:** ${w}`);
     o.push('', 'Body:', '');
     const f = fence(p.body);
