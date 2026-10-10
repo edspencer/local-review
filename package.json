@@ -34,10 +34,15 @@
     "dist/web/",
     "server/fonts/",
     "examples/project.example.yaml",
-    "AGENT-GUIDE.md"
+    "AGENT-GUIDE.md",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "start": "node scripts/start.mjs",
@@ -49,7 +54,9 @@
     "test": "node --import tsx --test test/*.test.ts",
     "lr": "tsx server/cli.ts",
     "prepack": "npm run build",
-    "smoke:pack": "node scripts/smoke-pack.mjs"
+    "smoke:pack": "node scripts/smoke-pack.mjs",
+    "changeset": "changeset",
+    "changeset:version": "changeset version && npm install --package-lock-only --ignore-scripts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.4",
@@ -60,6 +67,8 @@
     "yaml": "^2.9.1"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "^1.0.1",
+    "@changesets/cli": "^3.0.3",
     "@pierre/diffs": "1.5.2",
     "@types/node": "^26.6.4",
     "@types/opentype.js": "^1.3.10",
