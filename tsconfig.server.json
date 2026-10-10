@@ -17,6 +17,12 @@
   "include": [
     "server",
     "shared",
-    "test"
+    "test",
+    "demo",
+    "tools"
+  ],
+  "exclude": [
+    "demo/out",
+    "tools/docs-media/out"
   ]
 }
