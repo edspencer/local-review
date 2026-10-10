@@ -43,6 +43,8 @@ curl -o pr3.png "http://localhost:5622/api/projects/my-feature/repos/my-service/
 The SVG is 680px wide and the PNG is drawn at 2x (1360px). Options: `?scope=project|repo|stack`,
 `?scale=sqrt|linear`, `?title=0` and `?download`.
 
+<!-- SHOT: crop-stack-picture — the stack picture as copied or downloaded (the PNG itself); crop -->
+
 ## How they're drawn
 
 On the server, so the picture looks the same everywhere: `server/stackviz.ts` builds an SVG string (no DOM; text is

@@ -15,7 +15,7 @@
   <img alt="Node.js 22 or later" src="https://img.shields.io/badge/node-%E2%89%A522-339933">
 </p>
 
-<!-- SHOT: readme-hero — a full PR page: the plum "not on GitHub" header, the sidebar's colour-coded stacks across two repos, and an inline thread with an agent reply -->
+<!-- SHOT: pr-conversation — a full PR page: the plum "not on GitHub" header, the sidebar's colour-coded stacks across two repos, and an inline thread with an agent reply -->
 
 Local Review is a GitHub-style pull-request UI for the **stack of commits on your machine**, before any of it is
 pushed. Every commit is shown as its own PR, grouped into the stacks you mean to open. You review them like PRs, your

@@ -16,7 +16,7 @@ stacks:
     follow_on: true             # parked: held back from the stacks going up now
 ```
 
-<!-- SHOT: follow-on-divider — the sidebar's dashed yellow FOLLOW-ON · HELD BACK divider and a faded, hatched follow-on stack below it; crop to the sidebar -->
+<!-- SHOT: crop-follow-on — the sidebar's dashed yellow FOLLOW-ON · HELD BACK divider and a faded, hatched follow-on stack below it; crop to the sidebar -->
 
 ## What it does, and doesn't
 

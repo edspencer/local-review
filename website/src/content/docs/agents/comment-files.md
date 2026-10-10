@@ -11,7 +11,7 @@ How to *behave* in a review (reply first, when to resolve, how to fix a commit m
 [agent guide](/agents/agent-guide/#handling-review-threads). This page is the file-level recipe; the full schema is
 [Comment files schema](/reference/comment-files/).
 
-<!-- SHOT: agent-reply-live — a thread with the reviewer's comment and an `author: claude` reply that just arrived; crop to the thread -->
+<!-- SHOT: crop-agent-reply — a thread with the reviewer's comment and an `author: claude` reply that just arrived; crop to the thread -->
 
 ## A recipe for agents
 

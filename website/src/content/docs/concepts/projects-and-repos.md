@@ -63,4 +63,4 @@ A change that touches an API, its client and the infra is one piece of work, rev
 the project, each with its own branch and stacks. The sidebar has a collapsible section per repo, `j`/`k` walk every
 PR across all of them, and the [stack picture](/using/stack-pictures/) can draw the whole project.
 
-<!-- SHOT: multi-repo-sidebar — the sidebar with three repo sections (repo · branch headers), each with its own coloured stacks; crop to the sidebar -->
+<!-- SHOT: project-home — the sidebar with three repo sections (repo · branch headers), each with its own coloured stacks; crop to the sidebar -->

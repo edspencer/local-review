@@ -14,7 +14,7 @@ every PR, and a count on every stack, show where things stand at a glance.
 | **Published** | GitHub's PR icon in a blue circle | an agent, by recording the GitHub PR | a usable `github:` record |
 | **Merged** | GitHub's merge icon in a purple circle | an agent, by freezing the merged PR | a usable `landed:` record |
 
-<!-- SHOT: readiness-badges — four sidebar rows side by side showing the draft pie, ready tick, published and merged badges; tight crop -->
+<!-- SHOT: crop-readiness — four sidebar rows side by side showing the draft pie, ready tick, published and merged badges; tight crop -->
 
 ## The rules
 
@@ -46,6 +46,8 @@ In the PR header, where GitHub shows Open / Draft, there's a **Draft | Ready** t
 file. Once the PR is published it's replaced by a blue **Published** pill with the `#1234 ↗` link, and once it has
 merged by a purple **Merged** pill, with "merged &lt;when&gt; (method)" in the line below. Toggling, an agent's edits
 to the prs file, and new Viewed marks or resolved threads all update the sidebar, header and stepper live.
+
+<!-- SHOT: crop-merged-pill — a landed PR's purple Merged pill and "merged … (squash)"; crop -->
 
 ## Before publishing
 

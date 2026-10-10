@@ -44,5 +44,7 @@ commit) last.
 Each PR row shows its branch name, middle-truncated (or the short sha if there's none), with a warning icon if the
 recorded branch moved, and struck through if it's missing. Once the GitHub PR exists, a `#1234 ↗` badge links to it.
 
+<!-- SHOT: crop-branch-moved — a sidebar row whose recorded branch was left behind by a rebase, with the warning icon; crop -->
+
 `local-review plan` warns about PRs without a branch, and about `missing` and `moved` branches, before anything is
 published.

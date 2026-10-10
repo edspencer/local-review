@@ -10,7 +10,7 @@ it works.
 
 ## Files changed
 
-<!-- SHOT: files-changed-thread — Files changed with an inline thread on a range of lines (tinted), the file tree and the Viewed checkbox; crop to one file card plus the tree -->
+<!-- SHOT: files-changed — Files changed with an inline thread on a range of lines (tinted), the file tree and the Viewed checkbox; crop to one file card plus the tree -->
 
 - **Split or Unified** view (remembered). The unified view has old and new line-number columns.
 - **Expand all / Collapse all**, and a **file tree**: directories collapse, single-child chains are compacted, the
@@ -40,6 +40,8 @@ thread whose line isn't in a shown hunk is listed at the top of its file card.
 
 When the commit is amended or rebased, threads follow their code; one whose code is gone is marked **Outdated** and
 shows the original lines. See [Following rebases](/concepts/following-rebases/).
+
+<!-- SHOT: crop-inline-thread — an inline thread on a range of lines in the diff, the lines tinted; crop -->
 
 ## General comments
 
