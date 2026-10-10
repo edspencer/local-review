@@ -5,6 +5,7 @@ import { api, type Anchor, type Comment, type Reviewer, type Thread } from './ap
 import { ProjectContext, relativeTime } from './util';
 import { applyFormat, type Format } from './prText';
 import { MAX_ASSET_BYTES, assetNameOf, assetUrl } from '../shared/assets';
+import { LIGHTBOX_ATTR, opensLightbox } from './lightboxImages';
 
 marked.setOptions({ gfm: true, breaks: false });
 
@@ -12,10 +13,20 @@ marked.setOptions({ gfm: true, breaks: false });
 // sanitize call; the rewrite happens after DOMPurify has checked the attribute, and only ever produces our own URL.
 let assetProject: string | null = null;
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
-  if (!assetProject) return;
-  const attr = node.tagName === 'IMG' ? 'src' : node.tagName === 'A' ? 'href' : null;
-  const name = attr && assetNameOf(node.getAttribute(attr) ?? '');
-  if (attr && name) node.setAttribute(attr, assetUrl(assetProject, name));
+  if (assetProject) {
+    const attr = node.tagName === 'IMG' ? 'src' : node.tagName === 'A' ? 'href' : null;
+    const name = attr && assetNameOf(node.getAttribute(attr) ?? '');
+    if (attr && name) node.setAttribute(attr, assetUrl(assetProject, name));
+  }
+  // Images that open the lightbox (Lightbox.tsx) get a zoom-in cursor; a plain one is also focusable, to open with
+  // Enter (one linked to itself already has its link to focus). The link around this <img> was rewritten above already.
+  if (node.tagName === 'IMG') {
+    const link = node.closest('a');
+    if (opensLightbox(node.getAttribute('src') ?? '', link ? link.getAttribute('href') ?? '' : null, document.baseURI)) {
+      node.setAttribute(LIGHTBOX_ATTR, '');
+      if (!link) node.setAttribute('tabindex', '0');
+    }
+  }
 });
 
 export function Markdown({ text, className }: { text: string; className?: string }) {
