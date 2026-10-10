@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { api, stackColor, type CommitSummary, type ProjectData, type ProjectSummary, type ProjectsResponse, type RepoData, type ServerEvent, type StackGroup } from './api';
 import { BranchStatusMarker, MiddleTruncate, PrBadge, branchNote } from './Branch';
 import { CommitPage } from './CommitPage';
-import { ProjectHome } from './ProjectHome';
+import { ProjectHome, RepoLabel } from './ProjectHome';
 import { FOLLOW_ON_TIP, FollowOnBadge, ReadinessBadge } from './Readiness';
 import { TextDraftsProvider, repoAggregate } from './ProjectText';
 import { hashString, isTyping, navigate, relativeTime, routeUrl, useLocalStorage, useRoute, useTick, type Route } from './util';
@@ -296,7 +296,7 @@ function RepoSection({ project, repo: r, route, closed, toggle }: { project: Pro
           <path d={closed ? CHEV_RIGHT : CHEV_DOWN} />
         </svg>
         <span className="repo-title">
-          <span className="repo-name">{r.name}</span> {r.end ? <span className="branch-name">{r.end}</span> : merged > 0 && <span className="branch-name is-merged" title="No live range: every PR here has landed">merged</span>}
+          <span className="repo-name">{r.name}</span> <RepoLabel r={r} end />
         </span>
         {closed && r.warnings.length > 0 && (
           <span className="repo-warn-flag" title={r.warnings.join('\n')} role="status">

@@ -112,4 +112,10 @@ describe('the seeded demo, through the server', () => {
     const w = await api('/projects/waitlists');
     for (const c of w.repos[0].commits.slice(0, 2)) assert.equal(c.landed?.diff, 'merge-base', c.title);
   });
+
+  test('the archived project labels its repo "merged" in the stack picture, as the sidebar does, not with its base', async () => {
+    const svg = await (await fetch(`http://127.0.0.1:${port}/api/projects/webhook-retries/stack.svg`)).text();
+    assert.match(svg, />merged<\/text>/);
+    assert.doesNotMatch(svg, /origin\/main/);
+  });
 });
