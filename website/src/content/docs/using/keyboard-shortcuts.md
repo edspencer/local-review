@@ -13,7 +13,8 @@ Shortcuts are ignored while you're typing in a comment, an editor or the file fi
 | `k` | Previous PR. |
 
 `j` and `k` (and the **Prev** / **Next** buttons) walk every PR in the project in sidebar order: across stacks, and
-across repos.
+across repos. The PRs either side of the one you're on are loaded in the background, so stepping through a stack is
+instant; see [Moving between PRs](/using/ui-tour/#moving-between-prs).
 
 ## Files changed
 

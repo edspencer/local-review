@@ -2,12 +2,25 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { api, stackColor, type CommitSummary, type ProjectData, type ProjectSummary, type ProjectsResponse, type RepoData, type ServerEvent, type StackGroup } from './api';
 import { BranchStatusMarker, MiddleTruncate, PrBadge, branchNote } from './Branch';
 import { CommitPage } from './CommitPage';
+import { hoverPrefetch, invalidateAll, onServerEvent, prefetch } from './commitCache';
 import { ProjectHome, RepoLabel } from './ProjectHome';
 import { FOLLOW_ON_TIP, FollowOnBadge, ReadinessBadge } from './Readiness';
 import { TextDraftsProvider, repoAggregate } from './ProjectText';
 import { ExamplesMenuItem, ExamplesStrip, Welcome } from './Welcome';
 import { tildify } from '../shared/paths';
 import { HomeContext, ProjectContext, hashString, isTyping, navigate, relativeTime, routeUrl, useLocalStorage, useRoute, useTick, useTilde, type Route } from './util';
+
+// The first screen's data, asked for all at once as the page loads, rather than each request waiting for the one
+// before it (the reviewer, the project list, the project, the PR): App takes these promises on its first refresh.
+const early: { projects: Promise<ProjectsResponse> | null; project: { slug: string; p: Promise<ProjectData> } | null } = (() => {
+  const parts = window.location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+  if (parts.length >= 3 && /^[0-9a-f]{4,40}$/i.test(parts[2])) prefetch({ project: parts[0], repo: parts[1] }, parts[2]);
+  const projects = api.projects();
+  const project = parts[0] ? { slug: parts[0], p: api.project(parts[0]) } : null;
+  projects.catch(() => {}); // handled where they're taken
+  project?.p.catch(() => {});
+  return { projects, project };
+})();
 
 const mostRecent = (l: ProjectsResponse | null) => (l?.projects ?? []).slice().sort((a, b) => b.modified.localeCompare(a.modified))[0] ?? null;
 
@@ -17,7 +30,6 @@ export function App() {
   const [project, setProject] = useState<ProjectData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useLocalStorage('lr.sidebarOpen', true);
-  const [reviewBump, setReviewBump] = useState<Map<string, number>>(new Map());
   const [live, setLive] = useState(false);
   const [closedRepos, setClosedRepos] = useLocalStorage<string[]>('lr.closedRepos', []);
   const [notice, setNotice] = useState<string | null>(null);
@@ -28,7 +40,11 @@ export function App() {
   const activeSlug = list ? (isProject(route.project) ? route.project : route.parts.length === 0 ? mostRecent(list)?.slug ?? null : null) : null;
 
   const refreshList = useCallback(
-    () => api.projects().then((l) => { setList(l); setLoadError(null); }).catch((e) => setLoadError((e as Error).message)),
+    () => {
+      const req = early.projects ?? api.projects();
+      early.projects = null;
+      return req.then((l) => { setList(l); setLoadError(null); }).catch((e) => setLoadError((e as Error).message));
+    },
     [],
   );
   useEffect(() => { refreshList(); }, [refreshList]);
@@ -38,7 +54,9 @@ export function App() {
   const refreshProject = useCallback(() => {
     const slug = slugRef.current;
     if (!slug) return;
-    api.project(slug).then((p) => { if (slugRef.current === p.slug) { setProject(p); setLoadError(null); } }).catch((e) => setLoadError((e as Error).message));
+    const req = early.project?.slug === slug ? early.project.p : api.project(slug);
+    early.project = null;
+    req.then((p) => { if (slugRef.current === p.slug) { setProject(p); setLoadError(null); } }).catch((e) => setLoadError((e as Error).message));
   }, []);
   useEffect(() => {
     if (project?.slug !== activeSlug) setProject(null);
@@ -52,20 +70,26 @@ export function App() {
     let es: EventSource | null = null;
     let retry: ReturnType<typeof setTimeout>;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let dropped = false;
     const refreshSoon = () => { clearTimeout(timer); timer = setTimeout(refreshAll, 200); };
     const connect = () => {
       es = new EventSource('/api/events');
-      es.addEventListener('hello', () => setLive(true));
+      es.addEventListener('hello', () => {
+        setLive(true);
+        // back after a drop: events may have been missed while it was down
+        if (dropped) {
+          invalidateAll();
+          refreshSoon();
+        }
+      });
       es.addEventListener('change', (m) => {
         const e = JSON.parse((m as MessageEvent).data) as ServerEvent;
-        if (e.type === 'review' || e.type === 'pr') {
-          const k = `${e.type}:${e.project}:${e.repo}:${e.sha}`;
-          setReviewBump((b) => new Map(b).set(k, (b.get(k) ?? 0) + 1));
-        }
+        onServerEvent(e); // the PR pages in memory (the one on screen refreshes)
         refreshSoon();
       });
       es.onerror = () => {
         setLive(false);
+        dropped = true;
         es?.close();
         retry = setTimeout(connect, 2000);
       };
@@ -105,8 +129,7 @@ export function App() {
       const j = e.key === 'j' ? i + 1 : i - 1;
       if (i >= 0 && j >= 0 && j < flat.length) {
         e.preventDefault();
-        navigate(routeUrl(project.slug, flat[j].repo, flat[j].sha.slice(0, 8), r.tab));
-        window.scrollTo(0, 0);
+        navigate(routeUrl(project.slug, flat[j].repo, flat[j].sha.slice(0, 8), r.tab)); // CommitPage scrolls to the top once it's shown
       }
     };
     window.addEventListener('keydown', onKey);
@@ -184,13 +207,12 @@ export function App() {
           <TextDraftsProvider refresh={refreshAll}>
           {onCommit ? (
             <CommitPage
-              key={`${project.slug}/${route.repo}`}
+              key={project.slug}
               route={route}
               loc={{ project: project.slug, repo: route.repo! }}
               projectTitle={project.title}
               projectIntro={project.description}
               projectFile={project.file}
-              reviewBump={reviewBump}
               onChanged={refreshAll}
               repoData={repoData}
               vizVersion={vizVersion}
@@ -407,7 +429,8 @@ function CommitItem({ project, repo, c, route, followOn }: { project: string; re
       <a
         href={url}
         className={`commit-item ${active ? 'active' : ''}`}
-        onClick={(e) => { e.preventDefault(); navigate(url); window.scrollTo(0, 0); }}
+        onClick={(e) => { e.preventDefault(); navigate(url); }}
+        {...hoverPrefetch({ project, repo }, c.short)}
         title={`${c.title}${c.title_source === 'override' ? `\n(commit: ${c.subject})` : ''}\n${c.author}, ${relativeTime(c.date)}\n${c.viewedCount}/${c.filesChanged} files viewed`}
       >
         <span className="commit-num">{c.position}</span>

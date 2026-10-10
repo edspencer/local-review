@@ -81,6 +81,13 @@ header and stepper live.
 
 Old `/<repo>/<sha>` URLs (from before projects) redirect into the project that has that repo.
 
+## Moving between PRs
+
+A PR you've already opened, the ones either side of it, and a sidebar row you rest the pointer on are loaded in the
+background, so they open at once. Anything else keeps the PR you were on in view, with a thin amber bar along the top
+of the window, until the next one is ready: never a blank page. A new PR opens at the top, unless the link points at a
+file in it. What's kept in the browser is refreshed when the files or branches change, so it's never out of date.
+
 ## Live updates and dark mode
 
 Everything updates live: branches are polled every 2 seconds and the data files are watched, so a new commit, a new

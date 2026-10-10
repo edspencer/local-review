@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, stackColor, type CommitResponse, type CommitSummary, type FileData, type GithubInfo, type LandedInfo, type Loc, type PrInfo, type RepoData, type Review, type StackGroup, type Thread } from './api';
 import { BranchStatusMarker, PrBadge, branchNote } from './Branch';
+import { ensure, hoverPrefetch, patch, peek, prefetch, setActive, useCommitEntry } from './commitCache';
 import { Avatar, AuthorLabel, CommentForm, CommentView, Markdown, Octicon, ThreadView, reviewer, type ThreadActions } from './Comments';
 import { FilesChanged, StatusIcon, type Draft } from './FilesChanged';
 import { BodyEditor, CopyButton, DescriptionMenu, EditIconButton, EditedMarker, FULL_BODY_TIP, TitleEditor, type PrChange, type PrDraft } from './PrEdit';
@@ -9,60 +10,86 @@ import { ProjectContextBox } from './ProjectText';
 import { FollowOnBadge, ReadinessBadge, ReadinessControl } from './Readiness';
 import { progressOf, statusTooltip } from '../shared/readiness';
 import { StackTab } from './StackTab';
+import { TopProgress } from './TopProgress';
 import { navigate, relativeTime, routeUrl, useTilde, type Route } from './util';
 
-export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, projectFile, reviewBump, onChanged, repoData, vizVersion }: { route: Route; loc: Loc; projectTitle: string; projectIntro: string | null; projectFile: string; reviewBump: Map<string, number>; onChanged: () => void; repoData?: RepoData; vizVersion: string }) {
+export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, projectFile, onChanged, repoData, vizVersion }: { route: Route; loc: Loc; projectTitle: string; projectIntro: string | null; projectFile: string; onChanged: () => void; repoData?: RepoData; vizVersion: string }) {
   const sha = route.sha!;
   // stable identity: the parent builds a new object on every render
   const loc = useMemo(() => ({ project: locProp.project, repo: locProp.repo }), [locProp.project, locProp.repo]);
-  const [data, setData] = useState<CommitResponse | null>(null);
-  const [review, setReview] = useState<Review | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const entry = useCommitEntry(loc, sha);
+  const [error, setError] = useState<{ at: string; message: string } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [statusBusy, setStatusBusy] = useState(false);
+
+  // What's on screen: the PR in the URL once it's loaded; until then the one you came from stays (under the
+  // progress bar), so moving between PRs never shows a blank page.
+  const lastShown = useRef<CommitResponse | null>(null);
+  if (entry) lastShown.current = entry.data;
+  const data = entry?.data ?? (lastShown.current?.project === loc.project ? lastShown.current : null);
+  const loading = !entry;
+  // what the page's buttons act on: the PR shown (while the next one loads, that's still the previous one)
+  const here = useMemo(() => (data ? { project: data.project, repo: data.repo } : loc), [data?.project, data?.repo, loc]);
+  const fullSha = data?.commit.sha;
+  const at = `${loc.project}/${loc.repo}/${sha}`;
+
+  // load it (or refresh it in the background, if an event said it may have changed)
+  useEffect(() => {
+    const p = ensure(loc, sha);
+    if (!p) return;
+    let cancelled = false;
+    p.then(() => !cancelled && setError(null), (e) => !cancelled && !peek(loc, sha) && setError({ at, message: (e as Error).message }));
+    return () => {
+      cancelled = true;
+    };
+  }, [loc, sha, at, entry?.stale]);
+
+  // server events refresh the page on screen right away (commitCache.onServerEvent)
+  useEffect(() => {
+    if (!entry) return;
+    setActive(loc, entry.data.commit.sha);
+    return () => setActive(null);
+  }, [loc, entry?.data.commit.sha]);
+
+  // once it's shown, warm up the previous and next PRs (j / k, Prev / Next)
+  const neighbours = entry ? [entry.data.next, entry.data.prev] : [];
+  const neighbourKey = neighbours.map((n) => (n ? `${n.repo}/${n.sha}` : '')).join(' ');
+  useEffect(() => {
+    if (!neighbourKey.trim()) return;
+    const t = setTimeout(() => {
+      for (const n of neighbourKey.split(' ').filter(Boolean)) {
+        const [repo, s] = n.split('/');
+        prefetch({ project: loc.project, repo }, s.slice(0, 8));
+      }
+    }, 120);
+    return () => clearTimeout(t);
+  }, [loc.project, neighbourKey]);
+
+  // a new PR starts at the top (once it's on screen), unless the URL points at a file in it
+  const routeFile = useRef(route.file);
+  routeFile.current = route.file;
+  useLayoutEffect(() => {
+    if (fullSha && !routeFile.current) window.scrollTo(0, 0);
+  }, [fullSha]);
 
   // Optimistic "Viewed" toggles still waiting for the server: path -> [request token, viewed]. They are
   // laid over every review we receive (including SSE refreshes) until their own request settles.
   const pendingViewed = useRef(new Map<string, [number, boolean]>());
   const viewedToken = useRef(0);
+  const [pendingTick, setPendingTick] = useState(0);
   const withPending = useCallback((r: Review): Review => {
     if (!pendingViewed.current.size) return r;
     const set = new Set(r.viewed);
     for (const [p, [, v]] of pendingViewed.current) v ? set.add(p) : set.delete(p);
     return { ...r, viewed: [...set] };
   }, []);
-  const receive = useCallback((r: Review) => setReview(withPending(r)), [withPending]);
-
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const review = useMemo(() => (data ? withPending(data.review) : null), [data?.review, pendingTick, withPending]);
   useEffect(() => {
-    let cancelled = false;
-    setError(null);
     pendingViewed.current.clear();
-    api
-      .commit(loc, sha)
-      .then((d) => {
-        if (cancelled) return;
-        setData(d);
-        setReview(d.review);
-      })
-      .catch((e) => !cancelled && setError((e as Error).message));
-    return () => {
-      cancelled = true;
-    };
   }, [loc, sha]);
-
-  // live refresh when the YAML file for this commit changes (e.g. an agent replied)
-  const fullSha = data?.commit.sha;
-  const bump = fullSha ? reviewBump.get(`review:${loc.project}:${loc.repo}:${fullSha}`) ?? 0 : 0;
-  useEffect(() => {
-    if (!fullSha || bump === 0) return;
-    api.review(loc, fullSha).then(receive).catch(() => {});
-  }, [loc, fullSha, bump, receive]);
-  // …and when its PR title / description override changes
-  const prBump = fullSha ? reviewBump.get(`pr:${loc.project}:${loc.repo}:${fullSha}`) ?? 0 : 0;
-  useEffect(() => {
-    if (!fullSha || prBump === 0) return;
-    api.pr(loc, fullSha).then((pr) => setData((d) => (d && d.commit.sha === fullSha ? { ...d, pr } : d))).catch(() => {});
-  }, [loc, fullSha, prBump]);
+  /** A review the server just returned for the PR shown. */
+  const receive = useCallback((r: Review) => fullSha && patch(here, fullSha, (d) => ({ ...d, review: r })), [here, fullSha]);
 
   useEffect(() => {
     if (data?.pr.title) document.title = `${data.pr.title} · ${projectTitle} · Local Review`;
@@ -85,31 +112,26 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
       if (!fullSha) return;
       const token = ++viewedToken.current;
       pendingViewed.current.set(path, [token, v]);
-      setReview((r) => (r ? withPending(r) : r));
+      setPendingTick((n) => n + 1);
       const settle = () => {
         if (pendingViewed.current.get(path)?.[0] === token) pendingViewed.current.delete(path);
+        setPendingTick((n) => n + 1);
       };
       try {
-        const r = await api.viewed(loc, fullSha, path, v);
+        const r = await api.viewed(here, fullSha, path, v);
         settle();
         receive(r);
         setActionError(null);
         onChanged();
       } catch (e) {
+        // revert: the toggle is no longer laid over the review, which is what the server last said
         settle();
-        // revert: back to what the server has (falling back to undoing our toggle locally)
-        setReview((r) => {
-          if (!r || pendingViewed.current.has(path)) return r;
-          const set = new Set(r.viewed);
-          v ? set.delete(path) : set.add(path);
-          return { ...r, viewed: [...set] };
-        });
-        api.review(loc, fullSha).then(receive).catch(() => {});
+        api.review(here, fullSha).then(receive).catch(() => {});
         setActionError(`Couldn't save "Viewed" for ${path}: ${(e as Error).message}`);
         throw e;
       }
     },
-    [loc, fullSha, withPending, receive, onChanged],
+    [here, fullSha, receive, onChanged],
   );
 
   // PR title / description edits in progress, per commit (so a draft survives switching tabs or commits)
@@ -129,12 +151,12 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
 
   const savePr = useCallback(
     async (change: PrChange): Promise<PrInfo> => {
-      const pr = await api.setPr(loc, fullSha!, change);
-      setData((d) => (d && d.commit.sha === fullSha ? { ...d, pr } : d));
+      const pr = await api.setPr(here, fullSha!, change);
+      patch(here, fullSha!, (d) => ({ ...d, pr }));
       onChanged(); // sidebar + stepper titles
       return pr;
     },
-    [loc, fullSha, onChanged],
+    [here, fullSha, onChanged],
   );
   /** Save the title draft; a title equal to the commit subject clears the override. */
   const saveTitle = async (pr: PrInfo, text: string) => {
@@ -151,27 +173,27 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
 
   const actions: ThreadActions = useMemo(
     () => ({
-      reply: (tid, body) => wrap(api.reply(loc, fullSha!, tid, body)),
-      resolve: (tid, resolved) => wrap(api.resolve(loc, fullSha!, tid, resolved)),
-      edit: (tid, cid, body) => wrap(api.editComment(loc, fullSha!, tid, cid, body)),
-      remove: (tid, cid) => wrap(api.deleteComment(loc, fullSha!, tid, cid)),
+      reply: (tid, body) => wrap(api.reply(here, fullSha!, tid, body)),
+      resolve: (tid, resolved) => wrap(api.resolve(here, fullSha!, tid, resolved)),
+      edit: (tid, cid, body) => wrap(api.editComment(here, fullSha!, tid, cid, body)),
+      remove: (tid, cid) => wrap(api.deleteComment(here, fullSha!, tid, cid)),
     }),
-    [loc, fullSha, wrap],
+    [here, fullSha, wrap],
   );
 
   const tilde = useTilde();
 
-  if (error) return <div className="page"><div className="flash flash-error">{tilde(error)}</div></div>;
-  if (!data || !review || !data.commit.sha.startsWith(sha.toLowerCase())) return <div className="page"><div className="loading">Loading…</div></div>;
+  if (error?.at === at && !entry) return <div className="page"><div className="flash flash-error">{tilde(error.message)}</div></div>;
+  // only the very first PR of a visit has nothing to show while it loads
+  if (!data || !review) return <div className="page"><TopProgress /><div className="loading">Loading…</div></div>;
 
   const c = data.commit;
   const tab = route.tab;
   const go = (t: Route['tab']) => navigate(routeUrl(loc.project, loc.repo, sha, t));
   const goTo = (to: { repo: string; sha: string } | null) => {
-    if (!to) return;
-    navigate(routeUrl(loc.project, to.repo, to.sha.slice(0, 8), tab));
-    window.scrollTo(0, 0);
+    if (to) navigate(routeUrl(loc.project, to.repo, to.sha.slice(0, 8), tab));
   };
+  const hoverTo = (to: { repo: string; sha: string } | null) => (to ? hoverPrefetch({ project: loc.project, repo: to.repo }, to.sha.slice(0, 8)) : {});
   // the stack this commit is in, with live counts from the sidebar's data (falling back to the commit payload)
   const liveCommit = repoData?.commits.find((x) => x.sha === c.sha);
   const group: StackGroup | null = (liveCommit && repoData?.stacks[liveCommit.stack]) || data.stack;
@@ -196,7 +218,8 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
   };
 
   return (
-    <div className="page">
+    <div className="page" aria-busy={loading || undefined}>
+      {loading && <TopProgress />}
       <div className="pr-header">
         {titleDraft ? (
           <TitleEditor
@@ -216,8 +239,8 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
               <CopyButton text={data.pr.title} label="Copy title" />
               <button className="btn btn-sm" title="Edit the PR title (saved locally, the commit is unchanged)" onClick={() => setDraftFor(setTitleDrafts, c.sha)({ base: data.pr.title, text: data.pr.title })}>Edit</button>
               <span className="pr-nav-sep" aria-hidden="true" />
-              <button className="btn btn-sm" disabled={!data.prev} onClick={() => goTo(data.prev)} title={`Previous commit in the project (k)${data.prev && data.prev.repo !== loc.repo ? ` · ${data.prev.repo}` : ''}`}>← Prev</button>
-              <button className="btn btn-sm" disabled={!data.next} onClick={() => goTo(data.next)} title={`Next commit in the project (j)${data.next && data.next.repo !== loc.repo ? ` · ${data.next.repo}` : ''}`}>Next →</button>
+              <button className="btn btn-sm" disabled={!data.prev} onClick={() => goTo(data.prev)} {...hoverTo(data.prev)} title={`Previous commit in the project (k)${data.prev && data.prev.repo !== loc.repo ? ` · ${data.prev.repo}` : ''}`}>← Prev</button>
+              <button className="btn btn-sm" disabled={!data.next} onClick={() => goTo(data.next)} {...hoverTo(data.next)} title={`Next commit in the project (j)${data.next && data.next.repo !== loc.repo ? ` · ${data.next.repo}` : ''}`}>Next →</button>
             </div>
           </div>
         )}
@@ -334,7 +357,7 @@ function prBase(github: GithubInfo | null, repoData: RepoData | undefined, sha: 
 /** This PR stack as a compact stepper (2 · [3] · 4) in the stack's colour, numbered like the sidebar. */
 function StackStepper({ loc, group, commits, current, tab, next }: { loc: Loc; group: StackGroup; commits: CommitSummary[]; current: string; tab: Route['tab']; next: { repo: string; sha: string } | null }) {
   const idx = commits.findIndex((x) => x.sha === current);
-  const go = (cm: CommitSummary) => { navigate(routeUrl(loc.project, loc.repo, cm.short, tab)); window.scrollTo(0, 0); };
+  const go = (cm: CommitSummary) => navigate(routeUrl(loc.project, loc.repo, cm.short, tab));
   return (
     <nav className={`stack-stepper ${group.implicit === 'unstacked' ? 'unstacked' : ''} ${group.follow_on ? 'follow-on' : ''}`} aria-label="Commits in this PR stack" style={{ ['--stack' as string]: stackColor(group.color) }}>
       <span className="stepper-label" title={group.warning}>
@@ -352,6 +375,7 @@ function StackStepper({ loc, group, commits, current, tab, next }: { loc: Loc; g
                 title={`#${cm.position} ${cm.title}\n${cm.short} · +${cm.additions} −${cm.deletions}\n${statusTooltip(cm.status, cm.progress, cm.github)}`}
                 aria-current={i === idx ? 'step' : undefined}
                 onClick={(e) => { e.preventDefault(); go(cm); }}
+                {...hoverPrefetch(loc, cm.short)}
               >
                 {cm.position}
                 <ReadinessBadge status={cm.status} progress={cm.progress} github={cm.github} size={14} title="" />
