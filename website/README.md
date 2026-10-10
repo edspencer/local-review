@@ -1,7 +1,10 @@
 # Local Review documentation site
 
-The [Astro](https://astro.build) + [Starlight](https://starlight.astro.build) documentation site for Local Review,
-served at **https://local-review.edspencer.net**.
+The [Astro](https://astro.build) 7 + [Starlight](https://starlight.astro.build) 0.42 documentation site for Local
+Review, served at **https://local-review.edspencer.net**. It needs Node 22.12 or later.
+
+It began as a copy of Paddock's docs site (Astro 5), and has since been upgraded past it; see
+[CLAUDE.md](CLAUDE.md) for what changed in the upgrade and why.
 
 A standalone package: it is not part of the root `local-review` package, so it never affects the app's build, tests
 or npm tarball.
@@ -19,14 +22,15 @@ npm run build && npm run preview  # build + preview the built site
 
 - `src/pages/index.astro` and `src/components/landing/`: the marketing landing page at `/` (outside Starlight). Its
   copy is all in `src/components/landing/copy.ts`.
-- `src/content/docs/`: the documentation pages (`.md` / `.mdx`, Starlight frontmatter).
+- `src/content/docs/`: the documentation pages (`.md` / `.mdx`, Starlight frontmatter). The `agents/` guide pages
+  are generated from `../AGENT-GUIDE.md` by `node scripts/sync-agent-guide.mjs`; don't edit them by hand.
 - `astro.config.mjs`: site config and the hand-maintained sidebar.
 - `src/site.mjs`: site constants (URL, repo, tagline, **the default port**) and the analytics snippet.
 - `src/assets/`, `public/`, `src/styles/`: logo, favicons, social card, theme.
 - `functions/ingest/[[path]].ts`: the Cloudflare Pages Function that proxies analytics (idle unless analytics is on).
 
 `npm run build` writes the static site to `dist/`, including the Pagefind search index (`dist/pagefind/`) and the
-sitemap (`dist/sitemap-index.xml`).
+sitemap (`dist/sitemap-index.xml`). `node scripts/check-links.mjs` then checks its internal links.
 
 ## Brand assets
 
@@ -60,6 +64,7 @@ Built and served by **Cloudflare Pages** from the GitHub repo (git integration, 
 | Build command | `npm install && npm run build` |
 | Build output directory | `dist` |
 | Custom domain | `local-review.edspencer.net` |
+| Node version | 22, from `website/.node-version` (no setting needed) |
 
 Every PR that touches the repo also gets a preview deployment.
 

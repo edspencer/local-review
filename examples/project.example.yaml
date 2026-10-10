@@ -4,7 +4,7 @@
 #
 # Edit the paths and branches below. The directory name ("my-feature") is the project's slug, used in
 # URLs: http://localhost:5622/my-feature. Edits are picked up live, no restart needed.
-# The full schema and the stack selector rules are under "Projects" in README.md.
+# The full schema and the stack selector rules: https://local-review.edspencer.net/reference/project-yaml/
 title: My feature
 description: |                        # optional: the project intro (Markdown), editable in the UI too.
   One or two paragraphs of context for the whole effort. "Copy full PR body" puts it at the top of
@@ -16,7 +16,8 @@ repos:
     base: origin/main                 # range start = merge-base(base, end), exclusive; default origin/HEAD, main, master
     # from: <sha|ref>                 # alternative start: the first commit included (overrides base)
     # landed: ["0a1b2c3d"]            # after merges: PRs frozen by the agent, bottom to top (prs file keys; see
-                                      # "Landed PRs" in README.md). They come first and keep their numbers.
+                                      # https://local-review.edspencer.net/concepts/landed-prs/). They come first
+                                      # and keep their numbers.
     stacks:                           # optional; consecutive groups of commits, in order
       - title: Groundwork
         color: blue                   # blue green purple orange pink teal red, or "#hex"; default cycles (yellow is

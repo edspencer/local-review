@@ -86,8 +86,8 @@ File times in the data home are set too: `/` opens the most recently modified pr
   contents, `null` to delete, or an edit (`replace`, `edits`, `after`) that fails loudly if its text isn't there,
   so content can't drift silently. Go files are written with four spaces and get tabs on disk. Rebases are
   `replay()`: same message and author, new parent and committer date.
-- `world/review.ts`: the Local Review data, as YAML following the schemas in the README ("Projects", "Landed PRs",
-  "Comment files"). Inline threads name the text of the line they're on, not a number, so they stay put when the
+- `world/review.ts`: the Local Review data, as YAML following the schemas on the docs site
+  (`website/src/content/docs/reference/`: project.yaml, PR files, comment files). Inline threads name the text of the line they're on, not a number, so they stay put when the
   code above them changes.
 - `lib/gitworld.ts`: the history builder.
 

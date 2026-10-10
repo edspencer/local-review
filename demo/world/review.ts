@@ -1,6 +1,6 @@
 // The Local Review data home: three projects over the four repos, with PR overrides, readiness, branches, GitHub
-// records, landed PRs and review threads, written as plain YAML following the schemas in the README ("Projects",
-// "Landed PRs", "Comment files"). Line numbers are looked up in the generated files, never hard-coded.
+// records, landed PRs and review threads, written as plain YAML following the schemas on the docs site
+// (website/src/content/docs/reference/: project.yaml, PR files, comment files). Line numbers are looked up in the generated files, never hard-coded.
 import crypto from 'node:crypto';
 import YAML from 'yaml';
 import { git, type RepoBuilder } from '../lib/gitworld.ts';

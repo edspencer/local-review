@@ -3,8 +3,32 @@ title: Keyboard shortcuts
 description: Move between PRs and files without the mouse.
 ---
 
-`j` and `k` walk every PR in the project in sidebar order, across stacks and repos. On Files changed, `n` and `p` move to the next and previous file. Shortcuts are ignored while you are typing.
+Shortcuts are ignored while you're typing in a comment, an editor or the file filter.
 
-:::note[TODO: content]
-This page is a stub. Its content will move here from the README's "Keys" bullet.
-:::
+## Anywhere
+
+| Key | |
+| --- | --- |
+| `j` | Next PR. |
+| `k` | Previous PR. |
+
+`j` and `k` (and the **Prev** / **Next** buttons) walk every PR in the project in sidebar order: across stacks, and
+across repos.
+
+## Files changed
+
+| Key | |
+| --- | --- |
+| `n` | Next file. |
+| `p` | Previous file. |
+
+## Editing
+
+| Key | |
+| --- | --- |
+| Enter | Save a title. |
+| ⌘/Ctrl + Enter | Post a comment or reply; save a description, project intro or stack note. |
+| Esc | Cancel (a description editor with changes asks first). |
+| ⌘/Ctrl + B, I, K | Bold, italic, link, in an editor with a toolbar. |
+
+To select a range of lines for a comment, click one line number and **shift-click** another.

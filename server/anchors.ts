@@ -5,7 +5,7 @@
 // thread on another commit (or after its code changed) we look for that text on the same side of the same
 // file (following renames), score each match by how much surrounding context still fits, and break ties by
 // distance from the last known line. No match => the thread is "outdated". Pure functions, no I/O.
-// The rules are documented in README.md ("Line anchoring").
+// The rules are documented on the docs site: website/src/content/docs/concepts/following-rebases.md ("Line anchoring").
 
 export const CONTEXT_LINES = 3;
 

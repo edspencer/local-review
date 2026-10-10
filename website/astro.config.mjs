@@ -2,9 +2,10 @@
 import { defineConfig } from 'astro/config';
 import { loadEnv } from 'vite';
 import starlight from '@astrojs/starlight';
+import { unified } from '@astrojs/markdown-remark';
 import sitemap from '@astrojs/sitemap';
-import rehypeMermaid from 'rehype-mermaid';
 import tailwindcss from '@tailwindcss/vite';
+import rehypePreMermaid from './src/plugins/rehype-pre-mermaid.mjs';
 import { SITE_URL, REPO_URL, TITLE, TAGLINE, posthogSnippet } from './src/site.mjs';
 
 // PUBLIC_POSTHOG_KEY comes from the build environment (Cloudflare Pages
@@ -16,18 +17,22 @@ const posthog = posthogSnippet(env.PUBLIC_POSTHOG_KEY);
 // https://astro.build/config
 export default defineConfig({
 	site: SITE_URL,
+	// Astro 7's default, 'jsx', strips whitespace between elements, which glues inline
+	// text together ("Edit pagePrevious…"). `true` keeps Astro 5/6's HTML-aware rules.
+	compressHTML: true,
 	vite: {
 		plugins: [tailwindcss()],
 	},
 	markdown: {
-		// Mermaid code fences are pre-processed here and rendered client-side (see head script).
-		rehypePlugins: [[rehypeMermaid, { strategy: 'pre-mermaid' }]],
+		// Astro 7 renders Markdown with Sätteri by default, which doesn't run rehype
+		// plugins; the unified (remark/rehype) processor does. Mermaid code fences are
+		// pre-processed here and rendered client-side (see head script).
+		processor: unified({ rehypePlugins: [rehypePreMermaid] }),
 	},
 	integrations: [
 		sitemap(),
 		starlight({
 			title: TITLE,
-			tagline: TAGLINE,
 			customCss: ['./src/styles/tailwind.css', './src/styles/custom.css'],
 			// Brand assets are COPIED from ../brand by `npm run sync-brand` (Cloudflare
 			// builds with website/ as its root, so ../brand is out of reach). One logo
@@ -86,6 +91,9 @@ export default defineConfig({
 						{ label: 'Readiness', slug: 'concepts/readiness' },
 						{ label: 'Landed PRs', slug: 'concepts/landed-prs' },
 						{ label: 'Follow-on stacks', slug: 'concepts/follow-on-stacks' },
+						{ label: 'Branches', slug: 'concepts/branches' },
+						{ label: 'Following rebases', slug: 'concepts/following-rebases' },
+						{ label: 'Works with your stacking tool', slug: 'concepts/stacking-tools' },
 					],
 				},
 				{
@@ -120,6 +128,7 @@ export default defineConfig({
 						{ label: 'PR files schema', slug: 'reference/pr-files' },
 						{ label: 'HTTP API', slug: 'reference/http-api' },
 						{ label: 'Environment variables', slug: 'reference/environment' },
+						{ label: 'Where your data lives', slug: 'reference/data-directory' },
 					],
 				},
 				{

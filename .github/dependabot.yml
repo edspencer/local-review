@@ -6,8 +6,8 @@ updates:
       interval: weekly
     open-pull-requests-limit: 10
     ignore:
-      # Exact-pinned on purpose: src/FilesChanged.tsx patches one of its private methods (README "Run"). Upgrade it by
-      # hand and check that patch still applies.
+      # Exact-pinned on purpose: src/FilesChanged.tsx patches one of its private methods (see the comment at the top
+      # of that file). Upgrade it by hand and check that patch still applies.
       - dependency-name: "@pierre/diffs"
     groups:
       # Everything that ships to users' machines (the `dependencies`: the server's runtime).
