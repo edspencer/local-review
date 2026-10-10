@@ -1,7 +1,7 @@
 // `npm run smoke:pack`: check the npm package as a user gets it. Packs it (prepack builds it), installs the tarball
 // globally into a temp prefix, then runs the installed `local-review` from a temp directory with a throwaway HOME and
 // LOCAL_REVIEW_HOME: --version, --help, guide, init, and the server (on a free port: /api/me, /, a UI asset, the
-// project list, a stack PNG drawn with the bundled fonts). Cleans up after itself. Linux and macOS.
+// favicons, the project list, a stack PNG drawn with the bundled fonts). Cleans up after itself. Linux and macOS.
 import { execFileSync, spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -93,6 +93,13 @@ try {
   const asset = html.match(/src="(\/assets\/[^"]+\.js)"/)?.[1];
   assert.ok(asset, 'index.html loads a script from /assets/');
   await get(base, asset, /javascript/);
+  // the favicons: from brand/, hashed into the built UI's assets by Vite (brand/ itself isn't in the package)
+  const icons = [...html.matchAll(/<link rel="(?:icon|apple-touch-icon)" href="([^"]+)"/g)].map((m) => m[1]);
+  assert.equal(icons.length, 3, `index.html links the three favicons: ${icons}`);
+  for (const icon of icons) {
+    assert.match(icon, /^\/assets\//, `${icon} comes from the built UI`);
+    await get(base, icon, /^image\//);
+  }
   assert.equal((await fetch(base + '/demo')).status, 200, 'a client-side route serves the UI');
   const projects = await (await get(base, '/api/projects', /json/)).json();
   assert.deepEqual(projects.projects.map((p) => p.slug), ['demo']);

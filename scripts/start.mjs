@@ -26,7 +26,7 @@ const stale = (output, sources) => {
 };
 
 const builds = [
-  ['build:web', 'dist/web/index.html', ['src', 'shared', 'index.html', 'vite.config.ts', 'package.json']],
+  ['build:web', 'dist/web/index.html', ['src', 'shared', 'brand', 'index.html', 'vite.config.ts', 'package.json']],
   ['build:server', 'dist/server/cli.js', ['server', 'shared', 'tsconfig.build.json', 'tsconfig.server.json']],
 ];
 for (const [script, output, sources] of builds) {
