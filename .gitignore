@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+# User data lives in ~/.local-review (see "Where your data lives" in README.md), never in this repo.
+/projects/
+# Personal agent rules for this checkout (Claude Code reads it next to CLAUDE.md); never committed.
+CLAUDE.local.md
