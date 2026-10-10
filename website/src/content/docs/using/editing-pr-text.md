@@ -45,6 +45,26 @@ in at the cursor:
 
 Where the files live, and why they're never deleted: [Images](/reference/data-directory/#images).
 
+### Seeing an image up close
+
+Click an image (the cursor is a magnifier over the ones you can) to open it in a viewer over the page, scaled to
+fit the window, with its title, or else its alt text, as the caption. That works wherever markdown is shown:
+descriptions, stack notes, the project intro, comments, and an editor's **Preview**.
+
+- **Click the image** (or the magnifier button) to see it at 100%, its full size, centred on the point you clicked.
+  Scroll or drag to move around it; click again to fit it back to the window. An image that already fits at 100%
+  has nothing to zoom to.
+- **← / →**, or the arrows at the sides, step through the other images in the same description, note or comment,
+  wrapping round at the ends; the top corner shows which one you're on (`2 / 4`).
+- **Esc**, the **×** button or a click outside the image closes it, and focus goes back to the image. Images can be
+  focused with Tab and opened with Enter, too.
+- **Images in links keep the link.** A badge or a screenshot that links somewhere else opens its link, as on GitHub.
+  An image linked to itself (`[![diagram](assets/….png)](assets/….png)`) opens the viewer; ⌘/Ctrl- or shift-click it
+  to open the link instead.
+
+While the viewer is open, the other [keyboard shortcuts](/using/keyboard-shortcuts/) are off, so `j` / `k` don't
+move you to another PR behind it.
+
 :::caution[GitHub can't see them]
 The images are on your machine, so the **Full body** you copy still says `assets/<name>`, which GitHub can't show.
 Drag the image into the PR on GitHub when you create it, or record where it's published with
