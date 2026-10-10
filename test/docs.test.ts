@@ -6,6 +6,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DEFAULT_PORT } from '../server/port.ts';
+import { SHOTS } from '../tools/docs-media/shots.ts';
+import { referencedShots } from '../tools/docs-media/sync.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const WEBSITE = path.join(ROOT, 'website');
@@ -66,5 +68,31 @@ describe('docs site', () => {
     const pages = files(DOCS, /\.mdx?$/).map((f) => path.relative(DOCS, f).replace(/\.mdx?$/, ''));
     assert.deepEqual(pages.filter((p) => !slugs.has(p)), [], 'pages missing from the sidebar in website/astro.config.mjs');
     assert.deepEqual([...slugs].filter((s) => !pages.includes(s)), [], 'sidebar entries without a page');
+  });
+
+  // Pages mark where a screenshot is wanted with `SHOT: <id>` comments, and the landing page had <Placeholder> frames;
+  // the capture rig fills them (tools/docs-media/README.md). None may ship.
+  test('no screenshot placeholders are left in the docs, the landing page or the README', () => {
+    const left = [...files(path.join(WEBSITE, 'src'), /\.(mdx?|astro|ts)$/), path.join(ROOT, 'README.md')].flatMap((f) =>
+      fs.readFileSync(f, 'utf8').split('\n').flatMap((line, i) => (/\bSHOT:|<Placeholder\b/.test(line) ? [`${path.relative(ROOT, f)}:${i + 1}`] : [])),
+    );
+    assert.deepEqual(left, []);
+  });
+
+  test('every screenshot the site uses is a shot in tools/docs-media/shots.ts, and is committed', () => {
+    const names = new Set([...SHOTS.map((s) => s.name), 'demo-poster']);
+    const refs = referencedShots();
+    assert.ok(refs.length >= 20);
+    for (const r of refs) {
+      assert.ok(names.has(r.name), `${r.from}: ${r.name} isn't a shot in shots.ts`);
+      assert.ok(fs.existsSync(path.join(WEBSITE, 'src', 'assets', r.dir, `${r.name}.png`)), `${r.from}: website/src/assets/${r.dir}/${r.name}.png is missing (npm run docs:media:sync)`);
+    }
+  });
+
+  test("the README's images are committed where its raw.githubusercontent.com URLs point", () => {
+    const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+    const urls = [...readme.matchAll(/https:\/\/raw\.githubusercontent\.com\/edspencer\/local-review\/main\/([^"')\s]+)/g)].map((m) => m[1]);
+    assert.ok(urls.some((u) => u.startsWith('docs/media/')));
+    for (const u of urls) assert.ok(fs.existsSync(path.join(ROOT, u)), `README.md points at ${u}, which isn't in the repo`);
   });
 });
