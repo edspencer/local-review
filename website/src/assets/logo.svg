@@ -1,0 +1,7 @@
+<!-- PLACEHOLDER mark: swap for the real logo from the branding work (same path). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <rect width="32" height="32" rx="7" fill="#4a1942"/>
+  <rect x="7" y="8" width="18" height="4" rx="2" fill="#e8a33d"/>
+  <rect x="7" y="14" width="18" height="4" rx="2" fill="#e8a33d" opacity="0.75"/>
+  <rect x="7" y="20" width="12" height="4" rx="2" fill="#fff"/>
+</svg>

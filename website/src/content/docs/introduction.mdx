@@ -1,0 +1,44 @@
+---
+title: What is Local Review?
+description: A local, GitHub-PR-style review UI for stacks of commits, built for working with AI coding agents.
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+**Local Review** is a review UI for **stacks of commits**, before they become pull requests. It runs on your own
+machine, looks like GitHub's pull-request page, and shows every commit on your branch as its own PR, grouped into
+colour-coded **PR stacks**. You read the diffs, leave comments, and mark each PR ready. Nothing is pushed anywhere.
+
+## Why
+
+An AI coding agent can write a dozen tidy commits in an afternoon. Reviewing them properly is the slow part, and
+GitHub is a poor place to start: once a PR is open, other people can see it, CI runs on it, and every round of
+fixes is a force-push. Local Review moves that first review onto your machine:
+
+- **Review the stack you meant to send.** Split one branch, or several branches across several repos, into the
+  stacks of PRs you intend to open. Review each commit as the PR it will become, then reshape the stack before
+  anyone else sees it.
+- **Talk to your agent in the review.** Your comments are saved as plain YAML files. Your agent reads them, fixes
+  the commits, and replies by writing into the same files; the replies show up in the browser as it works.
+- **Publish when it's ready.** Once a stack is ready, your agent opens it on GitHub as native stacked PRs, with the
+  titles and descriptions you approved, and records what it created back in Local Review.
+
+## What it never does
+
+Local Review is deliberately small and careful:
+
+- It **never modifies the repos it shows you**. All git access is read-only.
+- It **never talks to GitHub**. Your agent does the git and GitHub work.
+- It **never deletes your review**, and snapshots it automatically.
+- It **only listens on localhost**.
+
+And so you can never mistake it for the real thing, its header is deep plum with an amber underline, not GitHub's.
+
+## Next steps
+
+<CardGrid>
+	<LinkCard title="Quickstart" description="Run it with npx and set up your first project." href="/getting-started/quickstart/" />
+	<LinkCard title="PR stacks" description="How commits are grouped into stacks." href="/concepts/pr-stacks/" />
+	<LinkCard title="Agent guide" description="How an agent drives Local Review." href="/agents/agent-guide/" />
+	<LinkCard title="Read-only guarantee" description="Why your repos are safe." href="/guarantees/read-only/" />
+</CardGrid>
