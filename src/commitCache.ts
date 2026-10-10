@@ -18,11 +18,7 @@ const entries = new Map<string, Entry>(); // `project\0repo\0full sha`, least re
 const inflight = new Map<string, Promise<CommitResponse>>(); // by the sha as asked (a URL's short sha)
 let active: string | null = null; // the entry on screen: refreshed on events rather than just marked stale
 const subs = new Set<() => void>();
-let version = 0;
-const changed = () => {
-  version++;
-  subs.forEach((f) => f());
-};
+const changed = () => subs.forEach((f) => f());
 
 const keyOf = (l: Loc, fullSha: string) => `${l.project}\0${l.repo}\0${fullSha}`;
 const askKey = (l: Loc, sha: string) => `${l.project}\0${l.repo}\0${sha.toLowerCase()}`;
@@ -55,8 +51,10 @@ function share(prev: CommitResponse | undefined, next: CommitResponse): CommitRe
 function put(l: Loc, data: CommitResponse) {
   const k = keyOf(l, data.commit.sha);
   const prev = entries.get(k);
+  const shared = share(prev?.data, data);
   entries.delete(k); // most recently used last
-  entries.set(k, { data: share(prev?.data, data), stale: false });
+  // unchanged: the same entry, so nothing showing it re-renders
+  entries.set(k, prev && !prev.stale && prev.data === shared ? prev : { data: shared, stale: false });
   for (const old of entries.keys()) {
     if (entries.size <= MAX_ENTRIES) break;
     if (old !== active) entries.delete(old);
@@ -170,14 +168,14 @@ export function invalidateAll() {
   changed();
 }
 
-/** The entry for a URL's sha, re-rendering when the cache changes. */
+const subscribe = (f: () => void) => {
+  subs.add(f);
+  return () => {
+    subs.delete(f);
+  };
+};
+
+/** The entry for a URL's sha, re-rendering only when that entry changes (not on every prefetch). */
 export function useCommitEntry(l: Loc, sha: string): Entry | undefined {
-  useSyncExternalStore(
-    (f) => {
-      subs.add(f);
-      return () => subs.delete(f);
-    },
-    () => version,
-  );
-  return peek(l, sha);
+  return useSyncExternalStore(subscribe, () => peek(l, sha));
 }
