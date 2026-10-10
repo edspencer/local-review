@@ -1,7 +1,7 @@
 // `npm run smoke:pack`: check the npm package as a user gets it. Packs it (prepack builds it), installs the tarball
 // globally into a temp prefix, then runs the installed `local-review` from a temp directory with a throwaway HOME and
-// LOCAL_REVIEW_HOME: --version, --help, guide, init, and the server (on a free port: /api/me, /, a UI asset, the
-// favicons, the project list, a stack PNG drawn with the bundled fonts). Cleans up after itself. Linux and macOS.
+// LOCAL_REVIEW_HOME: --version, --help, guide, init, asset add, and the server (on a free port: /api/me, /, a UI
+// asset, the favicons, the project list, a stack PNG drawn with the bundled fonts, the added image). Cleans up after itself. Linux and macOS.
 import { execFileSync, spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -70,6 +70,13 @@ try {
   fails(['init', 'demo'], 1, /already exists; not replacing it/);
   fails(['plan', 'missing'], 1, /no project 'missing'/);
 
+  step('asset add');
+  const image = path.join(root, 'brand', 'icon-192.png');
+  const snippet = run('asset', 'add', 'demo', image).trim();
+  const assetName = snippet.match(/^!\[icon-192\]\(assets\/([0-9a-f]{16}\.png)\)$/)?.[1];
+  assert.ok(assetName, `asset add prints the markdown: ${snippet}`);
+  fails(['asset', 'add', 'demo', yaml], 1, /not an image type/);
+
   step('serve');
   server = spawn(bin, ['--port', '0'], { cwd: work, env, stdio: ['ignore', 'pipe', 'inherit'] });
   const base = await new Promise((resolve, reject) => {
@@ -105,6 +112,9 @@ try {
   assert.deepEqual(projects.projects.map((p) => p.slug), ['demo']);
   const png = Buffer.from(await (await get(base, '/api/projects/demo/stack.png', /image\/png/)).arrayBuffer());
   assert.ok(png.subarray(1, 4).toString() === 'PNG' && png.length > 1000, 'a stack PNG, drawn with the bundled fonts');
+  const img = await get(base, `/api/projects/demo/assets/${assetName}`, /^image\/png$/);
+  assert.equal(img.headers.get('x-content-type-options'), 'nosniff');
+  assert.deepEqual(Buffer.from(await img.arrayBuffer()), fs.readFileSync(image), 'the added image, as added');
   console.log('smoke:pack: ok');
 } finally {
   if (server && server.exitCode === null) {

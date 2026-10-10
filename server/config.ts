@@ -33,7 +33,7 @@ export function expandHome(p: string) {
 
 /**
  * User data lives outside the app repo, in ~/.local-review (or $LOCAL_REVIEW_HOME):
- *   projects/<slug>/{project.yaml, prs/, reviews/}
+ *   projects/<slug>/{project.yaml, prs/, reviews/, assets/}   (assets/: images, server/assets.ts)
  *   backups/<ISO timestamp>/   automatic snapshots of projects/ (server/backups.ts)
  */
 export const HOME = path.resolve(expandHome(process.env.LOCAL_REVIEW_HOME || path.join(os.homedir(), '.local-review')));

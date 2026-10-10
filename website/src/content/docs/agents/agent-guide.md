@@ -33,6 +33,7 @@ Everything lives in plain YAML under `~/.local-review/projects/<slug>/` (or `$LO
 project.yaml                    repos, commit ranges, PR stacks, intro and stack notes
 reviews/<repo>/<full-sha>.yaml  the reviewer's threads and your replies (schema: the docs site's "Comment files schema")
 prs/<repo>/<full-sha>.yaml      PR title/body overrides, status (draft / ready), branch, github, landed
+assets/<hash>.<ext>             images shown in descriptions, stack notes and the intro (`local-review asset add`)
 ```
 
 `local-review init <slug>` creates a new project's `project.yaml` from a commented example (it never replaces one).
@@ -110,6 +111,11 @@ stack selectors (`starts_at`) depend on subjects too.
 4. **Keep descriptions short.** Reviewers dislike verbose, AI-sounding descriptions: no headings, no restating the diff,
    no "This PR…" boilerplate. Say what changed and why, in a few lines. Only write the project intro and stack
    notes (`description:` in `project.yaml`) when asked.
+5. **Images** (a diagram, a before/after screenshot), only where a picture says it better: add the file with
+   `local-review asset add <project> <file> [--alt <text>]`, which copies it into the project's `assets/` folder and
+   prints the markdown to paste into a `body:` or `description:`, e.g. `![Overview](assets/3f2a9c1e0b7d4a65.png)`.
+   Never write `data:` URIs or copy files into `assets/` yourself: names are content hashes, and the command checks
+   the type and the 5 MB limit. GitHub can't show these until they're published ("Images" under "Materializing").
 
 Then tell the reviewer it's ready, with the URL.
 
@@ -221,13 +227,16 @@ It lists each PR in scope, in order, with:
 - the base: the previous PR's branch, or the repo's base (remote prefix stripped, e.g. `main`) for the first PR;
 - the title, and the **exact full body**: project intro, stack note, `---`, PR description, the same as the UI's
   "Full body" button;
-- any recorded `github:` info.
+- any recorded `github:` info;
+- the images the body shows (`images[]` in JSON: `name`, `file`, `url`).
 
 It warns about anything that needs fixing first: unresolved `starts_at` selectors, PRs without a branch, `missing`
 and `moved` branches, and stacks that still contain draft PRs (only the reviewer can clear that one, by marking them ready). `--format json` is for scripts, e.g. `jq -r '.prs[0].body'`.
 It also warns when a live PR's recorded `github.base` differs from the plan's base (retarget the PR, or check the
 order), and when a prs file with a `github:` record and no `landed:` has a commit that's now in the repo base: it
-landed upstream but wasn't frozen (do that now; "After merges").
+landed upstream but wasn't frozen (do that now; "After merges"). And for each image (`assets/<name>`) in a body with
+no published URL, since GitHub can't show a file on this machine ("Images" under "Materializing"). Where a URL is
+recorded, the body already has it in place of `assets/<name>`.
 
 Landed (merged) PRs are never planned, with no warnings of their own; the first live PR's base is the repo base. A
 note lists them ("Skipped 9 landed (merged) PRs …"); in JSON, `excluded_landed[]` (`repo`, `prs`).
@@ -326,6 +335,20 @@ Not verified (needs a live test):
   after a local force-push the repo's "dismiss stale approvals" rule probably applies.
 
 Check `gh stack link --help` before you run it, and if anything differs from the above, tell the reviewer rather than guess.
+
+### Images
+
+GitHub has no API for attaching an image to a PR body: its upload exists only in the web UI. So an `assets/<name>`
+reference in a plan body would show as a broken image on GitHub. For each image the plan warns about, either:
+
+- **record a URL the PR's readers can reach**, with `local-review asset url <project> <name> <url>` (for example an
+  image committed to a repo they can read, or one already uploaded to an earlier PR or issue), then re-run the plan:
+  the body now has that URL; or
+- **leave it to the reviewer**: publish as usual, and tell them which PRs have images to drag in by hand (the plan's
+  `images[].file` is where each one is). Dragging an image into the PR on GitHub uploads it; they then replace the
+  `assets/<name>` reference with the link GitHub inserts.
+
+Don't upload images anywhere public on your own initiative, and ask before committing one to a repo.
 
 ## After merges
 

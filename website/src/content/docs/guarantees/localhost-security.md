@@ -10,10 +10,28 @@ request, so that a web page you happen to visit can't reach it through your brow
 | --- | --- |
 | It listens on `127.0.0.1` only. | Anyone else on your network. |
 | It answers only requests whose `Host` is `localhost`, `127.0.0.1` or `[::1]` (else 403). | **DNS rebinding**: a page on a domain that resolves to 127.0.0.1. |
-| Writes must be JSON (`Content-Type: application/json`, else 415), which forces a CORS preflight it never grants. | **Cross-site requests**: a page POSTing a form or a "simple" request. |
+| Writes must be JSON (`Content-Type: application/json`, else 415), which forces a CORS preflight it never grants. The one exception, an image upload, must be an image type (`image/png` and so on), and those force the preflight too. | **Cross-site requests**: a page POSTing a form or a "simple" request. |
 | If the browser sends an `Origin` on a write, it must be localhost (else 403). | Cross-site requests from browsers that do send it. |
 
-These live in `server/security.ts`. There is **no `--host` flag** and no other way to expose it, on purpose.
+These live in `server/security.ts`.
+
+## Images
+
+Images are user content, so they get a few more checks of their own (`server/assets.ts`, and the routes in
+`server/index.ts`):
+
+- **Only image names.** An image is served only by a name of 16 hex digits and an image extension, from the project's
+  `assets/` folder, and only if it's a regular file (not a symlink). Anything else, including `..` in any encoding, is
+  a 404.
+- **Only real images.** An upload, or `local-review asset add`, must be PNG, JPEG, GIF, WebP or SVG, and its bytes
+  must match the type it claims: magic numbers, and for SVG, UTF-8 text with an `<svg` root element (a DOCTYPE with
+  entity declarations is refused). Up to 5 MB, enforced before the body is buffered.
+- **Served inert.** Every image is sent with its type from an allow-list, `X-Content-Type-Options: nosniff`,
+  `Cross-Origin-Resource-Policy: same-origin`, and the same Content Security Policy as the stack picture,
+  `default-src 'none'; style-src 'unsafe-inline'`. In a page, browsers never run script in an `<img>` SVG; opened
+  directly, the policy stops it there too.
+- **Sanitised markdown.** The UI renders descriptions with DOMPurify as before; it only rewrites `assets/<name>` image
+  sources and links to the image route after sanitising, and only ever to that route. There is **no `--host` flag** and no other way to expose it, on purpose.
 
 ## Using it from somewhere else
 
