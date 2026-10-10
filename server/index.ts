@@ -12,11 +12,12 @@ import { detailOf, filesOf, type CommitSummary } from './commits.js';
 import { prStatus, progressOf, storedStatus } from '../shared/readiness.js';
 import { ReviewConflictError, loadReview, mutateReview, randomId, reviewPath, unresolvedCount, viewReview, type Review, type ReviewContext, type Thread } from './reviews.js';
 import { branchName, githubOf, loadPr, loadPrs, prPath, prView, titleEdited, writePr, type GithubPr, type LoadedPr } from './prs.js';
-import { loadRefs, reconcileBranch, type RefIndex } from './branches.js';
+import { reconcileBranch, type RefIndex } from './branches.js';
 import { contextFor, inspectOrphan, liveCommits, prContextFor } from './context.js';
 import { emit, startWatchers, subscribe } from './events.js';
 import { isArchived, listProjectSlugs, loadProject, projectModified, type LoadedProject, type LoadedRepo } from './projects.js';
 import { localOnly } from './security.js';
+import { dirStamp } from './stamps.js';
 import { EditNotFoundError, editProjectYaml, setProjectDescription, setStackDescription } from './projectEdit.js';
 import { aggregate, mergeAggregates } from '../shared/totals.js';
 import { REVIEWER } from './reviewer.js';
@@ -114,7 +115,7 @@ async function prPayload(r: Resolved, body: string) {
   const l = await loadPr(ctx);
   return {
     ...prView(l, { subject: r.commit.subject, body }),
-    ...branchFields(r.repo, await loadRefs(r.repo.cfg.path), r.commit.sha, l),
+    ...branchFields(r.repo, r.repo.refIndex, r.commit.sha, l),
     file: l.file ?? prPath(ctx.dir, ctx.sha),
     target_file: prPath(ctx.dir, ctx.sha),
     matched_from: l.matchedFrom ?? null,
@@ -124,11 +125,29 @@ async function prPayload(r: Resolved, body: string) {
 }
 
 // ---------------- projects ----------------
-async function repoPayload(r: LoadedRepo, withWeights = false) {
-  const [prs, refs] = await Promise.all([
-    loadPrs(r.prsDir, liveCommits(r.cfg, r.info), inspectOrphan(r.cfg, r.info)).catch(() => new Map<string, LoadedPr>()),
-    loadRefs(r.info.path), // once per range, not per commit
-  ]);
+type RepoPayload = Awaited<ReturnType<typeof buildRepoPayload>>;
+
+// A repo's sidebar data, per loaded repo (a new one whenever its range, branches, project.yaml or prs/ change: see
+// loadProject) and as of its reviews/ directory's stamp. Shared between requests: read-only.
+const repoPayloads = new WeakMap<LoadedRepo, Map<boolean, { stamp: string; p: Promise<RepoPayload> }>>();
+
+function repoPayload(r: LoadedRepo, withWeights = false): Promise<RepoPayload> {
+  let m = repoPayloads.get(r);
+  if (!m) repoPayloads.set(r, (m = new Map()));
+  const stamp = dirStamp(r.reviewsDir); // before reading: a write after it changes it
+  const hit = m.get(withWeights);
+  if (hit?.stamp === stamp) return hit.p;
+  const p = buildRepoPayload(r, withWeights);
+  m.set(withWeights, { stamp, p });
+  p.catch(() => {
+    if (m.get(withWeights)?.p === p) m.delete(withWeights);
+  });
+  return p;
+}
+
+async function buildRepoPayload(r: LoadedRepo, withWeights: boolean) {
+  const prs = await loadPrs(r.prsDir, liveCommits(r.cfg, r.info), inspectOrphan(r.cfg, r.info)).catch(() => new Map<string, LoadedPr>());
+  const refs = r.refIndex; // once per range, not per commit
   const commits = await Promise.all(
     r.info.commits.map(async (cm, i) => {
       const [l, files] = await Promise.all([

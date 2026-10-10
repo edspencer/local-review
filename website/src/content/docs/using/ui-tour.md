@@ -83,5 +83,5 @@ Old `/<repo>/<sha>` URLs (from before projects) redirect into the project that h
 
 ## Live updates and dark mode
 
-Everything updates live: branch heads are polled every 3 seconds and the data files are watched, so a new commit, an
-agent's reply or an edit to `project.yaml` shows up without a reload. Dark mode follows your OS setting.
+Everything updates live: branches are polled every 2 seconds and the data files are watched, so a new commit, a new
+branch, an agent's reply or an edit to `project.yaml` shows up without a reload. Dark mode follows your OS setting.

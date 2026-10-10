@@ -14,15 +14,16 @@ All git access goes through one module, `server/git.ts`, which:
 - runs `git -C <repo> …` via `execFile` with **no shell**, so paths and refs can't inject commands;
 - refuses any subcommand outside a **read-only allow-list**: `log`, `show`, `diff`, `diff-tree`, `rev-list`,
   `rev-parse`, `merge-base`, `patch-id`, `cat-file`, `ls-tree`, `for-each-ref`;
-- refuses options that write files or run programs (`--output`, `--no-index`, `--ext-diff`, `--textconv`, …);
+- refuses options that write files or run programs (`--output`, `--no-index`, `--ext-diff`, `--textconv`, `--filters`,
+  …);
 - only uses **object-level** commands: diffs are always commit-to-commit (`git diff <parent> <sha>`), never against the
   work tree or index, and `git status` is never run;
 - passes `--no-optional-locks` and sets `GIT_OPTIONAL_LOCKS=0`, so git never takes index locks or refreshes the index;
   drops any inherited `GIT_*` environment (e.g. `GIT_DIR`); and disables textconv, external diff drivers and signature
   checking;
-- only passes refs from `project.yaml` (checked: no leading `-`, no `..`, and after `--end-of-options`) and full 40-hex
-  shas that git itself returned. A landed PR's shas from its prs file are used only after
-  `git rev-parse --verify <sha>^{commit}` has returned them.
+- only passes refs from `project.yaml` (checked: no leading `-`, no `..`, and after `--end-of-options`, or one per line
+  on the stdin of `git cat-file --batch-check`) and full 40-hex shas that git itself returned. A landed PR's shas from
+  its prs file are used only after git has resolved them as commits (`<sha>^{commit}`).
 
 ## Paths and names
 

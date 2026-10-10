@@ -62,14 +62,16 @@ export function parseRefs(out: string): RefIndex {
   return idx;
 }
 
+/** The git call that lists every branch, in the format parseRefs reads. */
+export const REF_LIST_ARGS = ['for-each-ref', `--format=%(objectname)${SEP}%(refname)${SEP}%(symref)`, '--end-of-options', 'refs/heads', 'refs/remotes'];
+
 /**
  * All local and remote-tracking branches of a repo, in one read-only call. (`--points-at` takes a single
  * object, so for a whole range one listing of every branch is the batched form.) Never throws.
  */
 export async function loadRefs(repo: string): Promise<RefIndex> {
   try {
-    const out = await git(repo, ['for-each-ref', `--format=%(objectname)${SEP}%(refname)${SEP}%(symref)`, '--end-of-options', 'refs/heads', 'refs/remotes']);
-    return parseRefs(out);
+    return parseRefs(await git(repo, REF_LIST_ARGS));
   } catch {
     return emptyRefIndex();
   }

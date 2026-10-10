@@ -143,7 +143,7 @@ describe('read-only git wrapper', () => {
     for (const args of [['commit', '-m', 'x'], ['checkout', 'main'], ['fetch'], ['stash'], ['update-index', '--refresh'], ['status'], ['gc']]) {
       await assert.rejects(G.git(repo.dir, args), /non-read-only/);
     }
-    for (const args of [['diff', '--output=/tmp/x'], ['log', '--output', '/tmp/x'], ['diff', '--no-index', 'a', 'b'], ['diff', '--ext-diff'], ['diff', '--textconv']]) {
+    for (const args of [['diff', '--output=/tmp/x'], ['log', '--output', '/tmp/x'], ['diff', '--no-index', 'a', 'b'], ['diff', '--ext-diff'], ['diff', '--textconv'], ['cat-file', '--filters', 'HEAD:f.txt']]) {
       await assert.rejects(G.git(repo.dir, args), /refusing git option/);
     }
     await assert.rejects(G.git('--exec-path=/x', ['log']), /bad repo path/);

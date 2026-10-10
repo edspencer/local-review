@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { EMPTY_TREE, git, gitBuffer, gitWithInput, safeRef, sha40 } from './git.js';
+import { EMPTY_TREE, git, gitBufferWithInput, gitWithInput, isSha, safeRef, sha40 } from './git.js';
 
 export interface CommitSummary {
   sha: string;
@@ -80,39 +80,79 @@ export interface FileWithContents extends FileChange {
 const summaryCache = new Map<string, Omit<CommitSummary, 'sha' | 'short'>>(); // repo\0sha
 const patchIdCache = new Map<string, string | null>();
 const filesCache = new Map<string, FileChange[]>();
+const blobsOf = new WeakMap<FileChange, { old: string; new: string }>(); // a changedFiles entry's blob ids (--raw)
+const mergeBaseCache = new Map<string, string | null>(); // repo\0a\0b
+const revListCache = new Map<string, string[]>(); // repo\0range of full shas
+
+/** Put into a Map that's cleared when it gets big (entries are immutable facts, cheap to recompute). */
+function remember<K, V>(m: Map<K, V>, k: K, v: V, max = 5000): V {
+  if (m.size >= max) m.clear();
+  m.set(k, v);
+  return v;
+}
 
 const SEP = '\x1f';
 
-async function resolveBase(cfg: RepoRange): Promise<string> {
-  const candidates = cfg.base ? [cfg.base] : ['origin/HEAD', 'main', 'master'];
-  for (const c of candidates) {
+export const rangeEnd = (cfg: RepoRange) => cfg.to ?? cfg.branch ?? '';
+const baseCandidates = (cfg: RepoRange) => (cfg.base ? [cfg.base] : ['origin/HEAD', 'main', 'master']);
+
+/**
+ * Each ref (or sha) as the commit it names, in one `git cat-file --batch-check`: a full sha, or null if it doesn't
+ * resolve to a commit (or isn't a ref we'd pass to git). Never throws.
+ */
+export async function resolveCommits(repo: string, refs: (string | null | undefined)[]): Promise<(string | null)[]> {
+  const safe = refs.map((r) => {
     try {
-      await git(cfg.path, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${safeRef(c)}^{commit}`]);
-      return c;
+      return r ? safeRef(r) : null;
     } catch {
-      /* try next */
+      return null;
     }
+  });
+  const asked = safe.filter((r): r is string => !!r);
+  if (!asked.length) return refs.map(() => null);
+  let lines: string[];
+  try {
+    // one line in, one line out: the sha, or "<name> missing" / "<name> ambiguous"
+    lines = (await gitWithInput(repo, ['cat-file', '--batch-check=%(objectname)'], asked.map((r) => `${r}^{commit}\n`).join(''))).split('\n');
+  } catch {
+    return refs.map(() => null);
   }
-  throw new Error(cfg.base ? `base ref '${cfg.base}' not found` : `no base found (tried origin/HEAD, main, master)`);
+  let i = 0;
+  return safe.map((r) => {
+    if (!r) return null;
+    const line = lines[i++]?.trim() ?? '';
+    return isSha(line) ? line : null;
+  });
 }
 
-export const rangeEnd = (cfg: RepoRange) => cfg.to ?? cfg.branch ?? '';
+/** What a range's refs resolve to: its end (branch or `to`), `from`, and the base ref that's used (first that resolves). */
+export interface RangeRefs {
+  head: string | null;
+  from: string | null;
+  base: { ref: string; sha: string } | null;
+}
+
+/** Resolve a range's refs, in one git call. */
+export async function resolveRange(cfg: RepoRange): Promise<RangeRefs> {
+  const candidates = cfg.from ? [] : baseCandidates(cfg);
+  const [head, from, ...bases] = await resolveCommits(cfg.path, [rangeEnd(cfg), cfg.from, ...candidates]);
+  const i = bases.findIndex(Boolean);
+  return { head, from, base: i >= 0 ? { ref: candidates[i], sha: bases[i]! } : null };
+}
 
 /** The sha the range ends at (branch head or `to`), or null if it doesn't resolve. */
 export async function headOf(cfg: RepoRange): Promise<string | null> {
-  try {
-    return (await git(cfg.path, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${safeRef(rangeEnd(cfg))}^{commit}`])).trim();
-  } catch {
-    return null;
-  }
+  return (await resolveCommits(cfg.path, [rangeEnd(cfg)]))[0];
 }
 
-async function revParse(repo: string, ref: string): Promise<string | null> {
-  try {
-    return (await git(repo, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${safeRef(ref)}^{commit}`])).trim();
-  } catch {
-    return null;
-  }
+/** `git rev-list --reverse a..b` (or just `b`) of full shas: immutable, so cached. */
+async function revList(repo: string, from: string | null, to: string): Promise<string[]> {
+  const range = from ? `${sha40(from)}..${sha40(to)}` : sha40(to);
+  const key = `${repo}\0${range}`;
+  const hit = revListCache.get(key);
+  if (hit) return hit;
+  const shas = (await git(repo, ['rev-list', '--reverse', '--end-of-options', range])).split('\n').filter(Boolean);
+  return remember(revListCache, key, shas, 500);
 }
 
 export async function summarize(repo: string, sha: string): Promise<Omit<CommitSummary, 'sha' | 'short'>> {
@@ -143,7 +183,7 @@ export async function summarize(repo: string, sha: string): Promise<Omit<CommitS
  * resolves (deleted after the merge), is no range at all rather than an error, and other range problems are a
  * `warning`; only a missing repo is still an error.
  */
-export async function loadRepo(cfg: RepoRange, opts: { optional?: boolean } = {}): Promise<RepoInfo> {
+export async function loadRepo(cfg: RepoRange, opts: { optional?: boolean; refs?: RangeRefs } = {}): Promise<RepoInfo> {
   const end = rangeEnd(cfg);
   const info: RepoInfo = { name: cfg.name, path: cfg.path, branch: cfg.branch ?? null, end, base: cfg.base ?? null, from: cfg.from ?? null, head: null, mergeBase: null, commits: [] };
   if (!fs.existsSync(cfg.path)) {
@@ -155,29 +195,24 @@ export async function loadRepo(cfg: RepoRange, opts: { optional?: boolean } = {}
       if (opts.optional) return info;
       throw new Error('no `branch` or `to` given');
     }
-    info.head = await headOf(cfg);
+    // what the refs point at (given: already read by the caller, see stamps.ts); the rest follows from these shas
+    const refs = opts.refs ?? (await resolveRange(cfg));
+    info.head = refs.head;
     if (!info.head && opts.optional) return info;
     if (!info.head) throw new Error(cfg.to ? `'to' ref '${cfg.to}' not found` : `branch '${end}' not found`);
-    let range: string;
     if (cfg.from) {
-      const first = await revParse(cfg.path, cfg.from);
+      const first = refs.from;
       if (!first) throw new Error(`'from' commit '${cfg.from}' not found`);
-      try {
-        await git(cfg.path, ['merge-base', '--is-ancestor', '--end-of-options', sha40(first), sha40(info.head)]);
-      } catch {
-        throw new Error(`'from' commit '${cfg.from}' is not an ancestor of ${end}`);
-      }
-      const parent = (await summarize(cfg.path, first)).parent;
-      info.mergeBase = parent;
-      range = parent ? `${sha40(parent)}..${sha40(info.head)}` : sha40(info.head);
+      if (!(await isAncestor(cfg.path, first, info.head))) throw new Error(`'from' commit '${cfg.from}' is not an ancestor of ${end}`);
+      info.mergeBase = (await summarize(cfg.path, first)).parent;
     } else {
-      const base = await resolveBase(cfg);
-      info.base = base;
-      const mb = (await git(cfg.path, ['merge-base', '--end-of-options', safeRef(base), info.head])).trim();
+      if (!refs.base) throw new Error(cfg.base ? `base ref '${cfg.base}' not found` : `no base found (tried origin/HEAD, main, master)`);
+      info.base = refs.base.ref;
+      const mb = await mergeBaseOf(cfg.path, refs.base.sha, info.head);
+      if (!mb) throw new Error(`${refs.base.ref} and ${end} have no common ancestor`);
       info.mergeBase = mb;
-      range = `${sha40(mb)}..${sha40(info.head)}`;
     }
-    const shas = (await git(cfg.path, ['rev-list', '--reverse', '--end-of-options', range])).split('\n').filter(Boolean);
+    const shas = await revList(cfg.path, info.mergeBase, info.head);
     info.commits = await Promise.all(shas.map(async (sha) => ({ sha, short: sha.slice(0, 8), ...(await summarize(cfg.path, sha)) })));
   } catch (e) {
     if (opts.optional) {
@@ -190,23 +225,25 @@ export async function loadRepo(cfg: RepoRange, opts: { optional?: boolean } = {}
 
 /** The repo's base ref as a sha (`base`, else origin/HEAD, main, master), or null. */
 export async function baseSha(cfg: RepoRange): Promise<string | null> {
-  try {
-    return await revParse(cfg.path, await resolveBase(cfg));
-  } catch {
-    return null;
-  }
+  return (await resolveRange({ ...cfg, from: undefined })).base?.sha ?? null;
 }
 
 const isFull = (s: string | undefined): s is string => typeof s === 'string' && /^[0-9a-f]{40}$/.test(s);
-/** A full sha from a YAML file, if the repo has it as a commit; returned as git itself prints it. */
-const present = (repo: string, s: string | undefined) => (isFull(s) ? revParse(repo, s) : Promise.resolve(null));
+/** Full shas from a YAML file, each as git itself prints it if the repo has it as a commit (else null); one git call. */
+const present = (repo: string, shas: (string | undefined)[]) => resolveCommits(repo, shas.map((s) => (isFull(s) ? s : null)));
 
+/** merge-base of two commits (null: none): immutable, so cached. */
 async function mergeBaseOf(repo: string, a: string, b: string): Promise<string | null> {
+  const key = `${repo}\0${a}\0${b}`;
+  const hit = mergeBaseCache.get(key);
+  if (hit !== undefined) return hit;
+  let mb: string | null;
   try {
-    return (await git(repo, ['merge-base', '--end-of-options', sha40(a), sha40(b)])).trim() || null;
+    mb = (await git(repo, ['merge-base', '--end-of-options', sha40(a), sha40(b)])).trim() || null;
   } catch {
-    return null;
+    mb = null;
   }
+  return remember(mergeBaseCache, key, mb);
 }
 
 const landedCache = new Map<string, CommitSummary>(); // only complete (merge-base) results: objects don't vanish
@@ -222,7 +259,7 @@ export async function landedSummary(repo: string, key: string, l: Landed, stored
   const ck = [repo, key, l.head, l.base, l.commit, l.method, l.at, stored.subject, stored.title].join('\0');
   const hit = landedCache.get(ck);
   if (hit) return hit;
-  const [head, base, merge, keyObj] = await Promise.all([present(repo, l.head), present(repo, l.base), present(repo, l.commit), present(repo, key)]);
+  const [head, base, merge, keyObj] = await present(repo, [l.head, l.base, l.commit, key]);
   let from: string | null = null;
   let to: string | null = null;
   let diff: LandedView['diff'] = 'none';
@@ -284,25 +321,28 @@ export async function changedFiles(repo: string, sha: string, parent: string | n
   const from = parent ? sha40(parent) : EMPTY_TREE;
   sha40(sha);
   const [rawOut, numOut] = await Promise.all([
-    git(repo, ['diff', '-M', '--no-ext-diff', '--no-textconv', '--raw', '-z', from, sha, '--']),
+    git(repo, ['diff', '-M', '--no-ext-diff', '--no-textconv', '--raw', '--no-abbrev', '-z', from, sha, '--']),
     git(repo, ['diff', '-M', '--no-ext-diff', '--no-textconv', '--numstat', '-z', from, sha, '--']),
   ]);
-  // --raw -z: ":old new oldsha newsha STATUS\0path\0[newpath\0]"
+  // --raw -z: ":oldmode newmode oldsha newsha STATUS\0path\0[newpath\0]"
   const raw = rawOut.split('\0');
   const files: FileChange[] = [];
   for (let i = 0; i < raw.length; ) {
     const head = raw[i++];
     if (!head || !head.startsWith(':')) continue;
-    const statusCode = head.split(' ')[4] ?? 'M';
+    const [, , oldBlob, newBlob, statusCode = 'M'] = head.split(' ');
     const status = parseStatus(statusCode);
+    let f: FileChange;
     if (status === 'renamed' || status === 'copied') {
       const oldPath = raw[i++];
       const newPath = raw[i++];
-      files.push({ path: newPath, oldPath, status, similarity: Number(statusCode.slice(1)) || undefined, additions: 0, deletions: 0, binary: false });
+      f = { path: newPath, oldPath, status, similarity: Number(statusCode.slice(1)) || undefined, additions: 0, deletions: 0, binary: false };
     } else {
       const p = raw[i++];
-      files.push({ path: p, oldPath: status === 'added' ? null : p, status, additions: 0, deletions: 0, binary: false });
+      f = { path: p, oldPath: status === 'added' ? null : p, status, additions: 0, deletions: 0, binary: false };
     }
+    files.push(f);
+    blobsOf.set(f, { old: oldBlob ?? '', new: newBlob ?? '' });
   }
   // --numstat -z: "add\tdel\tpath\0" or for renames "add\tdel\t\0old\0new\0"
   const num = numOut.split('\0');
@@ -332,13 +372,40 @@ export async function changedFiles(repo: string, sha: string, parent: string | n
 
 const MAX_BLOB = 2 * 1024 * 1024;
 
-async function readBlob(repo: string, rev: string, p: string): Promise<{ text: string | null; tooLarge: boolean; binary: boolean }> {
-  const spec = `${sha40(rev)}:${p}`;
-  const size = Number((await git(repo, ['cat-file', '-s', spec])).trim());
-  if (size > MAX_BLOB) return { text: null, tooLarge: true, binary: false };
-  const buf = await gitBuffer(repo, ['cat-file', 'blob', spec]);
-  if (buf.subarray(0, 8000).includes(0)) return { text: null, tooLarge: false, binary: true };
-  return { text: buf.toString('utf8'), tooLarge: false, binary: false };
+type Blob = { text: string | null; tooLarge: boolean; binary: boolean };
+
+/**
+ * Read blobs by object id, in two `git cat-file` runs whatever their number: their types and sizes, then the
+ * contents of those small enough to show. A missing object, or one that isn't a blob (a submodule's commit), reads
+ * as binary.
+ */
+async function readBlobs(repo: string, ids: string[]): Promise<Map<string, Blob>> {
+  const out = new Map<string, Blob>();
+  const want = [...new Set(ids)].filter(isSha);
+  if (!want.length) return out;
+  const info = (await gitWithInput(repo, ['cat-file', '--batch-check=%(objectname) %(objecttype) %(objectsize)'], want.map((id) => `${id}\n`).join(''))).split('\n');
+  const small: string[] = [];
+  for (const [i, id] of want.entries()) {
+    const [name, type, size] = (info[i] ?? '').split(' ');
+    if (name !== id || type !== 'blob') out.set(id, { text: null, tooLarge: false, binary: true });
+    else if (Number(size) > MAX_BLOB) out.set(id, { text: null, tooLarge: true, binary: false });
+    else small.push(id);
+  }
+  if (!small.length) return out;
+  // --batch: "<id> blob <size>\n<contents>\n" per object, in the order asked
+  const buf = await gitBufferWithInput(repo, ['cat-file', '--batch'], small.map((id) => `${id}\n`).join(''));
+  let at = 0;
+  for (const id of small) {
+    const nl = buf.indexOf(0x0a, at);
+    if (nl < 0) break;
+    const [name, type, size] = buf.subarray(at, nl).toString('latin1').split(' ');
+    const n = Number(size);
+    if (name !== id || type !== 'blob' || !Number.isFinite(n)) break; // out of step: leave the rest unread
+    const body = buf.subarray(nl + 1, nl + 1 + n);
+    at = nl + 1 + n + 1;
+    out.set(id, body.subarray(0, 8000).includes(0) ? { text: null, tooLarge: false, binary: true } : { text: body.toString('utf8'), tooLarge: false, binary: false });
+  }
+  return out;
 }
 
 export interface CommitDetail extends CommitSummary {
@@ -348,9 +415,11 @@ export interface CommitDetail extends CommitSummary {
   files: FileWithContents[];
 }
 
-// commit details are immutable per sha; keep the last few (file contents can be large)
-const detailCache = new Map<string, Promise<CommitDetail>>();
-const DETAIL_CACHE_SIZE = 12;
+// commit details are immutable per sha: keep the most recently used, up to a total size of file contents (a
+// commit's detail is mostly its files' old and new text)
+const detailCache = new Map<string, { p: Promise<CommitDetail>; bytes: number }>();
+let detailBytes = 0;
+const DETAIL_CACHE_BYTES = 96 * 1024 * 1024;
 
 export function commitDetail(repo: string, sha: string): Promise<CommitDetail> {
   return cachedDetail(repo + '\0' + sha, () => loadCommitDetail(repo, sha));
@@ -362,17 +431,34 @@ export function detailOf(repo: string, c: CommitSummary): Promise<CommitDetail> 
   return cachedDetail(`${repo}\0landed\0${c.sha}\0${c.parent}\0${c.tip}\0${c.subject}`, () => loadLandedDetail(repo, c));
 }
 
+const contentBytes = (d: CommitDetail) => d.files.reduce((a, f) => a + (f.oldContent?.length ?? 0) + (f.newContent?.length ?? 0), 1024);
+
 function cachedDetail(key: string, load: () => Promise<CommitDetail>): Promise<CommitDetail> {
-  let p = detailCache.get(key);
-  if (p) {
+  const hit = detailCache.get(key);
+  if (hit) {
     detailCache.delete(key); // refresh LRU position
-  } else {
-    p = load();
-    p.catch(() => detailCache.delete(key));
+    detailCache.set(key, hit);
+    return hit.p;
   }
-  detailCache.set(key, p);
-  while (detailCache.size > DETAIL_CACHE_SIZE) detailCache.delete(detailCache.keys().next().value!);
-  return p;
+  const e = { p: load(), bytes: 0 };
+  detailCache.set(key, e);
+  e.p.then(
+    (d) => {
+      if (detailCache.get(key) !== e) return; // evicted meanwhile
+      e.bytes = contentBytes(d);
+      detailBytes += e.bytes;
+      // oldest first, never the one just added
+      for (const [k, old] of detailCache) {
+        if (detailBytes <= DETAIL_CACHE_BYTES || old === e) break;
+        detailCache.delete(k);
+        detailBytes -= old.bytes;
+      }
+    },
+    () => {
+      if (detailCache.get(key) === e) detailCache.delete(key);
+    },
+  );
+  return e.p;
 }
 
 const messageBody = (message: string) => message.replace(/^[^\n]*\n?/, '').replace(/^\n+/, '').trimEnd();
@@ -387,13 +473,14 @@ async function loadCommitDetail(repo: string, sha: string): Promise<CommitDetail
   const meta = await git(repo, ['show', '-s', `--format=%B${SEP}%cn${SEP}%cI`, sha40(sha)]);
   const [message, committer, committerDate] = meta.split(SEP);
   const body = messageBody(message);
-  const files = await withContents(repo, await changedFiles(repo, sha, s.parent), s.parent, sha);
+  const files = await withContents(repo, await changedFiles(repo, sha, s.parent), s.parent);
   return { sha, short: sha.slice(0, 8), ...s, body, committer, committerDate, files };
 }
 
 async function loadLandedDetail(repo: string, c: CommitSummary): Promise<CommitDetail> {
   // the message of the head (or the key commit), if the repo has it; a merge commit's message isn't the PR's
-  const msgSha = (await present(repo, c.landed?.head)) ?? (await present(repo, c.sha));
+  const [headSha, keySha] = await present(repo, [c.landed?.head, c.sha]);
+  const msgSha = headSha ?? keySha;
   let body = '';
   let committer = '';
   let committerDate = '';
@@ -401,38 +488,30 @@ async function loadLandedDetail(repo: string, c: CommitSummary): Promise<CommitD
     const [message, cn, cd] = (await git(repo, ['show', '-s', `--format=%B${SEP}%cn${SEP}%cI`, sha40(msgSha)])).split(SEP);
     [body, committer, committerDate] = [messageBody(message), cn, cd.trim()];
   }
-  const files = c.tip ? await withContents(repo, await changedFiles(repo, c.tip, c.parent), c.parent, c.tip) : [];
+  const files = c.tip ? await withContents(repo, await changedFiles(repo, c.tip, c.parent), c.parent) : [];
   return { ...c, body, committer, committerDate, files };
 }
 
-/** Old and new contents for each changed file, `from` (null: the empty tree) .. `to`. */
-async function withContents(repo: string, files: FileChange[], from: string | null, to: string): Promise<FileWithContents[]> {
-  const s = { parent: from };
-  const sha = to;
-  return Promise.all(
-    files.map(async (f): Promise<FileWithContents> => {
-      const out: FileWithContents = { ...f, oldContent: null, newContent: null };
-      if (f.binary) return out;
-      try {
-        if (f.status !== 'added' && f.oldPath && s.parent) {
-          const r = await readBlob(repo, s.parent, f.oldPath);
-          out.oldContent = r.text;
-          out.tooLarge ||= r.tooLarge;
-          out.binary ||= r.binary;
-        }
-        if (f.status !== 'deleted') {
-          const r = await readBlob(repo, sha, f.path);
-          out.newContent = r.text;
-          out.tooLarge ||= r.tooLarge;
-          out.binary ||= r.binary;
-        }
-      } catch {
-        // e.g. submodule entries: leave contents empty
-        out.binary = true;
-      }
-      return out;
-    }),
-  );
+/** Old and new contents for each changed file, `from` (null: the empty tree) .. `to` (the diff changedFiles made). */
+async function withContents(repo: string, files: FileChange[], from: string | null): Promise<FileWithContents[]> {
+  const sides = files.map((f) => {
+    const b = blobsOf.get(f);
+    return { old: !f.binary && f.status !== 'added' && f.oldPath && from ? b?.old : undefined, new: !f.binary && f.status !== 'deleted' ? b?.new : undefined };
+  });
+  const blobs = await readBlobs(repo, sides.flatMap((s) => [s.old ?? '', s.new ?? '']));
+  return files.map((f, i): FileWithContents => {
+    const out: FileWithContents = { ...f, oldContent: null, newContent: null };
+    for (const side of ['old', 'new'] as const) {
+      const id = sides[i][side];
+      if (id === undefined) continue;
+      // e.g. a submodule entry, or an id we couldn't read: leave the contents empty
+      const r = blobs.get(id) ?? { text: null, tooLarge: false, binary: true };
+      out[side === 'old' ? 'oldContent' : 'newContent'] = r.text;
+      out.tooLarge ||= r.tooLarge;
+      out.binary ||= r.binary;
+    }
+    return out;
+  });
 }
 
 const ancestorCache = new Map<string, boolean>(); // repo\0sha\0head

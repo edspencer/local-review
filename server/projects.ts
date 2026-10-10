@@ -1,6 +1,7 @@
 // Projects: projects/<slug>/project.yaml lists repos (each a commit range), and splits each repo's commits
-// into consecutive, colour-coded PR stacks. Everything here is re-read on every request, so edits (by the reviewer or
-// an agent) show up without a restart.
+// into consecutive, colour-coded PR stacks. A loaded project is reused only while everything it was built from is
+// unchanged (project.yaml, the prs/ files, each range's git state: see stamps.ts), so edits (by the reviewer or an
+// agent) and rebases show up without a restart.
 import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
@@ -10,6 +11,8 @@ import { normalizeSubject } from './reviews.js';
 import { loadLanded } from './landed.js';
 import { loadPrs, type LoadedPr } from './prs.js';
 import { inspectOrphan, liveCommits } from './context.js';
+import type { RefIndex } from './branches.js';
+import { dirStamp, repoState, type RepoState } from './stamps.js';
 
 // the colours a regular stack can have (auto-assigned in this order, cycling). Yellow isn't one of them: it's
 // reserved for follow-on stacks, which are always yellow whatever their `color:` says.
@@ -273,8 +276,10 @@ export interface LoadedRepo {
   stackOf: Map<string, number>; // sha -> index into stacks
   reviewsDir: string;
   prsDir: string;
+  refIndex: RefIndex; // the repo's branches, as of the git state the range was read at
 }
 
+/** Shared between requests while nothing it depends on changes: treat it as read-only. */
 export interface LoadedProject {
   cfg: ProjectConfig;
   repos: LoadedRepo[];
@@ -285,14 +290,54 @@ export function repoDirs(project: ProjectConfig, repo: string) {
   return { reviewsDir: path.join(project.dir, 'reviews', repo), prsDir: path.join(project.dir, 'prs', repo) };
 }
 
+// the last parse of each project.yaml (by its text), and the last load of each project with the stamps it was made at
+let parses = 0;
+const configs = new Map<string, { raw: string; cfg: ProjectConfig; version: number }>();
+const loaded = new Map<string, { key: string; p: Promise<LoadedProject | null> }>();
+
+/** loadProjectConfig, reparsed only when project.yaml's text changes. Shared: treat it as read-only. */
+function projectConfig(slug: string): { cfg: ProjectConfig; version: number } | null {
+  const dir = projectDir(slug);
+  let raw: string;
+  try {
+    raw = fs.readFileSync(path.join(dir, 'project.yaml'), 'utf8');
+  } catch {
+    configs.delete(slug);
+    return null;
+  }
+  const hit = configs.get(slug);
+  if (hit?.raw === raw) return hit;
+  const e = { raw, cfg: parseProject(slug, dir, raw), version: ++parses };
+  configs.set(slug, e);
+  return e;
+}
+
+/** A project with each repo's range and stacks; the last one loaded if nothing it's built from has changed since. */
 export async function loadProject(slug: string): Promise<LoadedProject | null> {
-  const cfg = loadProjectConfig(slug);
-  if (!cfg) return null;
+  const c = projectConfig(slug);
+  if (!c) {
+    loaded.delete(slug);
+    return null;
+  }
+  const { cfg } = c;
+  const states = await Promise.all(cfg.repos.map((rc) => repoState(rc)));
+  const key = JSON.stringify([c.version, cfg.repos.map((rc, i) => [states[i].stamp, dirStamp(repoDirs(cfg, rc.name).prsDir)])]);
+  const hit = loaded.get(slug);
+  if (hit?.key === key) return hit.p;
+  const p = buildProject(cfg, states);
+  loaded.set(slug, { key, p });
+  p.catch(() => {
+    if (loaded.get(slug)?.p === p) loaded.delete(slug);
+  });
+  return p;
+}
+
+async function buildProject(cfg: ProjectConfig, states: RepoState[]): Promise<LoadedProject> {
   const repos = await Promise.all(
-    cfg.repos.map(async (rc): Promise<LoadedRepo> => {
+    cfg.repos.map(async (rc, ri): Promise<LoadedRepo> => {
       const dirs = repoDirs(cfg, rc.name);
       // with landed PRs, a missing / deleted branch or an empty live range is fine: they still show
-      const info = await loadRepo(rc, { optional: rc.landed.length > 0 });
+      const info = await loadRepo(rc, { optional: rc.landed.length > 0, refs: states[ri].refs });
       const extra: string[] = info.warning ? [info.warning] : [];
       let titles = new Map<string, string>();
       if (rc.landed.length && !info.error) {
@@ -313,7 +358,7 @@ export async function loadProject(slug: string): Promise<LoadedProject | null> {
       const { stacks, warnings } = part;
       const stackOf = new Map<string, number>();
       for (const g of stacks) for (const sha of g.shas) stackOf.set(sha, g.index);
-      return { cfg: rc, info, stacks, warnings: [...rc.warnings, ...extra, ...warnings], stackOf, ...dirs };
+      return { cfg: rc, info, stacks, warnings: [...rc.warnings, ...extra, ...warnings], stackOf, ...dirs, refIndex: states[ri].refIndex };
     }),
   );
   return { cfg, repos };

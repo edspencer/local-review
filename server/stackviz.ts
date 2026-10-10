@@ -7,7 +7,7 @@ import path from 'node:path';
 import opentype from 'opentype.js';
 import { Resvg } from '@resvg/resvg-js';
 import { FONT_DIR } from './config.js';
-import { loadRefs, reconcileBranch } from './branches.js';
+import { reconcileBranch } from './branches.js';
 import { filesOf } from './commits.js';
 import { inspectOrphan, liveCommits } from './context.js';
 import { loadPrs } from './prs.js';
@@ -109,7 +109,8 @@ export const stackLabel = (g: { number: number | null; title: string; implicit?:
 export async function vizModel(project: LoadedProject, current?: { repo: string; sha: string } | null): Promise<VizModel> {
   const repos = await Promise.all(
     project.repos.map(async (r): Promise<VizRepo> => {
-      const [prs, refs] = await Promise.all([loadPrs(r.prsDir, liveCommits(r.cfg, r.info), inspectOrphan(r.cfg, r.info)).catch(() => new Map()), loadRefs(r.info.path)]);
+      const prs = await loadPrs(r.prsDir, liveCommits(r.cfg, r.info), inspectOrphan(r.cfg, r.info)).catch(() => new Map());
+      const refs = r.refIndex;
       const tip = r.cfg.branch ?? r.info.end ?? null;
       const bySha = new Map(
         await Promise.all(
