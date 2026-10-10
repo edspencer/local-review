@@ -100,3 +100,17 @@ Not verified (needs a live test):
   after a local force-push the repo's "dismiss stale approvals" rule probably applies.
 
 Check `gh stack link --help` before you run it, and if anything differs from the above, tell the reviewer rather than guess.
+
+## Images
+
+GitHub has no API for attaching an image to a PR body: its upload exists only in the web UI. So an `assets/<name>`
+reference in a plan body would show as a broken image on GitHub. For each image the plan warns about, either:
+
+- **record a URL the PR's readers can reach**, with `local-review asset url <project> <name> <url>` (for example an
+  image committed to a repo they can read, or one already uploaded to an earlier PR or issue), then re-run the plan:
+  the body now has that URL; or
+- **leave it to the reviewer**: publish as usual, and tell them which PRs have images to drag in by hand (the plan's
+  `images[].file` is where each one is). Dragging an image into the PR on GitHub uploads it; they then replace the
+  `assets/<name>` reference with the link GitHub inserts.
+
+Don't upload images anywhere public on your own initiative, and ask before committing one to a repo.

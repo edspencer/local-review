@@ -603,6 +603,7 @@ button { font-family: inherit; }
 .markdown-body h1, .markdown-body h2, .markdown-body h3 { margin: 16px 0 8px; line-height: 1.25; }
 .markdown-body h1 { font-size: 1.5em; } .markdown-body h2 { font-size: 1.3em; } .markdown-body h3 { font-size: 1.1em; }
 .markdown-body a { color: var(--accent); }
+.markdown-body img { max-width: 100%; box-sizing: content-box; }
 .markdown-body table { border-collapse: collapse; }
 .markdown-body td, .markdown-body th { border: 1px solid var(--border); padding: 4px 10px; }
 
@@ -687,6 +688,9 @@ button { font-family: inherit; }
 .comment-form-tabs button { background: none; border: 1px solid transparent; border-bottom: 0; padding: 6px 14px; font-size: 13px; cursor: pointer; border-radius: var(--radius) var(--radius) 0 0; margin-bottom: -1px; color: var(--fg-muted); }
 .comment-form-tabs button.selected { background: var(--bg); border-color: var(--border); color: var(--fg); font-weight: 600; }
 .comment-form-body { padding: 8px; }
+.comment-form-body.is-dropping { outline: 2px dashed var(--accent); outline-offset: -4px; border-radius: var(--radius); }
+.comment-form-actions .hint .uploading { color: var(--accent); }
+.flash.upload-error { white-space: pre-line; }
 .comment-form textarea {
   width: 100%;
   min-height: 100px;

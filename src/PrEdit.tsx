@@ -230,6 +230,7 @@ export function MarkdownFieldEditor({ current, what, placeholder, draft, setDraf
       autoFocus
       compact
       toolbar
+      images
       busy={busy}
       error={err}
       notice={conflict ? <ChangedElsewhere what={what} onLoad={load} onKeep={keep} /> : undefined}

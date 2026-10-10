@@ -15,6 +15,8 @@ version-controlled; [snapshots](#snapshots) cover that.
       project.yaml                      # which repos and commits, and how they're split into PR stacks
       prs/<repo>/<full-sha>.yaml        # optional PR title/description overrides, readiness, branch, GitHub PR, landed
       reviews/<repo>/<full-sha>.yaml    # review comments and Viewed marks
+      assets/<hash>.<ext>               # images shown in descriptions, stack notes and the intro
+      assets/<hash>.<ext>.yaml          # optional: where an image is published (url:), for plan
   backups/
     2026-10-09T08-45-12Z/               # automatic snapshots: a plain copy of projects/ at that time (UTC)
 ```
@@ -24,12 +26,31 @@ version-controlled; [snapshots](#snapshots) cover that.
 | `project.yaml` | you (`local-review init` creates it), an agent, and the UI for the intro and stack notes | [project.yaml](/reference/project-yaml/) |
 | `prs/<repo>/<sha>.yaml` | the UI (title, description, Draft/Ready) and an agent (branch, GitHub PR, landed) | [PR files schema](/reference/pr-files/) |
 | `reviews/<repo>/<sha>.yaml` | the UI (your comments, Viewed) and an agent (its replies) | [Comment files schema](/reference/comment-files/) |
+| `assets/<hash>.<ext>` | `local-review asset add`, and pasting, dropping or attaching an image in the UI | [Images](#images) |
+| `assets/<hash>.<ext>.yaml` | `local-review asset url`, an agent or you | [Images](#images) |
 
 Every file under `projects/` is re-read on each request and watched, so edits from an agent or an editor show up in
 the browser within about a second, with no restart.
 
 **Getting started:** `npx local-review init my-feature` creates `~/.local-review/projects/my-feature/project.yaml`
 from a commented example (it never replaces an existing one); then edit it. With no projects, the UI says the same.
+
+## Images
+
+A project's images live in its `assets/` folder. Markdown refers to them as `assets/<name>`, for example
+`![Overview](assets/3f2a9c1e0b7d4a65.png)`, and the UI shows them in PR descriptions, stack notes and the project
+intro (see [Images](/using/editing-pr-text/#images)).
+
+- **Named by content.** The name is the first 16 hex digits of the file's SHA-256, plus `.png`, `.jpg`, `.gif`,
+  `.webp` or `.svg`. Adding the same image twice is a no-op, and nothing else can be called that.
+- **Checked.** PNG, JPEG, GIF, WebP and SVG only, up to 5 MB. The bytes must really be the type the file claims to be
+  (by their magic numbers; an SVG must start with an `<svg` root element).
+- **Written once.** An asset is created and never replaced or removed. Nothing in Local Review deletes one, even if
+  no description uses it any more; delete unused ones by hand if you want the space back.
+- **`<name>.yaml`** beside an image can record where it's published, as `url: https://…`. `local-review plan` then
+  puts that URL in the PR bodies in place of `assets/<name>`, because GitHub can't show a file on your machine (see
+  [Publishing](/agents/publishing-stacked-prs/#images)). Write it with `local-review asset url <project> <name> <url>`,
+  or by hand; any other fields in it are kept.
 
 ## Moving it
 
@@ -52,6 +73,10 @@ times preserved), but only if something changed since the newest snapshot.
 - It keeps the **50 most recent** snapshots, plus the **first snapshot of each day for 30 days**.
 - Pruning only ever removes directories directly inside `backups/` whose names are snapshot timestamps (not
   symlinks, not anything else you put there), and never the newest.
+- Images are **hard-linked** into a snapshot rather than copied (where `backups/` is on the same file system), so
+  every snapshot shares one copy of each image on disk instead of adding up to 5 MB per image per hour. That's safe
+  because an asset's name is its content and Local Review never changes one in place. Editing an asset file in place
+  with another tool would change it in the snapshots too; don't (add the edited image as a new asset instead).
 
 That pruning is the only deletion Local Review ever does; see the [never-delete guarantee](/guarantees/never-delete/).
 

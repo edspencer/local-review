@@ -19,6 +19,9 @@ A test fails the build if any code gains a way around that.
   [rebase re-match](/concepts/following-rebases/)) is renamed to `*.superseded-by-<sha8>.yaml.bak`, and a rename never
   replaces an existing file: it's a hard link (which fails if the name is taken) followed by dropping the old name, or,
   on file systems without hard links, an existence check under the per-file lock.
+- **Images are created once.** An image in a project's `assets/` folder is named by its content and written
+  create-only, so it's never replaced, and nothing removes one. Adding the same image again is a no-op; a file under
+  the same name with different bytes (changed by hand) is left alone and reported.
 - **The only deletion anywhere is snapshot pruning**, guarded as below.
 
 The one thing that removes your words is you: deleting your own comment in the UI removes it from the file, as you'd
@@ -28,7 +31,9 @@ expect. The previous version is in the snapshots. (An agent's comments can't be 
 
 When the server starts, and then every hour while it runs, it copies `projects/` to `backups/<timestamp>/` (with file
 times preserved), but only if something changed since the newest snapshot. A snapshot is copied under a hidden
-`.partial-…` name and renamed when complete, so every timestamped directory is a full copy.
+`.partial-…` name and renamed when complete, so every timestamped directory is a full copy. Images are hard-linked
+rather than copied, since they never change (see [Snapshots](/reference/data-directory/#snapshots)); pruning a
+snapshot drops only its link, never the image in `projects/`.
 
 It keeps the 50 most recent snapshots plus the first snapshot of each day for 30 days. Pruning only ever removes
 directories directly inside `backups/` whose names are snapshot timestamps (not symlinks, not anything else you put
