@@ -49,14 +49,18 @@ export const SHOTS: Shot[] = [
   // ------------------------------------------------------------------------------------------- full pages
   {
     name: 'project-home',
-    doc: 'Landing hero, "Projects": the homepage of a four-repo project, with the stack picture and the stack list.',
-    route: '/waitlists',
+    doc: 'Landing hero, "Projects": the project page of a four-repo project, on its Stack tab (every repo and stack).',
+    route: '/waitlists?tab=stack',
   },
   {
     name: 'project-home-full',
-    doc: 'Docs "Using the UI", the homepage: the whole page, top to bottom.',
+    doc: 'Docs "Using the UI", the project page: its header, tabs and the project intro (Conversation).',
     route: '/waitlists',
-    capture: 'page',
+  },
+  {
+    name: 'stack-page',
+    doc: 'Docs "Using the UI", the stack page: a stack\'s header, the project context and the stack note.',
+    route: '/waitlists/orchard-api/stacks/3-automatic-promotion',
   },
   {
     name: 'pr-conversation',
@@ -199,9 +203,9 @@ export const SHOTS: Shot[] = [
   },
   {
     name: 'crop-project-context',
-    doc: 'Feature: the project intro and stack note, which start every full PR body.',
+    doc: 'Feature: the Project context and Stack context boxes above a PR description (they start every full PR body).',
     route: PROMOTE,
-    capture: { selector: '.project-context', pad: 10 },
+    capture: { selector: '.context-boxes', pad: 10 },
   },
   {
     name: 'crop-pr-description-edited',

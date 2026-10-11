@@ -48,7 +48,8 @@ More recipes are in the [agent guide](/agents/agent-guide/#api-httplocalhost5622
 | PATCH / DELETE | `…/threads/:tid/comments/:cid` | Edit `{body}` / delete. Only the reviewer's own comments: an agent's are never edited or deleted by the UI. |
 | PUT | `…/viewed` | `{path, viewed}`: tick or untick a file's **Viewed** box. |
 | GET | `…/stack.svg`, `…/stack.png` | The [stack picture](/using/stack-pictures/) with this PR highlighted. See below. |
-| GET | `/api/projects/:p/stack.svg`, `…/stack.png` | The same for the whole project, nothing highlighted (as on the homepage). |
+| GET | `/api/projects/:p/stack.svg`, `…/stack.png` | The same for the whole project, nothing highlighted (as on the project page). |
+| GET | `/api/projects/:p/repos/:r/stacks/:ref/stack.svg`, `…/stack.png` | Just one stack, nothing highlighted (as on its stack page). `:ref` is the stack's number in `stacks:`, optionally with its title as a slug (`2-groundwork`), or `unstacked` / `branch`, resolved like the [stack page's URL](/using/ui-tour/#urls) (a reordered list follows the title). `?title=0`, `?scale=linear` and `?download` as below; no `scope`. 400 for a malformed ref, 404 for no such stack. |
 | GET | `/api/me` | The reviewer: `{id, name}` (see [`LOCAL_REVIEW_USER`](/reference/environment/#local_review_user-the-reviewer)). |
 | GET | `/api/health` | `{ok: true}`. |
 | GET | `/api/events` | Server-Sent Events, below. |

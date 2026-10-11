@@ -1,6 +1,6 @@
 ---
 title: A tour of the UI
-description: The header, sidebar, PR header, tabs and project homepage, and what each shows.
+description: The header, sidebar, PR header, tabs, the project and stack pages, and what each shows.
 ---
 
 Local Review's layout follows GitHub's pull-request page closely, so it should feel familiar: a sidebar of PRs, and for
@@ -16,16 +16,18 @@ which matters when the rest of the page looks just like a PR you could merge.
 
 The header also shows the project title, with a **project switcher** when there's more than one project. Archived
 projects (everything [landed](/concepts/landed-prs/)) are in a collapsed **Archived** section at the bottom of the
-switcher. Click the project title to go to the project's homepage.
+switcher. Click the project title to go to the [project page](#the-project-page).
 
 ![The project switcher open: two projects with their repo and commit counts, and an Archived section holding a third](../../../assets/shots/crop-project-switcher.png)
 
 ## The sidebar
 
+- **The project page link** at the top: the project's title, plum while you're on the [project page](#the-project-page).
 - **One collapsible section per repo**, headed `repo · branch`, with how many commits are fully viewed and how many
   threads are open. A repo with nothing live shows a purple `merged` pill instead of its branch.
 - **Each [PR stack](/concepts/pr-stacks/)** is a box with a coloured border and its title on the top line
-  (`STACK 1 · GROUNDWORK`). Unstacked commits are grey and dashed. [Follow-on stacks](/concepts/follow-on-stacks/) come
+  (`STACK 1 · GROUNDWORK`). Click the title to open the [stack page](#the-stack-page); the stack you're on has its
+  title filled in its colour. Unstacked commits are grey and dashed. [Follow-on stacks](/concepts/follow-on-stacks/) come
   last, yellow, under a `FOLLOW-ON · HELD BACK` divider.
 - **Each PR row** has its number ("PR 2"; numbered 1..n across the repo, oldest first), its title, its
   [branch](/concepts/branches/) (middle-truncated; the short sha if none; a warning icon if the recorded branch moved,
@@ -37,6 +39,8 @@ switcher. Click the project title to go to the project's homepage.
 
 ## The PR header
 
+- **Breadcrumbs** above it: `Project › repo · STACK 2 · TITLE › PR #3`. The project and the stack are links to their
+  pages.
 - The PR title with its position in the repo (`#3`), and **Edit** beside it (see
   [Editing PR titles & descriptions](/using/editing-pr-text/)).
 - Where GitHub shows Open / Draft, a **Draft | Ready** toggle; or a blue **Published** pill with the `#1234 ↗` link once
@@ -44,42 +48,70 @@ switcher. Click the project title to go to the project's homepage.
   line below.
 - The review progress (`6 of 15 done`, with details in its tooltip).
 - "commit 3 of 10 in &lt;repo&gt;", and a **stepper** of the PRs in this stack, in its colour
-  (`GROUNDWORK · PR 3 of 4`), each with its readiness badge.
+  (`GROUNDWORK · PR 3 of 4`), each with its readiness badge. The stack's name there opens its stack page.
 
 Toggling readiness, an agent's edits to the prs file, and new Viewed marks or resolved threads update the sidebar,
 header and stepper live.
 
 ## The tabs
 
-- **Conversation:** the [Project context](/using/editing-pr-text/#project-context) box, the PR description, and the
-  general and inline threads. At the bottom, the path of the review file it's reading.
+- **Conversation:** the [Project context and Stack context](/using/editing-pr-text/#project-and-stack-context) boxes,
+  the PR description, and the general and inline threads. At the bottom, the path of the review file it's reading.
 - **Files changed:** the diff, with a file tree, Split/Unified, and **Viewed** checkboxes. See
   [Reviewing & comments](/using/reviewing-and-comments/).
 - **Stack:** a picture of the project's stacks with this PR highlighted. See [Stack pictures](/using/stack-pictures/).
 
-## The project homepage
+## The project page
 
-`/<project>` (or click the project title in the header) shows:
+`/<project>` (the link at the top of the sidebar, the first breadcrumb, or the project title in the header) is laid out
+like a PR page: a plum `PROJECT` label and the title, a line with the project's totals (follow-on stacks and merged PRs
+left out and mentioned, as in the picture) and where its `project.yaml` is, then two tabs:
 
-- the project intro, editable in place;
-- the [stack picture](/using/stack-pictures/) for the whole project, nothing highlighted, with Copy / Download;
-- a list of repos → stacks → PRs linking to each, with the project's and each repo's totals (follow-on stacks left out
-  and mentioned, as in the picture), the same readiness badges as the sidebar, and for each stack its weight (PRs,
-  distinct files, +/−) and its note (Edit, or "Add a stack note").
+- **Conversation:** the project intro, as the first comment box, with Copy and Edit (the same editor, image
+  attachment and "changed elsewhere" notice as a PR description). Below it, a link to the first PR to review.
+- **Stack:** the [stack picture](/using/stack-pictures/) for the whole project, nothing highlighted, with Show title
+  and Copy / Download.
 
-![A whole project homepage: the project intro, the stack picture for the whole project, and the list of repos, stacks and PRs](../../../assets/shots/project-home-full.png)
+It doesn't list the repos, stacks and PRs: the sidebar does that, and each stack's title there opens its stack page.
+
+![The project page: the PROJECT label, the totals, and the project intro on the Conversation tab](../../../assets/shots/project-home-full.png)
+
+## The stack page
+
+`/<project>/<repo>/stacks/<n>-<title>` (click a stack's title in the sidebar, its name in a PR's stepper, or its
+breadcrumb) is one stack, laid out like a PR page:
+
+- **The header:** a `STACK n` label in the stack's colour and its title in the same colour; ← / → to the previous and
+  next stack in the project; then the readiness tally (`2/4 ready`, green once they all are, or a purple **Merged**
+  pill once they've all landed), a follow-on badge if it's one, the repo, what the stack sits on and its top branch
+  (`base ← top`), its PRs, distinct files and +/−, and how many have merged.
+- **Conversation:** the [Project context](/using/editing-pr-text/#project-and-stack-context) box, then the stack note
+  as the first comment box, with Copy and Edit (the same editor, image attachment and "changed elsewhere" notice as a
+  PR description). An empty note offers **Add a stack note**. Below it, a link to the stack's first PR.
+- **Stack:** the [stack picture](/using/stack-pictures/) of just this stack, with Show title and Copy / Download.
+
+Its PRs aren't listed again: the sidebar shows them, in the stack's box. Unstacked commits and a repo without
+`stacks:` get a stack page too (`…/stacks/unstacked`, `…/stacks/branch`), but no note: only stacks declared in
+`project.yaml` have one.
+
+![The stack page: STACK 3 in purple, its readiness tally and branches, the project context and the stack note](../../../assets/shots/stack-page.png)
 
 ## URLs
 
 | URL | |
 | --- | --- |
 | `/` | The most recently modified project's first commit. |
-| `/<project>` | The project's homepage. |
+| `/<project>` | The project page. |
 | `/<project>/<repo>` | The repo's first commit. |
 | `/<project>/<repo>/<sha>` | A PR (a short or full sha). |
-| `…?tab=files` / `…?tab=stack` | The Files changed or Stack tab. Add `&file=<path>` to jump to a file. |
+| `/<project>/<repo>/stacks/<ref>` | A stack page. `<ref>` is the stack's number in `stacks:` and its title as a slug (`2-joining-and-leaving`), or `unstacked` / `branch` for the implicit groups. |
+| `…?tab=files` / `…?tab=stack` | The Files changed or Stack tab (project and stack pages have Conversation and Stack). Add `&file=<path>` to jump to a file. |
 
 Old `/<repo>/<sha>` URLs (from before projects) redirect into the project that has that repo.
+
+A stack page's URL keeps working when `stacks:` is edited. The number finds the stack, and the title notices a change:
+if the list was reordered, the link follows the title to its new number; if the stack was renamed, it stays on the
+number. Either way the address is updated to the stack's ref now. A bare number (`…/stacks/2`) works too.
 
 ## Moving between PRs
 

@@ -63,7 +63,7 @@ landed:
   PRs whose recorded `github.base` differs from the plan's base, and about prs files with a `github:` record but no
   `landed:` whose commit is now in the repo base ("landed upstream but not frozen").
 
-![The homepage of an archived project: every PR has a purple merged badge, and the repo is labelled merged](../../../assets/shots/archived-project.png "An archived project: everything in it has landed, so it moves to the Archived section of the project switcher.")
+![The project page of an archived project: every PR has a purple merged badge, and the repo is labelled merged](../../../assets/shots/archived-project.png "An archived project: everything in it has landed, so it moves to the Archived section of the project switcher.")
 
 :::note[Local Review comments and GitHub comments are entirely separate]
 Local Review never imports GitHub review threads, and never sends its own to GitHub, for landed PRs as for any other.

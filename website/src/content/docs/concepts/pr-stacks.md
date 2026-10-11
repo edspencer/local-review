@@ -71,8 +71,8 @@ falls back to the colour it would have had by default. (Hex colours aren't check
 ## Stack notes
 
 A stack's `description:` is its **stack note**: Markdown that says how this stack relates to the others ("First of
-three stacks: …"). It's shown on the project homepage and in the Project context box of each of the stack's PRs, it can
-be edited in place, and it goes after the project intro in each of the stack's
+three stacks: …"). It's the Conversation tab of the stack's [stack page](/using/ui-tour/#the-stack-page) and fills the
+Stack context box of each of its PRs, it can be edited in place in both (with images), and it goes after the project intro in each of the stack's
 [full PR bodies](/using/editing-pr-text/#copying-text-for-the-real-pr).
 
 ## Totals
@@ -83,7 +83,7 @@ Every aggregate counts **regular stacks' unmerged PRs only**, and mentions follo
 2 repos · 4 stacks · 12 PRs · +3,300 −150 · +1 follow-on stack (2 PRs) · +9 merged
 ```
 
-That applies to the stack picture's summary line and repo headings, the homepage's totals, the sidebar's viewed count
+That applies to the stack picture's summary line and repo headings, the project page's totals, the sidebar's viewed count
 and the project switcher's commit count. A stack whose PRs have all merged isn't counted among the stacks. A stack's
 own heading and its PRs still show their real numbers.
 

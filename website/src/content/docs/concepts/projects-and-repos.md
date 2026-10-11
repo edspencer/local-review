@@ -23,13 +23,13 @@ repos:
 
 ## Projects
 
-- The directory name is the project's **slug**, used in URLs: `/<slug>` is the project's homepage, and
-  `/<slug>/<repo>/<sha>` one of its PRs.
+- The directory name is the project's **slug**, used in URLs: `/<slug>` is the [project page](/using/ui-tour/#the-project-page),
+  `/<slug>/<repo>/stacks/<ref>` a [stack page](/using/ui-tour/#the-stack-page), and `/<slug>/<repo>/<sha>` one of its PRs.
 - The header shows the project's title, with a **project switcher** when there's more than one. A project whose PRs
   have all [landed](/concepts/landed-prs/) is archived automatically, into a collapsed **Archived** section at the
   bottom of the switcher.
 - An optional `description:` is the **project intro**: one or two paragraphs of context that go at the top of every
-  full PR body. See [Editing PR titles & descriptions](/using/editing-pr-text/#project-context).
+  full PR body. See [Editing PR titles & descriptions](/using/editing-pr-text/#project-and-stack-context).
 - `/` opens the most recently modified project's first commit.
 
 ## Repos and ranges

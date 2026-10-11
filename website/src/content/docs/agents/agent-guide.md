@@ -23,7 +23,7 @@ https://local-review.edspencer.net; this guide links the pages it relies on.
 ## What Local Review is
 
 A local, GitHub-PR-style review UI for stacks of commits. Each commit is one candidate PR. The reviewer (the human you're working for) reviews them at
-**http://localhost:5622/&lt;project&gt;/&lt;repo&gt;/&lt;sha&gt;** (short or full sha; `/<project>` is the project homepage).
+**http://localhost:5622/&lt;project&gt;/&lt;repo&gt;/&lt;sha&gt;** (short or full sha; `/<project>` is the project page, `/<project>/<repo>/stacks/<n>` a stack page).
 Local Review never talks to GitHub and never modifies the repos it shows. You do the git and GitHub work, and record
 the results in its files.
 
@@ -56,7 +56,7 @@ materialize them as part of a stack barrage unless the reviewer asks.** There's 
 step. When the reviewer wants one to go up, they (or you, when asked) remove the `follow_on:` line. They're always **yellow**
 (any `color:` on them is ignored), and yellow is reserved for them: regular stacks use blue, green, purple, orange,
 pink, teal, red or a `#hex` (`color: yellow` on a regular stack is a warning). Totals everywhere (stack picture,
-homepage, sidebar, project list) leave follow-on stacks out and mention them beside the numbers
+project page, sidebar, project list) leave follow-on stacks out and mention them beside the numbers
 (`+1 follow-on stack (2 PRs)`); the API's `GET /api/projects` gives `commitCount` without them and `followOnCount`.
 
 **`reviews/<repo>/<sha>.yaml`.** Its `threads[]` each have an `id`, `resolved`, optional `path`/`side`/`line`, and

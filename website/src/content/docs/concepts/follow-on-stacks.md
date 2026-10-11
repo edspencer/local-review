@@ -45,6 +45,6 @@ They use GitHub's attention colours: `#9a6700` text and `#bf8700` lines in light
 - **The repo heading's viewed count** leaves them out and shows their PRs beside it in a dashed yellow pill
   (`0/11 (+2)`; the tooltip says how many of them are viewed). The open-threads counter still counts every PR.
 - **The commit page's stepper** shows the badge, with its pills in yellow.
-- **The project homepage:** a dashed yellow left border, and the divider.
+- **The stack page:** its `STACK n` label and title in yellow, and the `follow-on` badge in the header.
 - **The stack picture:** a yellow border and label with a yellow `follow-on` tag. Its border and rows are drawn at
   72% opacity (the label, the tag and a highlighted PR at full strength).
