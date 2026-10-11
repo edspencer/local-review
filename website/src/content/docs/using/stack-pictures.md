@@ -5,7 +5,7 @@ description: A PNG of your stacks, weighted by size, to paste next to a PR or in
 
 The **Stack** tab draws a picture of the project's PR stacks, with the PR you're on highlighted, and every PR's size on
 one shared scale. Copy it as an image or download a PNG to paste beside a real PR, into Slack, or into a design doc.
-The project homepage shows the same picture for the whole project.
+The Stack tabs of the project page and of each stack page show the same picture for the whole project, or for one stack.
 
 ![The Stack tab: This stack / This repo / Whole project buttons, Copy image and Download PNG, and the picture of one repo's four stacks with size bars and the current PR marked "this PR"](../../../assets/shots/stack-tab.png "The Stack tab at “This repo”. The PR you're on is marked, and every bar is on the same scale.")
 
@@ -26,9 +26,11 @@ leaves them and merged PRs out of the totals and mentions them beside it
 (`2 repos · 4 stacks · 12 PRs · +3,300 −150 · +1 follow-on stack (2 PRs) · +9 merged`). See
 [Totals](/concepts/pr-stacks/#totals).
 
-## On the project homepage
+## On the project and stack pages
 
-`/<project>` shows the picture for the whole project, with nothing highlighted, and the same **Copy** / **Download**.
+The [project page](/using/ui-tour/#the-project-page)'s **Stack** tab (`/<project>?tab=stack`) shows the picture for
+the whole project, and a [stack page](/using/ui-tour/#the-stack-page)'s (`…/stacks/<ref>?tab=stack`) just that stack.
+Nothing is highlighted on either; both have **Show title** and the same **Copy** / **Download**.
 
 ## As an image URL
 
@@ -38,6 +40,7 @@ fetch one:
 ```sh
 curl -o stack.png "http://localhost:5622/api/projects/my-feature/stack.png"                         # whole project
 curl -o pr3.png "http://localhost:5622/api/projects/my-feature/repos/my-service/commits/0a1b2c3d/stack.png?scope=stack"
+curl -o s2.png "http://localhost:5622/api/projects/my-feature/repos/my-service/stacks/2-groundwork/stack.png"     # one stack
 ```
 
 The SVG is 680px wide and the PNG is drawn at 2x (1360px). Options: `?scope=project|repo|stack`,

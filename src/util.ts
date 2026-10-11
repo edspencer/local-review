@@ -2,12 +2,15 @@ import { createContext, useCallback, useContext, useEffect, useState, useSyncExt
 import { tildify } from '../shared/paths';
 
 // ---------- routing (tiny, history API) ----------
-// /<project>/<repo>/<sha>[?tab=files&file=…]. `/<project>` opens its first commit; an old `/<repo>/<sha>`
-// URL (from before projects) is redirected by App into the project that has that repo.
+// /<project>/<repo>/<sha>[?tab=files&file=…] is a PR page; /<project>/<repo>/stacks/<ref>[?tab=stack] a stack page
+// (shared/stackRef.ts); /<project>[?tab=stack] the project page. `/<project>/<repo>` opens its first commit; an old
+// `/<repo>/<sha>` URL (from before projects) is redirected by App into the project that has that repo.
 export interface Route {
   project: string | null;
   repo: string | null;
   sha: string | null;
+  /** a stack page's ref (`2-groundwork`, `unstacked`), '' for `…/stacks/` alone; null: not a stack page */
+  stack: string | null;
   tab: 'conversation' | 'files' | 'stack';
   file: string | null;
   /** path segments as given, for redirecting old URLs */
@@ -17,10 +20,12 @@ export interface Route {
 function parse(): Route {
   const parts = window.location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
   const q = new URLSearchParams(window.location.search);
+  const stack = parts[2] === 'stacks' ? parts[3] ?? '' : null;
   return {
     project: parts[0] ?? null,
     repo: parts[1] ?? null,
-    sha: parts[2] ?? null,
+    sha: stack === null ? parts[2] ?? null : null,
+    stack,
     tab: q.get('tab') === 'files' ? 'files' : q.get('tab') === 'stack' ? 'stack' : 'conversation',
     file: q.get('file'),
     parts,
@@ -52,6 +57,27 @@ export function routeUrl(project: string, repo: string, sha: string, tab: Route[
   const qs = q.toString();
   return `/${encodeURIComponent(project)}/${encodeURIComponent(repo)}/${sha}${qs ? `?${qs}` : ''}`;
 }
+
+const withTab = (path: string, tab: Route['tab']) => (tab === 'stack' ? `${path}?tab=stack` : path);
+
+/** The project page: its intro (Conversation) or the whole project's stack picture. */
+export const projectUrl = (project: string, tab: Route['tab'] = 'conversation') => withTab(`/${encodeURIComponent(project)}`, tab);
+
+/** A stack page, by its ref (shared/stackRef.ts): its note (Conversation) or its stack picture. */
+export const stackUrl = (project: string, repo: string, ref: string, tab: Route['tab'] = 'conversation') =>
+  withTab(`/${encodeURIComponent(project)}/${encodeURIComponent(repo)}/stacks/${encodeURIComponent(ref)}`, tab);
+
+/**
+ * A plain click on an in-app link: navigate without reloading (modifier clicks still open a new tab). A project or
+ * stack page is on screen at once, so it scrolls to the top here; a PR page does that itself once it has loaded
+ * (`scroll: false`), so the page you're leaving doesn't jump while it stays up.
+ */
+export const linkTo = (url: string, { scroll = true } = {}) => (e: React.MouseEvent) => {
+  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  navigate(url);
+  if (scroll) window.scrollTo(0, 0);
+};
 
 export function navigate(url: string, replace = false) {
   if (url === window.location.pathname + window.location.search) return;

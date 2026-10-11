@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { Loc } from './api';
 
 type Scope = 'project' | 'repo' | 'stack';
@@ -20,19 +20,40 @@ export function StackTab({ loc, sha, version }: { loc: Loc; sha: string; version
     const s = localStorage.getItem(SCOPE_KEY);
     return s === 'repo' || s === 'project' ? s : 'stack';
   });
+  const setScope = (s: Scope) => {
+    setScopeState(s);
+    localStorage.setItem(SCOPE_KEY, s);
+  };
+  return (
+    <StackPicture
+      base={`/api/projects/${encodeURIComponent(loc.project)}/repos/${encodeURIComponent(loc.repo)}/commits/${sha}/stack`}
+      query={scope !== 'project' ? `scope=${scope}` : ''}
+      version={version}
+      alt={`PR stacks of ${loc.project}, with this PR highlighted`}
+      hint={<code>…/commits/{sha.slice(0, 8)}/stack.png</code>}
+      controls={
+        <div className="BtnGroup" role="group" aria-label="What to show">
+          {SCOPES.map(([s, label, title]) => (
+            <button key={s} className={`btn btn-sm ${scope === s ? 'selected' : ''}`} title={title} aria-pressed={scope === s} onClick={() => setScope(s)}>{label}</button>
+          ))}
+        </div>
+      }
+    />
+  );
+}
+
+/**
+ * A stack picture from the server (`base`.png / .svg, with `query`), with the Show title toggle and Copy image /
+ * Download PNG / SVG: the PR page's Stack tab, and the stack and project pages' ones. `controls` go first in the toolbar.
+ */
+export function StackPicture({ base, query = '', version, alt, hint, controls }: { base: string; query?: string; version: string; alt: string; hint: ReactNode; controls?: ReactNode }) {
   const [showTitle, setShowTitleState] = useState(() => localStorage.getItem(TITLE_KEY) !== '0');
   const setShowTitle = (v: boolean) => {
     setShowTitleState(v);
     localStorage.setItem(TITLE_KEY, v ? '1' : '0');
   };
-  const setScope = (s: Scope) => {
-    setScopeState(s);
-    localStorage.setItem(SCOPE_KEY, s);
-  };
   const [loadError, setLoadError] = useState(false);
-
-  const base = `/api/projects/${encodeURIComponent(loc.project)}/repos/${encodeURIComponent(loc.repo)}/commits/${sha}/stack`;
-  const q = [scope !== 'project' && `scope=${scope}`, !showTitle && 'title=0'].filter(Boolean).join('&');
+  const q = [query, !showTitle && 'title=0'].filter(Boolean).join('&');
   const png = `${base}.png${q ? `?${q}` : ''}`;
   // the cache-busting `v` only changes the URL when the data does, so the <img> re-fetches exactly then
   const shown = `${png}${q ? '&' : '?'}v=${encodeURIComponent(version)}`;
@@ -42,11 +63,7 @@ export function StackTab({ loc, sha, version }: { loc: Loc; sha: string; version
   return (
     <div className="stack-tab">
       <div className="stack-tab-toolbar">
-        <div className="BtnGroup" role="group" aria-label="What to show">
-          {SCOPES.map(([s, label, title]) => (
-            <button key={s} className={`btn btn-sm ${scope === s ? 'selected' : ''}`} title={title} aria-pressed={scope === s} onClick={() => setScope(s)}>{label}</button>
-          ))}
-        </div>
+        {controls}
         <label className="stack-tab-check" title="The project title and summary line at the top of the image">
           <input type="checkbox" checked={showTitle} onChange={(e) => setShowTitle(e.target.checked)} /> Show title
         </label>
@@ -59,11 +76,11 @@ export function StackTab({ loc, sha, version }: { loc: Loc; sha: string; version
           <div className="flash flash-error">Couldn't render the stack image. See the server log.</div>
         ) : (
           // 680 CSS px wide: the PNG is 2x, so it's crisp on retina screens
-          <img src={shown} width={680} alt={`PR stacks of ${loc.project}, with this PR highlighted`} onError={() => setLoadError(true)} />
+          <img src={shown} width={680} alt={alt} onError={() => setLoadError(true)} />
         )}
       </div>
       <p className="stack-tab-hint muted">
-        Drawn on the server (<code>…/commits/{sha.slice(0, 8)}/stack.png</code>, also <code>.svg</code>). Bars share one square-root scale across the
+        Drawn on the server ({hint}, also <code>.svg</code>). Bars share one square-root scale across the
         image, so stacks and PRs are comparable.
       </p>
     </div>

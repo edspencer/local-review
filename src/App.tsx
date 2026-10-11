@@ -1,14 +1,18 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, stackColor, type CommitSummary, type ProjectData, type ProjectSummary, type ProjectsResponse, type RepoData, type ServerEvent, type StackGroup } from './api';
+import { api, stackColor, type CommitSummary, type ProjectData, type ProjectSummary, type ProjectsResponse, type RepoData, type ServerEvent } from './api';
 import { BranchStatusMarker, MiddleTruncate, PrBadge, branchNote } from './Branch';
 import { CommitPage } from './CommitPage';
-import { hoverPrefetch, invalidateAll, onServerEvent, prefetch } from './commitCache';
+import { ensure, hoverPrefetch, invalidateAll, onServerEvent, prefetch, useCommitEntry } from './commitCache';
+import { TopProgress } from './TopProgress';
 import { ProjectHome, RepoLabel } from './ProjectHome';
+import { StackPage } from './StackPage';
+import { StackLink, stackLabel, stackTally } from './Stacks';
+import { stackRef } from '../shared/stackRef';
 import { FOLLOW_ON_TIP, FollowOnBadge, ReadinessBadge } from './Readiness';
 import { TextDraftsProvider, repoAggregate } from './ProjectText';
 import { ExamplesMenuItem, ExamplesStrip, Welcome } from './Welcome';
 import { tildify } from '../shared/paths';
-import { HomeContext, ProjectContext, hashString, isTyping, navigate, relativeTime, routeUrl, useLocalStorage, useRoute, useTick, useTilde, type Route } from './util';
+import { HomeContext, ProjectContext, hashString, isTyping, linkTo, navigate, projectUrl, relativeTime, routeUrl, useLocalStorage, useRoute, useTick, useTilde, type Route } from './util';
 
 // The first screen's data, asked for all at once as the page loads, rather than each request waiting for the one
 // before it (the reviewer, the project list, the project, the PR): App takes these promises on its first refresh.
@@ -111,7 +115,7 @@ export function App() {
       return;
     }
     // `/<project>` alone is the project's homepage
-    if (route.sha || parts.length === 1 || !project || project.slug !== activeSlug) return;
+    if (route.sha || route.stack !== null || parts.length === 1 || !project || project.slug !== activeSlug) return;
     const first = route.repo ? flat.find((x) => x.repo === route.repo) : flat[0];
     if (first) navigate(routeUrl(project.slug, first.repo, first.sha.slice(0, 8), route.tab), true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -139,6 +143,28 @@ export function App() {
   const unknownProject = list && route.parts.length > 0 && !isProject(route.parts[0]) && !list.projects.some((p) => p.repos.includes(route.parts[0]));
   const repoData = project?.repos.find((r) => r.name === route.repo);
   const onCommit = project && route.project === project.slug && route.repo && route.sha;
+  const onStack = !onCommit && project && route.project === project.slug && route.stack !== null && repoData;
+  const onProjectPage = !onCommit && !onStack && project && route.project === project.slug && route.parts.length === 1;
+
+  // From a stack or project page to a PR that isn't loaded yet: that page stays on screen, under the progress bar,
+  // until the PR is in the cache (commitCache.ts), then the PR page takes over: never a "Loading…" page in between.
+  // PR to PR is CommitPage's own business (it keeps the previous PR up).
+  const commitLoc = useMemo(() => ({ project: route.project ?? '', repo: route.repo ?? '' }), [route.project, route.repo]);
+  const commitEntry = useCommitEntry(commitLoc, onCommit ? route.sha! : '\0');
+  const lastPage = useRef<Route | null>(null);
+  const [failedAt, setFailedAt] = useState<string | null>(null);
+  const commitAt = onCommit ? `${route.project}/${route.repo}/${route.sha}` : null;
+  const held = onCommit && !commitEntry && lastPage.current?.project === route.project && failedAt !== commitAt ? lastPage.current : null;
+  if (onStack || onProjectPage) lastPage.current = route;
+  else if (onCommit && !held) lastPage.current = null;
+  useEffect(() => {
+    if (!held || !commitAt) return;
+    let cancelled = false;
+    // a failure is CommitPage's to show (with its error), so stop holding
+    ensure(commitLoc, route.sha!)?.catch(() => !cancelled && setFailedAt(commitAt));
+    return () => { cancelled = true; };
+  }, [held, commitAt, commitLoc, route.sha]);
+  const heldRepo = held ? project?.repos.find((r) => r.name === held.repo) : undefined;
   // changes whenever anything the stack picture shows does (titles, stacks, commits), to refetch it
   const vizVersion = useMemo(
     () => (project ? hashString(JSON.stringify([project.title, project.repos.map((r) => [r.name, r.branch, r.error, r.stacks, r.commits.map((c) => [c.sha, c.title, c.branch?.name, c.branch?.status, c.github?.number, c.status])])])) : ''),
@@ -186,6 +212,19 @@ export function App() {
             {list && list.projects.length === 0 && (
               <div className="sidebar-empty">No projects yet.</div>
             )}
+            {project && (
+              <a
+                className={`sidebar-project ${route.project === project.slug && route.parts.length === 1 ? 'active' : ''}`}
+                href={projectUrl(project.slug)}
+                onClick={linkTo(projectUrl(project.slug))}
+                title={`${project.title}: the project page (its intro and the picture of every stack)`}
+                aria-current={route.project === project.slug && route.parts.length === 1 ? 'page' : undefined}
+              >
+                <svg className="octicon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d={PROJECT_ICON} /></svg>
+                <span className="sidebar-project-title">{project.title}</span>
+                <span className="sidebar-project-hint">Project page</span>
+              </a>
+            )}
             {project && project.repos.length === 0 && !project.error && <div className="sidebar-empty">No repos in <code>{tilde(project.file)}</code>.</div>}
             {project?.repos.map((r) => (
               <RepoSection
@@ -205,7 +244,12 @@ export function App() {
         <main className="main">
           <ProjectContext.Provider value={project?.slug ?? null}>
           <TextDraftsProvider refresh={refreshAll}>
-          {onCommit ? (
+          {held && project ? (
+            <div aria-busy="true">
+              <TopProgress />
+              {held.stack !== null && heldRepo ? <StackPage project={project} repo={heldRepo} route={held} version={vizVersion} /> : <ProjectHome project={project} route={held} version={vizVersion} />}
+            </div>
+          ) : onCommit ? (
             <CommitPage
               key={project.slug}
               route={route}
@@ -217,8 +261,10 @@ export function App() {
               repoData={repoData}
               vizVersion={vizVersion}
             />
-          ) : project && route.project === project.slug && route.parts.length === 1 ? (
-            <ProjectHome project={project} version={vizVersion} />
+          ) : onStack ? (
+            <StackPage project={project} repo={repoData} route={route} version={vizVersion} />
+          ) : onProjectPage ? (
+            <ProjectHome project={project} route={route} version={vizVersion} />
           ) : unknownProject ? (
             <div className="page blankslate">
               No project or repo named <code>{route.parts[0]}</code>.{' '}
@@ -312,7 +358,8 @@ function ProjectSwitcher({ list, current, title, onExamplesAdded, onExamplesRemo
 const CHEV_RIGHT = 'M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z';
 const CHEV_DOWN = 'M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z';
 
-export const stackLabel = (g: StackGroup) => (g.number !== null && !g.implicit ? `Stack ${g.number} · ${g.title}` : g.title);
+// octicon project-16 (the sidebar's link to the project page)
+const PROJECT_ICON = 'M1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75 1.75 0 0 1 0 14.25V1.75C0 .784.784 0 1.75 0ZM1.5 1.75v12.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25H1.75a.25.25 0 0 0-.25.25ZM11.75 3a.75.75 0 0 1 .75.75v7.5a.75.75 0 0 1-1.5 0v-7.5a.75.75 0 0 1 .75-.75Zm-8.25.75a.75.75 0 0 1 1.5 0v5.5a.75.75 0 0 1-1.5 0ZM8 3a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 3Z';
 
 function RepoSection({ project, repo: r, route, closed, toggle }: { project: ProjectData; repo: RepoData; route: Route; closed: boolean; toggle: () => void }) {
   const open = r.commits.reduce((a, c) => a + c.unresolved, 0);
@@ -380,9 +427,9 @@ function RepoSection({ project, repo: r, route, closed, toggle }: { project: Pro
               {g.follow_on && !shown[i - 1]?.follow_on && (
                 <div className="follow-on-divider" role="separator" title={FOLLOW_ON_TIP}>Follow-on · held back</div>
               )}
-              <fieldset className={`pr-stack ${g.implicit === 'unstacked' ? 'unstacked' : ''} ${g.follow_on ? 'follow-on' : ''}`} style={{ ['--stack' as string]: stackColor(g.color) }}>
-                <legend title={g.warning ?? `${g.shas.length} commit${g.shas.length === 1 ? '' : 's'}${g.follow_on ? `\n${FOLLOW_ON_TIP}` : ''}`}>
-                  {stackLabel(g)}
+              <fieldset className={`pr-stack ${g.implicit === 'unstacked' ? 'unstacked' : ''} ${g.follow_on ? 'follow-on' : ''} ${route.repo === r.name && route.stack === stackRef(g) ? 'is-current' : ''}`} style={{ ['--stack' as string]: stackColor(g.color) }}>
+                <legend title={`${g.warning ? `${g.warning}\n` : ''}${g.shas.length} commit${g.shas.length === 1 ? '' : 's'}${g.follow_on ? `\n${FOLLOW_ON_TIP}` : ''}\nOpen the stack page: its note and its picture`}>
+                  <StackLink project={project.slug} repo={r.name} group={g} tab={route.tab} className="pr-stack-link">{stackLabel(g)}</StackLink>
                   {g.follow_on && <FollowOnBadge />}
                 </legend>
                 <ol className="commit-list">
@@ -404,12 +451,9 @@ function RepoSection({ project, repo: r, route, closed, toggle }: { project: Pro
  * (published and merged count as ready); "4/4 merged" once they've all landed.
  */
 function StackTally({ commits }: { commits: CommitSummary[] }) {
-  const n = (s: CommitSummary['status']) => commits.filter((c) => c.status === s).length;
-  const ready = n('ready') + n('published') + n('merged');
-  if (!ready) return null;
-  const tip = [`${n('ready')} ready`, n('published') && `${n('published')} published`, n('merged') && `${n('merged')} merged`, `${n('draft')} draft`].filter(Boolean).join(', ');
-  if (n('merged') === commits.length) return <span className="pr-stack-tally is-merged" title={tip}>{commits.length}/{commits.length} merged</span>;
-  return <span className="pr-stack-tally" title={tip}>{ready}/{commits.length} ready</span>;
+  const t = stackTally(commits);
+  if (!t.ready) return null;
+  return <span className={`pr-stack-tally ${t.allMerged ? 'is-merged' : ''}`} title={t.tip}>{t.text}</span>;
 }
 
 // octicon eye-16: the files-viewed bar is about "viewed", like the Viewed checkboxes on Files changed

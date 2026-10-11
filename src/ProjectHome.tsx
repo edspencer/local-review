@@ -1,90 +1,97 @@
-import { Fragment } from 'react';
-import { stackColor, type ProjectData, type RepoData, type StackGroup } from './api';
-import { FOLLOW_ON_TIP, FollowOnBadge, ReadinessBadge } from './Readiness';
-import { IntroText, StackNoteText, StackWeight, TotalsLine, canHaveNote, repoAggregate } from './ProjectText';
+import { useEffect } from 'react';
+import { hoverPrefetch, prefetch } from './commitCache';
+import type { ProjectData, RepoData } from './api';
+import { IntroText, TotalsLine, repoAggregate } from './ProjectText';
 import { repoLabel } from '../shared/repoLabel';
 import { mergeAggregates, summary } from '../shared/totals';
-import { ImageActions, useCopyImage } from './StackTab';
-import { navigate, routeUrl, useTilde } from './util';
-import { hoverPrefetch } from './commitCache';
+import { StackPicture } from './StackTab';
+import { linkTo, navigate, projectUrl, routeUrl, useTilde, type Route } from './util';
 
-// as in the sidebar (App's stackLabel; not imported from App, which imports this file)
-const stackLabel = (g: StackGroup) => (g.number !== null && !g.implicit ? `Stack ${g.number} · ${g.title}` : g.title);
-
-/** `/<project>`: the stack picture of the whole project (nothing highlighted) and links to every PR. */
-export function ProjectHome({ project, version }: { project: ProjectData; version: string }) {
-  const base = `/api/projects/${encodeURIComponent(project.slug)}/stack`;
-  const { copy, copyError, copyImage } = useCopyImage(`${base}.png`);
-  const go = (repo: string, short: string) => (e: React.MouseEvent) => {
-    e.preventDefault();
-    navigate(routeUrl(project.slug, repo, short));
-    window.scrollTo(0, 0);
-  };
+/**
+ * `/<project>`: the project page, laid out like a PR page. Conversation has the project intro (editable, with
+ * images); Stack has the picture of every repo and stack (nothing highlighted). Its repos, stacks and PRs aren't
+ * listed here: the sidebar already shows them, and each stack's title there opens its page.
+ */
+export function ProjectHome({ project, route, version }: { project: ProjectData; route: Route; version: string }) {
+  const tab = route.tab === 'stack' ? 'stack' : 'conversation';
+  const go = (t: 'conversation' | 'stack') => navigate(projectUrl(project.slug, t));
   // totals leave follow-on stacks out (shared/totals.ts, the same numbers as the picture)
-  const aggs = new Map(project.repos.map((r) => [r.name, repoAggregate(r)]));
+  const total = summary(mergeAggregates(project.repos.map(repoAggregate)), project.repos.length);
+  const first = project.repos.flatMap((r) => r.commits.filter((c) => !c.landed).map((c) => ({ repo: r.name, c })))[0];
   const tilde = useTilde();
+  // warm up the first PR, where "Start with" goes
+  useEffect(() => {
+    if (!first) return;
+    const t = setTimeout(() => prefetch({ project: project.slug, repo: first.repo }, first.c.short), 120);
+    return () => clearTimeout(t);
+  }, [project.slug, first?.repo, first?.c.short]);
+  useEffect(() => {
+    document.title = `${project.title} · Local Review`;
+    return () => { document.title = 'Local Review'; };
+  }, [project.title]);
   return (
     <div className="page project-home">
       <div className="pr-header">
-        <h1 className="pr-title">{project.title}</h1>
-        <IntroText
-          slug={project.slug}
-          text={project.description}
-          file={project.file}
-          className="project-home-intro"
-          label={<>Project intro <span className="muted ptext-sub">· starts every full PR body</span></>}
+        <div className="pr-title-row">
+          <h1 className="pr-title">
+            <span className="project-kicker">Project</span>
+            {project.title}
+          </h1>
+        </div>
+        <div className="pr-meta">
+          <TotalsLine s={total} />
+          <span>· <code className="project-home-file" title={project.file}>{tilde(project.file)}</code></span>
+        </div>
+      </div>
+
+      <div className="tabnav">
+        <button className={`tabnav-tab ${tab === 'conversation' ? 'selected' : ''}`} onClick={() => go('conversation')} title="The project intro: it starts every full PR body">
+          💬 Conversation
+        </button>
+        <button className={`tabnav-tab ${tab === 'stack' ? 'selected' : ''}`} onClick={() => go('stack')} title="A picture of every repo and stack in the project, to copy or download">
+          ▤ Stack
+        </button>
+        <span className="spacer" />
+        <span className="tabnav-extra">
+          <span className="color-add">+{total.additions.toLocaleString('en-US')}</span> <span className="color-del">−{total.deletions.toLocaleString('en-US')}</span>
+        </span>
+      </div>
+
+      {tab === 'stack' ? (
+        <StackPicture
+          base={`/api/projects/${encodeURIComponent(project.slug)}/stack`}
+          version={version}
+          alt={`PR stacks of ${project.title}`}
+          hint={<code>/api/projects/{project.slug}/stack.png</code>}
         />
-      </div>
-      <div className="project-home-body">
-        <section>
-          <div className="stack-tab-toolbar">
-            <h2 className="project-home-h2">PR stacks</h2>
-            <span className="spacer" />
-            <ImageActions base={base} q="" copy={copy} onCopy={copyImage} />
-          </div>
-          {copy === 'error' && <div className="flash flash-error" role="alert">Couldn't copy the image: {copyError}. Use Download PNG instead.</div>}
-          <div className="stack-tab-canvas">
-            <img src={`${base}.png?v=${encodeURIComponent(version)}`} width={680} alt={`PR stacks of ${project.title}`} />
-          </div>
-        </section>
-        <section className="project-home-list">
-          <h2 className="project-home-h2">Repos</h2>
-          <TotalsLine s={summary(mergeAggregates([...aggs.values()]), project.repos.length)} className="project-home-totals" />
-          {project.repos.map((r) => (
-            <div key={r.name} className="project-home-repo">
-              <h3>
-                {r.name} <RepoLabel r={r} />
-                {r.commits.length > 0 && <TotalsLine s={summary(aggs.get(r.name)!)} />}
-              </h3>
-              {r.error && <div className="flash flash-error">{tilde(r.error)}</div>}
-              {r.stacks.filter((g) => g.shas.length).map((g, i, shown) => (
-                <Fragment key={g.index}>
-                  {g.follow_on && !shown[i - 1]?.follow_on && (
-                    <div className="follow-on-divider" role="separator" title={FOLLOW_ON_TIP}>Follow-on · held back</div>
-                  )}
-                  <div className={`project-home-stack ${g.follow_on ? 'follow-on' : ''}`} style={{ ['--stack' as string]: stackColor(g.color) }}>
-                    <div className="project-home-stack-head">
-                      <span className="project-home-stack-title">{stackLabel(g)}</span>
-                      {g.follow_on && <FollowOnBadge />}
-                      {g.weight && <StackWeight w={g.weight} />}
-                    </div>
-                    {canHaveNote(g) && <StackNoteText slug={project.slug} repo={r.name} group={g} file={project.file} className="project-home-note" />}
-                    <ol>
-                      {g.shas.map((s) => r.commits.find((c) => c.sha === s)).filter((c) => !!c).map((c) => (
-                        <li key={c.sha}>
-                          <a href={routeUrl(project.slug, r.name, c.short)} onClick={go(r.name, c.short)} {...hoverPrefetch({ project: project.slug, repo: r.name }, c.short)}>
-                            <span className="commit-num">{c.position}</span> {c.title} <ReadinessBadge status={c.status} progress={c.progress} github={c.github} size={14} />
-                          </a>
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-                </Fragment>
-              ))}
+      ) : (
+        <div className="conversation">
+          <div className="timeline">
+            <div className="timeline-item">
+              <span className="stack-avatar is-project" aria-hidden="true">{[...project.title.trim()][0]?.toUpperCase() ?? 'P'}</span>
+              <IntroText
+                slug={project.slug}
+                text={project.description}
+                file={project.file}
+                frame="comment"
+                label={<><strong>Project intro</strong> <span className="muted">· starts every full PR body, before the stack note</span></>}
+              />
             </div>
-          ))}
-        </section>
-      </div>
+            {first && (
+              <div className="timeline-event">
+                <span className="timeline-badge">⎇</span>
+                <span>
+                  {total.counts} ·{' '}
+                  <a href={routeUrl(project.slug, first.repo, first.c.short)} onClick={linkTo(routeUrl(project.slug, first.repo, first.c.short), { scroll: false })} {...hoverPrefetch({ project: project.slug, repo: first.repo }, first.c.short)}>
+                    Start with #{first.c.position} {first.c.title}
+                  </a>
+                  {project.repos.length > 1 && <span className="muted"> ({first.repo})</span>}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
