@@ -267,6 +267,69 @@ describe('SVG', () => {
   });
 });
 
+describe('thumbnail (the root page)', () => {
+  const model = (repos: { name: string; stacks: { color: string; prs: VizPr[]; follow_on?: boolean }[]; error?: string }[]): VizModel => ({
+    title: 'Thumb & co',
+    current: null,
+    repos: repos.map((r) => ({ name: r.name, branch: '', error: r.error ?? null, stacks: r.stacks.map((s, i) => ({ label: `Stack ${i + 1}`, ...s })) })),
+  });
+  const prs = (n: number, lines = 100, status?: VizPr['status']) => Array.from({ length: n }, (_, i) => ({ ...pr(i + 1, lines, 0), ...(status ? { status } : {}) }));
+  const bars = (svg: string) => [...svg.matchAll(/<rect x="([\d.]+)" y="[\d.]+" width="([\d.]+)" height="([\d.]+)"[^>]*class="t-(?:bar|merged)"/g)].map((m) => ({ x: +m[1], w: +m[2], h: +m[3] }));
+
+  test('well formed, a fixed size, escaped, with its own dark-mode colours', () => {
+    const svg = V.renderThumbSvg(model([{ name: 'api<1>', stacks: [{ color: 'blue', prs: prs(3) }] }]));
+    assertWellFormed(svg);
+    assert.match(svg, /width="280" height="150"/);
+    assert.ok(svg.includes('Thumb &amp; co') && svg.includes('api&lt;1&gt;'));
+    assert.match(svg, /@media \(prefers-color-scheme: dark\)\{[^]*\.s-blue \.t-bar\{fill:#4493f8\}/);
+    assert.match(svg, /\.s-blue \.t-bar\{fill:#0969da\}/);
+  });
+
+  test('one bar per PR; one unit across lanes, so a 1-PR repo is visibly short; capped for small projects', () => {
+    const svg = V.renderThumbSvg(model([{ name: 'big', stacks: [{ color: 'blue', prs: prs(30) }] }, { name: 'small', stacks: [{ color: 'green', prs: prs(1) }] }]));
+    const b = bars(svg);
+    assert.equal(b.length, 31);
+    assert.ok(new Set(b.map((x) => x.w)).size === 1, 'every bar the same width');
+    // the 30-PR lane fills the width (280 less the padding)
+    assert.ok(b[29].x + b[29].w > 250);
+    const tiny = bars(V.renderThumbSvg(model([{ name: 'one', stacks: [{ color: 'blue', prs: prs(2) }] }])));
+    assert.ok(tiny[0].w <= 16, 'a bar is never wider than the cap');
+  });
+
+  test('heights: log scale with a floor, so one huge PR does not flatten the rest', () => {
+    assert.equal(V.thumbHeight(13000, 13000), 1);
+    assert.ok(V.thumbHeight(300, 13000) > 0.55, 'a 300-line PR next to a 13k-line one is still more than half height');
+    assert.equal(V.thumbHeight(0, 13000), 0.22);
+    assert.ok(V.thumbHeight(100, 1000) < V.thumbHeight(500, 1000));
+  });
+
+  test('readiness is the fill: drafts faint and outlined, published solid, merged purple', () => {
+    const svg = V.renderThumbSvg(model([{ name: 'r', stacks: [{ color: 'blue', prs: [{ ...pr(1, 10, 0), status: 'draft' }, { ...pr(2, 10, 0), status: 'ready' }, { ...pr(3, 10, 0), status: 'published' }, { ...pr(4, 10, 0), status: 'merged', merged: true }] }] }]));
+    assert.match(svg, /class="t-bar" fill-opacity="0.22"/);
+    assert.match(svg, /class="t-bar" fill-opacity="0.6"/);
+    assert.match(svg, /class="t-bar" fill-opacity="1"/);
+    assert.equal((svg.match(/class="t-merged"/g) ?? []).length, 1);
+    assert.equal((svg.match(/class="t-outline"/g) ?? []).length, 1);
+  });
+
+  test('follow-on stacks are hatched yellow; a "#hex" colour is kept; many repos end in "+N more repos"; errors say so', () => {
+    const fo = V.renderThumbSvg(model([{ name: 'r', stacks: [{ color: 'blue', prs: prs(2) }, { color: 'teal', follow_on: true, prs: prs(1) }] }]));
+    assert.ok(fo.includes('<pattern') && fo.includes('class="s-yellow"') && fo.includes('stroke-dasharray="3 2"'));
+    const hex = V.renderThumbSvg(model([{ name: 'r', stacks: [{ color: '#123456', prs: prs(2) }] }]));
+    assert.ok(hex.includes('fill="#123456"') && hex.includes('stroke="#123456"'));
+    const many = V.renderThumbSvg(model(['a', 'b', 'c', 'd', 'e', 'f'].map((name) => ({ name, stacks: [{ color: 'blue', prs: prs(1) }] }))));
+    assert.ok(many.includes('+3 more repos') && many.includes('>c</text>') && !many.includes('>d</text>'));
+    const err = V.renderThumbSvg(model([{ name: 'gone', error: 'no such repo', stacks: [] }]));
+    assert.ok(err.includes('can’t read this repo'));
+  });
+
+  test('hundreds of PRs: one block per stack instead of sub-pixel bars', () => {
+    const svg = V.renderThumbSvg(model([{ name: 'huge', stacks: [{ color: 'blue', prs: prs(300) }, { color: 'green', prs: prs(200) }] }]));
+    assertWellFormed(svg);
+    assert.equal(bars(svg).length, 2);
+  });
+});
+
 describe('endpoints', () => {
   let server: ChildProcess;
   let port = 0;
@@ -379,5 +442,52 @@ describe('endpoints', () => {
     assert.equal((await fetch(url('/repos/demo/commits/zzzz/stack.png'))).status, 400);
     assert.equal((await fetch(url('/repos/demo/commits/0000000/stack.svg'))).status, 404);
     assert.equal((await fetch(url('/repos/..%2F..%2Fx/commits/0000000/stack.svg'))).status, 404);
+  });
+
+  test('the project list: totals, readiness, last activity and the thumbnail version', async () => {
+    const list = await (await fetch(`http://127.0.0.1:${port}/api/projects`)).json();
+    const viz = list.projects.find((x: any) => x.slug === 'viz');
+    assert.deepEqual(viz.readiness, { draft: 1, ready: 0, published: 0, merged: 0 }); // the follow-on PR is left out
+    assert.equal(viz.totals.prs, 1);
+    assert.equal(viz.totals.followOn.prs, 1);
+    assert.deepEqual(viz.branches, ['feature']);
+    assert.match(viz.thumb, /^[0-9a-f]{16}$/);
+    assert.ok(['commit', 'edit', 'comment', 'merged'].includes(viz.activity.kind) && !Number.isNaN(Date.parse(viz.activity.at)));
+  });
+
+  test('thumb.svg: an SVG under the image CSP, revalidated by an ETag that is the list’s version', async () => {
+    const list = await (await fetch(`http://127.0.0.1:${port}/api/projects`)).json();
+    const v = list.projects.find((x: any) => x.slug === 'viz').thumb;
+    const r = await fetch(url('/thumb.svg'));
+    assert.equal(r.status, 200);
+    assert.match(r.headers.get('content-type')!, /^image\/svg\+xml/);
+    assert.match(r.headers.get('content-security-policy')!, /default-src 'none'/);
+    assert.equal(r.headers.get('cache-control'), 'no-cache');
+    assert.equal(r.headers.get('etag'), `"${v}"`);
+    const svg = await r.text();
+    assertWellFormed(svg);
+    assert.ok(svg.includes('>demo</text>') && svg.includes('<pattern')); // the repo's lane, the follow-on hatching
+    const again = await fetch(url('/thumb.svg'), { headers: { 'if-none-match': `"${v}"` } });
+    assert.equal(again.status, 304);
+    assert.equal((await fetch(url('/thumb.svg'), { headers: { 'if-none-match': '"stale"' } })).status, 200);
+    assert.equal((await fetch(`http://127.0.0.1:${port}/api/projects/nope/thumb.svg`)).status, 404);
+    const status = await new Promise<number>((res, rej) =>
+      http.get(url('/thumb.svg'), { headers: { host: 'evil.example' } }, (r) => { r.resume(); res(r.statusCode!); }).on('error', rej),
+    );
+    assert.equal(status, 403);
+  });
+
+  test('a new comment is the last activity, and marking a PR ready changes the thumbnail', async () => {
+    const before = (await (await fetch(`http://127.0.0.1:${port}/api/projects`)).json()).projects.find((x: any) => x.slug === 'viz');
+    const first = (await (await fetch(url(''))).json()).repos[0].commits[0].sha;
+    const post = await fetch(url(`/repos/demo/commits/${first}/threads`), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ body: 'A note' }) });
+    assert.equal(post.status, 200);
+    const ready = await fetch(url(`/repos/demo/commits/${first}/pr`), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'ready' }) });
+    assert.equal(ready.status, 200);
+    const after = (await (await fetch(`http://127.0.0.1:${port}/api/projects`)).json()).projects.find((x: any) => x.slug === 'viz');
+    assert.equal(after.activity.kind, 'comment');
+    assert.ok(after.activity.at >= before.activity.at);
+    assert.deepEqual(after.readiness, { draft: 0, ready: 1, published: 0, merged: 0 });
+    assert.notEqual(after.thumb, before.thumb);
   });
 });

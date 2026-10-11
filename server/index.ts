@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -24,7 +25,8 @@ import { REVIEWER } from './reviewer.js';
 import { AssetError, addAsset, assetFile } from './assets.js';
 import { ASSET_MIME, MAX_ASSET_BYTES, typeOfMime, typeOfName } from '../shared/assets.js';
 import { ExamplesConflictError, addExamples, examplesState, removeExamples } from './examples.js';
-import { renderStackSvg, scopeModel, stackOnlyModel, stackWeights, svgToPng, vizModel, type VizScale, type VizScope } from './stackviz.js';
+import { renderStackSvg, renderThumbSvg, scopeModel, stackOnlyModel, stackWeights, svgToPng, vizModel, type VizModel, type VizScale, type VizScope } from './stackviz.js';
+import type { PrStatus } from '../shared/readiness.js';
 import { parseStackRef, resolveStackRef } from '../shared/stackRef.js';
 
 const app = new Hono();
@@ -146,6 +148,13 @@ function repoPayload(r: LoadedRepo, withWeights = false): Promise<RepoPayload> {
   return p;
 }
 
+/** When the newest comment in a review was written or edited (ISO), for the root page's "last activity". */
+function lastCommentAt(r: Review): string | null {
+  let max = 0; // compared as times: an agent may write another offset than Z
+  for (const t of r.threads) for (const c of t.comments) for (const at of [c.created, c.edited]) if (typeof at === 'string') max = Math.max(max, Date.parse(at) || 0);
+  return max ? new Date(max).toISOString() : null;
+}
+
 async function buildRepoPayload(r: LoadedRepo, withWeights: boolean) {
   const prs = await loadPrs(r.prsDir, liveCommits(r.cfg, r.info), inspectOrphan(r.cfg, r.info)).catch(() => new Map<string, LoadedPr>());
   const refs = r.refIndex; // once per range, not per commit
@@ -167,6 +176,7 @@ async function buildRepoPayload(r: LoadedRepo, withWeights: boolean) {
         unresolved: l ? unresolvedCount(l.review) : 0,
         threads: l ? l.review.threads.length : 0,
         viewedCount: l ? l.review.viewed.length : 0,
+        lastComment: l ? lastCommentAt(l.review) : null,
         progress: progressOf(l?.review.threads ?? [], files.map((f) => f.path), l?.review.viewed ?? []),
       };
     }),
@@ -191,38 +201,118 @@ async function buildRepoPayload(r: LoadedRepo, withWeights: boolean) {
   };
 }
 
-app.get('/api/projects', async (c) => {
-  const projects = await Promise.all(
-    listProjectSlugs().map(async (slug) => {
-      const p = await loadProject(slug);
-      if (!p) return null;
-      const repos = await Promise.all(p.repos.map((r) => repoPayload(r)));
-      // follow-on stacks (parked work) and merged PRs are left out of the commit count and given beside it, as in every aggregate
-      const t = mergeAggregates(
-        repos.map((r) => {
-          const merged = new Set(r.commits.filter((cm) => cm.landed).map((cm) => cm.sha));
-          return aggregate(r.stacks.map((g) => ({ follow_on: g.follow_on, prs: g.shas.length, additions: 0, deletions: 0, merged: { prs: g.shas.filter((s) => merged.has(s)).length, additions: 0, deletions: 0 } })));
-        }),
-      );
-      const archived = isArchived(p); // everything has landed
+// ---------------- the project list (the root page's cards, the project switcher) ----------------
+/** The project's thumbnail model (stackviz.ts renderThumbSvg), from the sidebar payloads: no extra git or file reads. */
+function thumbModel(title: string, repos: RepoPayload[]): VizModel {
+  return {
+    title,
+    current: null,
+    repos: repos.map((r) => {
+      const bySha = new Map(r.commits.map((c) => [c.sha, c]));
       return {
-        slug,
-        title: p.cfg.title,
-        description: p.cfg.description,
-        error: p.cfg.error ?? null,
-        repoCount: repos.length,
-        repos: repos.map((r) => r.name),
-        commitCount: t.prs,
-        followOnCount: t.followOn.prs,
-        mergedCount: t.merged.prs,
-        archived,
-        example: !!p.cfg.example,
-        unresolved: repos.reduce((a, r) => a + r.commits.reduce((b, cm) => b + cm.unresolved, 0), 0),
-        modified: new Date(projectModified(p.cfg.dir) || 0).toISOString(),
+        name: r.name,
+        branch: '',
+        error: r.error,
+        stacks: r.stacks
+          .filter((g) => g.shas.length)
+          .map((g) => ({
+            label: g.title,
+            color: g.color,
+            implicit: g.implicit,
+            ...(g.follow_on ? { follow_on: true } : {}),
+            prs: g.shas.flatMap((sha) => {
+              const c = bySha.get(sha);
+              return c ? [{ position: c.position, sha: c.sha, short: c.short, title: c.title, additions: c.additions, deletions: c.deletions, filesChanged: c.filesChanged, status: c.status as PrStatus, ...(c.landed ? { merged: true } : {}) }] : [];
+            }),
+          })),
       };
     }),
+  };
+}
+
+const thumbOf = (svg: string) => crypto.createHash('sha1').update(svg).digest('hex').slice(0, 16);
+
+type ActivityKind = 'comment' | 'commit' | 'merged' | 'edit';
+/**
+ * A project's last activity: its newest comment, live commit (author date) or merge (`landed.at`), or else the last
+ * write to any of its files (project.yaml, prs/, reviews/, assets/: a Viewed mark, a title edit, an agent's YAML). A
+ * comment is a file write too, so a write within a few seconds of the newest comment counts as that comment. An
+ * archived project (everything landed) shows its last merge, unless a comment came after it.
+ */
+function activityOf(dir: string, repos: RepoPayload[], archived: boolean): { at: string; kind: ActivityKind } {
+  const newest = (xs: (string | null | undefined)[]) => xs.reduce<number>((a, x) => Math.max(a, x ? Date.parse(x) || 0 : 0), 0);
+  const commits = repos.flatMap((r) => r.commits);
+  const comment = newest(commits.map((c) => c.lastComment));
+  const commit = newest(commits.filter((c) => !c.landed).map((c) => c.date));
+  const merged = newest(commits.map((c) => c.landed?.at));
+  const edit = projectModified(dir) || 0;
+  const kinds: [ActivityKind, number][] = [['comment', comment], ['commit', commit], ['merged', merged], ['edit', edit]];
+  let [kind, at] = kinds.reduce((a, b) => (b[1] > a[1] ? b : a));
+  if (kind === 'edit' && comment && edit - comment < 5000) [kind, at] = ['comment', comment];
+  if (archived && merged && kind !== 'comment') [kind, at] = ['merged', merged];
+  return { at: new Date(at).toISOString(), kind };
+}
+
+async function projectSummary(slug: string) {
+  const p = await loadProject(slug);
+  if (!p) return null;
+  const repos = await Promise.all(p.repos.map((r) => repoPayload(r)));
+  // follow-on stacks (parked work) and merged PRs are left out of the main numbers and given beside them, as in every
+  // aggregate (shared/totals.ts); the readiness tally likewise leaves follow-on PRs out, and counts merged ones
+  const readiness: Record<PrStatus, number> = { draft: 0, ready: 0, published: 0, merged: 0 };
+  const t = mergeAggregates(
+    repos.map((r) => {
+      const bySha = new Map(r.commits.map((cm) => [cm.sha, cm]));
+      return aggregate(
+        r.stacks.map((g) => {
+          const cs = g.shas.flatMap((s) => bySha.get(s) ?? []);
+          if (!g.follow_on) for (const cm of cs) readiness[cm.status as PrStatus]++;
+          const m = cs.filter((cm) => cm.landed);
+          const sum = (xs: typeof cs, k: 'additions' | 'deletions') => xs.reduce((a, cm) => a + cm[k], 0);
+          return { follow_on: g.follow_on, prs: cs.length, additions: sum(cs, 'additions'), deletions: sum(cs, 'deletions'), merged: { prs: m.length, additions: sum(m, 'additions'), deletions: sum(m, 'deletions') } };
+        }),
+      );
+    }),
   );
+  const thumb = thumbOf(renderThumbSvg(thumbModel(p.cfg.title, repos)));
+  const archived = isArchived(p); // everything has landed
+  return {
+    slug,
+    title: p.cfg.title,
+    description: p.cfg.description,
+    error: p.cfg.error ?? null,
+    repoCount: repos.length,
+    repos: repos.map((r) => r.name),
+    // every repo's branch (the root page's filter matches them too)
+    branches: [...new Set(repos.map((r) => r.branch).filter((b): b is string => !!b))],
+    commitCount: t.prs,
+    followOnCount: t.followOn.prs,
+    mergedCount: t.merged.prs,
+    totals: t,
+    readiness,
+    archived,
+    example: !!p.cfg.example,
+    unresolved: repos.reduce((a, r) => a + r.commits.reduce((b, cm) => b + cm.unresolved, 0), 0),
+    modified: new Date(projectModified(p.cfg.dir) || 0).toISOString(),
+    activity: activityOf(p.cfg.dir, repos, archived),
+    // the thumbnail's version: a hash of its SVG (GET …/thumb.svg answers 304 to it as an ETag)
+    thumb,
+  };
+}
+
+app.get('/api/projects', async (c) => {
+  const projects = await Promise.all(listProjectSlugs().map(projectSummary));
   return c.json({ projectsDir: PROJECTS_DIR, home: os.homedir(), examples: examplesState(), projects: projects.filter(Boolean) });
+});
+
+// the root page's card picture: built from the cached sidebar payloads, so it's cheap; revalidated by its hash
+app.get('/api/projects/:project/thumb.svg', async (c) => {
+  const p = await getProject(c.req.param('project'));
+  const svg = renderThumbSvg(thumbModel(p.cfg.title, await Promise.all(p.repos.map((r) => repoPayload(r)))));
+  const etag = `"${thumbOf(svg)}"`;
+  const headers = { 'Cache-Control': 'no-cache', ETag: etag, 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': VIZ_CSP };
+  if (c.req.header('if-none-match') === etag) return c.body(null, 304, headers);
+  return c.body(svg, 200, { ...headers, 'Content-Type': 'image/svg+xml; charset=utf-8' });
 });
 
 // ---------------- the example projects (server/examples.ts): create-only; removing renames, never deletes ----------------

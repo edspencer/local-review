@@ -1,4 +1,5 @@
 import type { PrStatus, Progress } from '../shared/readiness';
+import type { Aggregate } from '../shared/totals';
 
 export interface CommitSummary {
   sha: string;
@@ -21,6 +22,8 @@ export interface CommitSummary {
   unresolved: number;
   threads: number;
   viewedCount: number;
+  /** when its newest comment was written or edited (ISO), or null */
+  lastComment?: string | null;
   /** the commit's branch (display name and whether it still points here); absent or null: none known */
   branch?: BranchInfo | null;
   /** the GitHub PR it was published as, if any */
@@ -124,7 +127,18 @@ export interface ProjectSummary {
   /** one of the example projects (`example: true`, server/examples.ts) */
   example: boolean;
   unresolved: number;
+  /** the newest write to any of the project's files */
   modified: string;
+  /** every repo's branch (the root page's filter matches them) */
+  branches: string[];
+  /** the project's totals (shared/totals.ts): follow-on and merged PRs on the side */
+  totals: Aggregate;
+  /** PRs by readiness, follow-on stacks left out (merged ones counted) */
+  readiness: Record<PrStatus, number>;
+  /** the newest comment, live commit, merge or file write, and which it was */
+  activity: { at: string; kind: 'comment' | 'commit' | 'merged' | 'edit' };
+  /** the thumbnail's version (a hash of …/thumb.svg) */
+  thumb: string;
 }
 
 export interface ProjectsResponse {
