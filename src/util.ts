@@ -67,12 +67,16 @@ export const projectUrl = (project: string, tab: Route['tab'] = 'conversation') 
 export const stackUrl = (project: string, repo: string, ref: string, tab: Route['tab'] = 'conversation') =>
   withTab(`/${encodeURIComponent(project)}/${encodeURIComponent(repo)}/stacks/${encodeURIComponent(ref)}`, tab);
 
-/** A plain click on an in-app link: navigate without reloading (modifier clicks still open a new tab). */
-export const linkTo = (url: string) => (e: React.MouseEvent) => {
+/**
+ * A plain click on an in-app link: navigate without reloading (modifier clicks still open a new tab). A project or
+ * stack page is on screen at once, so it scrolls to the top here; a PR page does that itself once it has loaded
+ * (`scroll: false`), so the page you're leaving doesn't jump while it stays up.
+ */
+export const linkTo = (url: string, { scroll = true } = {}) => (e: React.MouseEvent) => {
   if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   e.preventDefault();
   navigate(url);
-  window.scrollTo(0, 0);
+  if (scroll) window.scrollTo(0, 0);
 };
 
 export function navigate(url: string, replace = false) {

@@ -9,6 +9,7 @@ import { FollowOnBadge, ReadinessBadge } from './Readiness';
 import { Crumbs, stackLabel, stackTally } from './Stacks';
 import { StackPicture } from './StackTab';
 import { resolveStackRef, stackRef } from '../shared/stackRef';
+import { hoverPrefetch, prefetch } from './commitCache';
 import { linkTo, navigate, projectUrl, routeUrl, stackUrl, useTilde, type Route } from './util';
 
 // octicon stack-16
@@ -30,6 +31,13 @@ export function StackPage({ project, repo, route, version }: { project: ProjectD
     return () => { document.title = 'Local Review'; };
   }, [title]);
   const tilde = useTilde();
+  // warm up the stack's first PR, where "Start with" goes (as a PR page warms its neighbours)
+  const firstPr = found?.group.shas[0] ? repo.commits.find((c) => c.sha === found.group.shas[0])?.short : undefined;
+  useEffect(() => {
+    if (!firstPr) return;
+    const t = setTimeout(() => prefetch({ project: project.slug, repo: repo.name }, firstPr), 120);
+    return () => clearTimeout(t);
+  }, [project.slug, repo.name, firstPr]);
 
   if (!found)
     return (
@@ -133,7 +141,7 @@ export function StackPage({ project, repo, route, version }: { project: ProjectD
                 <span>
                   {commits.length} PR{commits.length === 1 ? '' : 's'}, #{commits[0].position}
                   {commits.length > 1 && <>–#{commits[commits.length - 1].position}</>} in <strong>{repo.name}</strong> ·{' '}
-                  <a href={routeUrl(project.slug, repo.name, commits[0].short)} onClick={linkTo(routeUrl(project.slug, repo.name, commits[0].short))}>
+                  <a href={routeUrl(project.slug, repo.name, commits[0].short)} onClick={linkTo(routeUrl(project.slug, repo.name, commits[0].short), { scroll: false })} {...hoverPrefetch({ project: project.slug, repo: repo.name }, commits[0].short)}>
                     Start with #{commits[0].position} {commits[0].title}
                   </a>
                 </span>

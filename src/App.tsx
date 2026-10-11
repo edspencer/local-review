@@ -2,7 +2,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { api, stackColor, type CommitSummary, type ProjectData, type ProjectSummary, type ProjectsResponse, type RepoData, type ServerEvent } from './api';
 import { BranchStatusMarker, MiddleTruncate, PrBadge, branchNote } from './Branch';
 import { CommitPage } from './CommitPage';
-import { hoverPrefetch, invalidateAll, onServerEvent, prefetch } from './commitCache';
+import { ensure, hoverPrefetch, invalidateAll, onServerEvent, prefetch, useCommitEntry } from './commitCache';
+import { TopProgress } from './TopProgress';
 import { ProjectHome, RepoLabel } from './ProjectHome';
 import { StackPage } from './StackPage';
 import { StackLink, stackLabel, stackTally } from './Stacks';
@@ -142,6 +143,28 @@ export function App() {
   const unknownProject = list && route.parts.length > 0 && !isProject(route.parts[0]) && !list.projects.some((p) => p.repos.includes(route.parts[0]));
   const repoData = project?.repos.find((r) => r.name === route.repo);
   const onCommit = project && route.project === project.slug && route.repo && route.sha;
+  const onStack = !onCommit && project && route.project === project.slug && route.stack !== null && repoData;
+  const onProjectPage = !onCommit && !onStack && project && route.project === project.slug && route.parts.length === 1;
+
+  // From a stack or project page to a PR that isn't loaded yet: that page stays on screen, under the progress bar,
+  // until the PR is in the cache (commitCache.ts), then the PR page takes over: never a "Loading…" page in between.
+  // PR to PR is CommitPage's own business (it keeps the previous PR up).
+  const commitLoc = useMemo(() => ({ project: route.project ?? '', repo: route.repo ?? '' }), [route.project, route.repo]);
+  const commitEntry = useCommitEntry(commitLoc, onCommit ? route.sha! : '\0');
+  const lastPage = useRef<Route | null>(null);
+  const [failedAt, setFailedAt] = useState<string | null>(null);
+  const commitAt = onCommit ? `${route.project}/${route.repo}/${route.sha}` : null;
+  const held = onCommit && !commitEntry && lastPage.current?.project === route.project && failedAt !== commitAt ? lastPage.current : null;
+  if (onStack || onProjectPage) lastPage.current = route;
+  else if (onCommit && !held) lastPage.current = null;
+  useEffect(() => {
+    if (!held || !commitAt) return;
+    let cancelled = false;
+    // a failure is CommitPage's to show (with its error), so stop holding
+    ensure(commitLoc, route.sha!)?.catch(() => !cancelled && setFailedAt(commitAt));
+    return () => { cancelled = true; };
+  }, [held, commitAt, commitLoc, route.sha]);
+  const heldRepo = held ? project?.repos.find((r) => r.name === held.repo) : undefined;
   // changes whenever anything the stack picture shows does (titles, stacks, commits), to refetch it
   const vizVersion = useMemo(
     () => (project ? hashString(JSON.stringify([project.title, project.repos.map((r) => [r.name, r.branch, r.error, r.stacks, r.commits.map((c) => [c.sha, c.title, c.branch?.name, c.branch?.status, c.github?.number, c.status])])])) : ''),
@@ -221,7 +244,12 @@ export function App() {
         <main className="main">
           <ProjectContext.Provider value={project?.slug ?? null}>
           <TextDraftsProvider refresh={refreshAll}>
-          {onCommit ? (
+          {held && project ? (
+            <div aria-busy="true">
+              <TopProgress />
+              {held.stack !== null && heldRepo ? <StackPage project={project} repo={heldRepo} route={held} version={vizVersion} /> : <ProjectHome project={project} route={held} version={vizVersion} />}
+            </div>
+          ) : onCommit ? (
             <CommitPage
               key={project.slug}
               route={route}
@@ -233,9 +261,9 @@ export function App() {
               repoData={repoData}
               vizVersion={vizVersion}
             />
-          ) : project && route.project === project.slug && route.stack !== null && repoData ? (
+          ) : onStack ? (
             <StackPage project={project} repo={repoData} route={route} version={vizVersion} />
-          ) : project && route.project === project.slug && route.parts.length === 1 ? (
+          ) : onProjectPage ? (
             <ProjectHome project={project} route={route} version={vizVersion} />
           ) : unknownProject ? (
             <div className="page blankslate">

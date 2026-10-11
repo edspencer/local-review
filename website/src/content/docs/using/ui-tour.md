@@ -118,7 +118,9 @@ number. Either way the address is updated to the stack's ref now. A bare number 
 A PR you've already opened, the ones either side of it, and a sidebar row you rest the pointer on are loaded in the
 background, so they open at once. Anything else keeps the PR you were on in view, with a thin amber bar along the top
 of the window, until the next one is ready: never a blank page. A new PR opens at the top, unless the link points at a
-file in it. What's kept in the browser is refreshed when the files or branches change, so it's never out of date.
+file in it. The same goes from a project or stack page: it stays up until the PR is ready, and the PR its **Start
+with** link points at is loaded as soon as you arrive. Project and stack pages themselves open at once. What's kept in
+the browser is refreshed when the files or branches change, so it's never out of date.
 
 ## Live updates and dark mode
 

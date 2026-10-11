@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { hoverPrefetch, prefetch } from './commitCache';
 import type { ProjectData, RepoData } from './api';
 import { IntroText, TotalsLine, repoAggregate } from './ProjectText';
 import { repoLabel } from '../shared/repoLabel';
@@ -18,6 +19,12 @@ export function ProjectHome({ project, route, version }: { project: ProjectData;
   const total = summary(mergeAggregates(project.repos.map(repoAggregate)), project.repos.length);
   const first = project.repos.flatMap((r) => r.commits.filter((c) => !c.landed).map((c) => ({ repo: r.name, c })))[0];
   const tilde = useTilde();
+  // warm up the first PR, where "Start with" goes
+  useEffect(() => {
+    if (!first) return;
+    const t = setTimeout(() => prefetch({ project: project.slug, repo: first.repo }, first.c.short), 120);
+    return () => clearTimeout(t);
+  }, [project.slug, first?.repo, first?.c.short]);
   useEffect(() => {
     document.title = `${project.title} · Local Review`;
     return () => { document.title = 'Local Review'; };
@@ -75,7 +82,7 @@ export function ProjectHome({ project, route, version }: { project: ProjectData;
                 <span className="timeline-badge">⎇</span>
                 <span>
                   {total.counts} ·{' '}
-                  <a href={routeUrl(project.slug, first.repo, first.c.short)} onClick={linkTo(routeUrl(project.slug, first.repo, first.c.short))}>
+                  <a href={routeUrl(project.slug, first.repo, first.c.short)} onClick={linkTo(routeUrl(project.slug, first.repo, first.c.short), { scroll: false })} {...hoverPrefetch({ project: project.slug, repo: first.repo }, first.c.short)}>
                     Start with #{first.c.position} {first.c.title}
                   </a>
                   {project.repos.length > 1 && <span className="muted"> ({first.repo})</span>}
