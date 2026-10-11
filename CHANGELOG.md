@@ -1,5 +1,24 @@
 # local-review
 
+## 0.5.0
+
+### Minor Changes
+
+- [#29](https://github.com/edspencer/local-review/pull/29) [`967d0ea`](https://github.com/edspencer/local-review/commit/967d0ea3337cdde8fe6d1f92e25483f5e9079ff3) Thanks [@edspencer](https://github.com/edspencer)! - Moving between PRs is instant. A PR you've opened before, the PRs either side of the one you're on, and a sidebar
+  row you rest the pointer on are loaded in the background and open at once; anything else keeps the PR you were on in
+  view, with a thin amber bar along the top of the window, instead of a blank "Loading…" page. The server is much faster
+  too: it now works out a project's stacks, branches and comments only when something changed (a file, a branch, a
+  rebase), so a page that took 150–500 ms takes a few. Branches are polled every 2 seconds (was 3), and a moved base or a
+  new branch now shows up live as well.
+
+- [#30](https://github.com/edspencer/local-review/pull/30) [`04423c8`](https://github.com/edspencer/local-review/commit/04423c8750316d4ce43ff1cac640d273dada2343) Thanks [@edspencer](https://github.com/edspencer)! - Stack pages, and a project page laid out like a PR page.
+  
+  - **Stack pages** (`/<project>/<repo>/stacks/<n>-<title>`): one stack with its header (STACK n in its colour, readiness tally or Merged, repo and branches, PRs and +/−), a Conversation tab with the project context and the stack note (editable in place, with images) and a Stack tab with the picture of just that stack. Open one from a stack's title in the sidebar, its name in a PR's stepper, or the breadcrumbs. The URL follows a stack that was reordered or renamed in `project.yaml`.
+  - **The project page** (`/<project>`) now has Conversation (the project intro) and Stack (the whole picture) tabs. The list of repos, stacks and PRs beside the picture is gone: the sidebar shows the same, and stack notes are now edited on stack pages (or from a PR page).
+  - **Easier to reach:** a link to the project page at the top of the sidebar, and breadcrumbs (Project › repo · Stack n › PR #m) on stack and PR pages.
+  - **Context on PR pages** is two separate, collapsible boxes, **Project context** and **Stack context**, each linking to its page and editable in place. Images in them show as thumbnails and open in the lightbox.
+  - New endpoint: `GET /api/projects/:p/repos/:r/stacks/:ref/stack.svg|png`.
+
 ## 0.4.0
 
 ### Minor Changes
