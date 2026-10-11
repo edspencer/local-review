@@ -248,7 +248,8 @@ function activityOf(dir: string, repos: RepoPayload[], archived: boolean): { at:
   const edit = projectModified(dir) || 0;
   const kinds: [ActivityKind, number][] = [['comment', comment], ['commit', commit], ['merged', merged], ['edit', edit]];
   let [kind, at] = kinds.reduce((a, b) => (b[1] > a[1] ? b : a));
-  if (kind === 'edit' && comment && edit - comment < 5000) [kind, at] = ['comment', comment];
+  // (keeping the write's time: a comment's `created` is to the second, so it can be a moment before the write itself)
+  if (kind === 'edit' && comment && edit - comment < 5000) kind = 'comment';
   if (archived && merged && kind !== 'comment') [kind, at] = ['merged', merged];
   return { at: new Date(at).toISOString(), kind };
 }
