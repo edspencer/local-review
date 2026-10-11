@@ -56,13 +56,14 @@ describe('the seeded demo, through the server', () => {
     fs.rmSync(out, { recursive: true, force: true });
   });
 
-  test('three projects, one archived, no errors or warnings anywhere', async () => {
+  test('four projects, one archived, no errors or warnings anywhere', async () => {
     const list = await api('/projects');
     const projects = Array.isArray(list) ? list : list.projects;
-    assert.deepEqual(projects.map((p: any) => [p.slug, p.archived]).sort(), [['calendar-feed', false], ['waitlists', false], ['webhook-retries', true]]);
+    assert.deepEqual(projects.map((p: any) => [p.slug, p.archived]).sort(), [['calendar-feed', false], ['calendar-reminders', false], ['waitlists', false], ['webhook-retries', true]]);
     for (const p of projects) {
       const full = await api(`/projects/${p.slug}`);
       assert.equal(full.error ?? null, null, p.slug);
+      assert.deepEqual(full.warnings, [], p.slug);
       for (const r of full.repos) {
         assert.equal(r.error ?? null, null, `${p.slug}/${r.name}`);
         assert.deepEqual(r.warnings, [], `${p.slug}/${r.name}`);
@@ -90,7 +91,7 @@ describe('the seeded demo, through the server', () => {
   test('every review file parses, and its threads land where they were written (one outdated, by design)', async () => {
     let threads = 0;
     const outdated: string[] = [];
-    for (const slug of ['waitlists', 'calendar-feed', 'webhook-retries']) {
+    for (const slug of ['waitlists', 'calendar-feed', 'calendar-reminders', 'webhook-retries']) {
       const p = await api(`/projects/${slug}`);
       for (const r of p.repos)
         for (const c of r.commits) {
@@ -102,8 +103,24 @@ describe('the seeded demo, through the server', () => {
           }
         }
     }
-    assert.equal(threads, 19);
+    assert.equal(threads, 20);
     assert.deepEqual(outdated, [`orchard-api/${sha('orchard-api', 'f6')}`]);
+  });
+
+  test('linked projects: calendar reminders builds on the calendar feed, its range starting where the feed ends', async () => {
+    const feed = await api('/projects/calendar-feed');
+    const rem = await api('/projects/calendar-reminders');
+    assert.deepEqual(rem.after, { slug: 'calendar-feed', title: 'Calendar feed' });
+    assert.deepEqual(feed.next, [{ slug: 'calendar-reminders', title: 'Calendar reminders' }]);
+    const api_ = rem.repos[0];
+    assert.equal(api_.startsAfter, true);
+    assert.equal(api_.after, 'theo/calendar-feed');
+    assert.equal(api_.mergeBase, sha('orchard-api', 'Rotate calendar tokens from account settings'));
+    assert.deepEqual(api_.commits.map((c: any) => c.subject), ['Add reminder alarms to calendar events', 'Remind members an hour before each class', 'Let members choose their reminder time']);
+    assert.deepEqual(api_.stacks.map((s: any) => [s.title, s.shas.length]), [['Reminders', 2], ['Reminder settings', 1]]);
+    const list = await api('/projects');
+    const summary = (s: string) => list.projects.find((p: any) => p.slug === s);
+    assert.deepEqual([summary('calendar-reminders').after, summary('calendar-feed').next], ['calendar-feed', ['calendar-reminders']]);
   });
 
   test('landed PRs show their GitHub diff', async () => {
