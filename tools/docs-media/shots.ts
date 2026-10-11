@@ -48,6 +48,12 @@ const PROMOTE = '/waitlists/orchard-api/{orchard-api:f6}';
 export const SHOTS: Shot[] = [
   // ------------------------------------------------------------------------------------------- full pages
   {
+    name: 'root-page',
+    doc: 'Docs "Using the UI", the root page: every project as a card (thumbnail, totals, readiness, last activity).',
+    route: '/',
+    storage: { 'lr.rootArchivedOpen': 'true' },
+  },
+  {
     name: 'project-home',
     doc: 'Landing hero, "Projects": the project page of a four-repo project, on its Stack tab (every repo and stack).',
     route: '/waitlists?tab=stack',

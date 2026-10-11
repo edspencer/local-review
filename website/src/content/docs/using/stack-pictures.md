@@ -32,6 +32,10 @@ The [project page](/using/ui-tour/#the-project-page)'s **Stack** tab (`/<project
 the whole project, and a [stack page](/using/ui-tour/#the-stack-page)'s (`…/stacks/<ref>?tab=stack`) just that stack.
 Nothing is highlighted on either; both have **Show title** and the same **Copy** / **Download**.
 
+The [root page](/using/ui-tour/#the-root-page) shows a much smaller **thumbnail** of each project instead: no titles
+or numbers, just a lane per repo, a box per stack and a bar per PR, the same size however big the project is
+(`/api/projects/<project>/thumb.svg`).
+
 ## As an image URL
 
 The pictures are served by the [HTTP API](/reference/http-api/#stack-picture-options), so a script or an agent can

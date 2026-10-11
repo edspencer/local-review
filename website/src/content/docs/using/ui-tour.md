@@ -1,6 +1,6 @@
 ---
 title: A tour of the UI
-description: The header, sidebar, PR header, tabs, the project and stack pages, and what each shows.
+description: The root page, header, sidebar, PR header, tabs, the project and stack pages, and what each shows.
 ---
 
 Local Review's layout follows GitHub's pull-request page closely, so it should feel familiar: a sidebar of PRs, and for
@@ -14,11 +14,36 @@ The top bar is **deep plum (`#4a1942`) with an amber underline**. It carries a l
 and an amber **"not on GitHub"** pill, and selected tabs get an amber top edge. You can't mistake it for github.com,
 which matters when the rest of the page looks just like a PR you could merge.
 
-The header also shows the project title, with a **project switcher** when there's more than one project. Archived
-projects (everything [landed](/concepts/landed-prs/)) are in a collapsed **Archived** section at the bottom of the
-switcher. Click the project title to go to the [project page](#the-project-page).
+The **LOCAL REVIEW** wordmark goes to the [root page](#the-root-page), every project at once. Next to it is the
+project you're in, with a **project switcher**: its first item, **All projects**, is the root page too, then the
+projects themselves, most recently active first. Archived projects (everything [landed](/concepts/landed-prs/)) are in
+a collapsed **Archived** section at the bottom of the switcher. Click the project title to go to the
+[project page](#the-project-page).
 
 ![The project switcher open: two projects with their repo and commit counts, and an Archived section holding a third](../../../assets/shots/crop-project-switcher.png)
+
+## The root page
+
+`/` lists every project as a card, most recently active first. A **project** is one piece of work: its repos, their
+commit ranges, and the [PR stacks](/concepts/pr-stacks/) they split into ([Projects & repos](/concepts/projects-and-repos/)).
+
+![The root page: a card per project, each with a thumbnail of its stacks, its totals, a readiness bar and when it last saw activity](../../../assets/shots/root-page.png "The root page of the demo: two active projects and, below them, an archived one whose PRs have all merged.")
+
+- **The thumbnail** is the project's shape, the same size however big it is: a lane per repo (the first three, then
+  `+N more repos`), a box per stack in its colour, left to right, and a bar per PR. Every bar is the same width, so a
+  1-PR repo is visibly short beside an 11-PR one; its height is the PR's lines changed (on a log scale, so one huge PR
+  doesn't flatten the rest). Its fill is the PR's [readiness](/concepts/readiness/): faint and outlined while a draft,
+  stronger once ready, solid once published, purple once merged. [Follow-on stacks](/concepts/follow-on-stacks/) are
+  hatched yellow.
+- **Below it:** the title (with **Example** or **Archived** on those), `repos · stacks · PRs`, the +/− lines with
+  follow-on and merged PRs beside them ([Totals](/concepts/pr-stacks/#totals)), a bar of the PRs by readiness (merged,
+  published, ready, draft), the same as readiness badges with counts, the open threads, and the **last activity**: the
+  newest comment, commit, merge or edit to any of the project's files (a Viewed mark, a title, an agent's YAML).
+- **Sections:** Active; **Examples**, once you have projects of your own besides the [example projects](/reference/cli/#local-review-examples-remove)
+  (with **Remove example projects**); and **Archived**, collapsed.
+- **Filter** (press `/`) matches the title, slug, repo names and branch names; **Sort** by recent activity, title, size
+  or open threads (remembered). The `npx local-review init <slug>` line starts a new project.
+- With no projects yet, `/` is the first-run page instead, with the example projects one click away.
 
 ## The sidebar
 
@@ -100,7 +125,7 @@ Its PRs aren't listed again: the sidebar shows them, in the stack's box. Unstack
 
 | URL | |
 | --- | --- |
-| `/` | The most recently modified project's first commit. |
+| `/` | The [root page](#the-root-page): every project. |
 | `/<project>` | The project page. |
 | `/<project>/<repo>` | The repo's first commit. |
 | `/<project>/<repo>/<sha>` | A PR (a short or full sha). |
