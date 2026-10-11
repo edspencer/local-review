@@ -6,7 +6,8 @@ import { Avatar, AuthorLabel, CommentForm, CommentView, Markdown, Octicon, Threa
 import { FilesChanged, StatusIcon, type Draft } from './FilesChanged';
 import { BodyEditor, CopyButton, DescriptionMenu, EditIconButton, EditedMarker, FULL_BODY_TIP, TitleEditor, type PrChange, type PrDraft } from './PrEdit';
 import { fullPrBody, normBody, normTitle } from './prText';
-import { ProjectContextBox } from './ProjectText';
+import { ContextBoxes } from './ProjectText';
+import { Crumbs, StackLink } from './Stacks';
 import { FollowOnBadge, ReadinessBadge, ReadinessControl } from './Readiness';
 import { progressOf, statusTooltip } from '../shared/readiness';
 import { StackTab } from './StackTab';
@@ -220,6 +221,7 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
   return (
     <div className="page" aria-busy={loading || undefined}>
       {loading && <TopProgress />}
+      <Crumbs project={loc.project} title={projectTitle} repo={loc.repo} group={group} pr={data.index + 1} />
       <div className="pr-header">
         {titleDraft ? (
           <TitleEditor
@@ -304,7 +306,7 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
           review={review}
           actions={actions}
           onNew={(body) => wrap(api.newThread(loc, c.sha, { body }))}
-          context={<ProjectContextBox slug={loc.project} repo={loc.repo} intro={projectIntro} group={group} file={projectFile} />}
+          context={<ContextBoxes slug={loc.project} repo={loc.repo} intro={projectIntro} group={group} file={projectFile} />}
           desc={{
             fullBody: fullPrBody({ intro: projectIntro, stackNote: group?.description, body: data.pr.body }),
             pr: data.pr,
@@ -361,7 +363,7 @@ function StackStepper({ loc, group, commits, current, tab, next }: { loc: Loc; g
   return (
     <nav className={`stack-stepper ${group.implicit === 'unstacked' ? 'unstacked' : ''} ${group.follow_on ? 'follow-on' : ''}`} aria-label="Commits in this PR stack" style={{ ['--stack' as string]: stackColor(group.color) }}>
       <span className="stepper-label" title={group.warning}>
-        {group.title} · PR {idx + 1} of {commits.length}
+        <StackLink project={loc.project} repo={loc.repo} group={group} tab={tab} className="stepper-stack-link" title={`${group.warning ? `${group.warning}\n` : ''}Open the stack page: its note and its picture`}>{group.title}</StackLink> · PR {idx + 1} of {commits.length}
         {group.follow_on && <FollowOnBadge />}
       </span>
       <ol className="stepper">

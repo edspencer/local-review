@@ -4,6 +4,7 @@ import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
+import http from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -342,6 +343,36 @@ describe('endpoints', () => {
     const list = await (await fetch(`http://127.0.0.1:${port}/api/projects`)).json();
     const viz = list.projects.find((x: any) => x.slug === 'viz');
     assert.deepEqual([viz.commitCount, viz.followOnCount], [1, 1]);
+  });
+
+  test('a stack page picture: just that stack, by its ref, nothing highlighted; follows a reordered list', async () => {
+    const beta = await fetch(url('/repos/demo/stacks/2-beta/stack.svg'));
+    assert.equal(beta.status, 200);
+    assert.match(beta.headers.get('content-security-policy')!, /default-src 'none'/);
+    const svg = await beta.text();
+    assertWellFormed(svg);
+    assert.ok(svg.includes('BETA') && !svg.includes('ALPHA') && !svg.includes('◀ this PR'));
+    assert.ok(svg.includes('Viz project'));
+    const alpha = await (await fetch(url('/repos/demo/stacks/1/stack.svg?title=0'))).text();
+    assert.ok(alpha.includes('ALPHA') && !alpha.includes('BETA') && !alpha.includes('Viz project'));
+    // the title outranks the number: a ref whose number now holds another stack still finds its own
+    assert.ok((await (await fetch(url('/repos/demo/stacks/1-beta/stack.svg'))).text()).includes('BETA'));
+    const png = await fetch(url('/repos/demo/stacks/2-beta/stack.png?download'));
+    assert.equal(png.headers.get('content-type'), 'image/png');
+    assert.equal(png.headers.get('content-disposition'), 'attachment; filename="viz-demo-stack-2-beta.png"');
+  });
+
+  test('stack page pictures: bad refs, missing stacks and repos are refused', async () => {
+    assert.equal((await fetch(url('/repos/demo/stacks/9/stack.svg'))).status, 404);
+    assert.equal((await fetch(url('/repos/demo/stacks/unstacked/stack.svg'))).status, 404); // Alpha starts at the first commit
+    assert.equal((await fetch(url('/repos/demo/stacks/..%2F..%2Fx/stack.svg'))).status, 400);
+    assert.equal((await fetch(url('/repos/demo/stacks/0/stack.png'))).status, 400);
+    assert.equal((await fetch(url('/repos/nope/stacks/1/stack.svg'))).status, 404);
+    // under the same localhost-only guard as every route (fetch won't send another Host, so plain http)
+    const status = await new Promise<number>((res, rej) =>
+      http.get(url('/repos/demo/stacks/1/stack.svg'), { headers: { host: 'evil.example' } }, (r) => { r.resume(); res(r.statusCode!); }).on('error', rej),
+    );
+    assert.equal(status, 403);
   });
 
   test('bad shas and repo names are refused as for every other route', async () => {

@@ -417,3 +417,85 @@ describe('plan and images', () => {
     assert.equal(y.prs[0].images.length, 3);
   });
 });
+
+// The project intro, a stack's note and a PR description take images the same way: one upload route into the one
+// project assets/ folder, the same `![alt](assets/<name>)` stored verbatim by each layer's PUT, served from the same
+// URL, rewritten by `plan` alike, and never removed when the text stops referring to it.
+describe('images at every layer', () => {
+  let server: ChildProcess;
+  let port = 0;
+  const slug = 'layers';
+  let dir = '';
+  let sha = '';
+  const call = (method: string, p: string, body?: unknown, headers: Record<string, string> = {}) =>
+    fetch(`http://127.0.0.1:${port}${p}`, { method, headers: body === undefined ? headers : { 'content-type': 'application/json', ...headers }, body: body === undefined ? undefined : JSON.stringify(body) }).then(async (r) => ({ status: r.status, json: await r.json().catch(() => null) }));
+
+  before(async () => {
+    const r = Repo.create();
+    repos.push(r);
+    r.commit('Initial', { 'base.txt': 'base\n' });
+    r.git('checkout', '-q', '-b', 'feature');
+    sha = r.commit('Add A', { 'a.txt': 'a\n' });
+    dir = project(slug, { title: 'Layers', repos: [{ name: 'r', path: r.dir, branch: 'feature', base: 'main', stacks: [{ title: 'Only', starts_at: 'Add A' }] }] });
+    port = await new Promise<number>((res) => {
+      const s = net.createServer().listen(0, '127.0.0.1', () => {
+        const p = (s.address() as net.AddressInfo).port;
+        s.close(() => res(p));
+      });
+    });
+    server = spawn(process.execPath, ['--import', 'tsx', path.join(ROOT, 'server/cli.ts'), 'serve'], {
+      env: { ...process.env, PORT: String(port), LOCAL_REVIEW_DEV: '1', LOCAL_REVIEW_PROJECTS_DIR: PROJECTS },
+      stdio: 'ignore',
+    });
+    for (let i = 0; i < 100; i++) {
+      try {
+        if ((await fetch(`http://127.0.0.1:${port}/api/health`)).ok) return;
+      } catch { /* not up yet */ }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error('server did not start');
+  });
+  after(() => server?.kill());
+
+  test('one upload, referenced from the intro, a stack note and a PR description: stored, served and planned alike', async () => {
+    const up = await fetch(`http://127.0.0.1:${port}/api/projects/${slug}/assets?alt=Diagram`, { method: 'POST', headers: { 'content-type': 'image/png' }, body: PNG });
+    assert.equal(up.status, 201);
+    const { name, markdown } = await up.json();
+    assert.equal(markdown, `![Diagram](assets/${name})`);
+    const text = (who: string) => `${who} context.\n\n${markdown}\n`;
+
+    const P_ = `/api/projects/${slug}`;
+    assert.equal((await call('PUT', `${P_}/description`, { description: text('Project') })).status, 200);
+    assert.equal((await call('PUT', `${P_}/repos/r/stacks/1/description`, { description: text('Stack'), title: 'Only' })).status, 200);
+    assert.equal((await call('PUT', `${P_}/repos/r/commits/${sha}/pr`, { body: text('PR') })).status, 200);
+
+    // each layer gives the reference back exactly as written
+    const p = (await call('GET', P_)).json;
+    assert.equal(p.description, text('Project'));
+    assert.equal(p.repos[0].stacks[0].description, text('Stack').trimEnd());
+    assert.equal((await call('GET', `${P_}/repos/r/commits/${sha}/pr`)).json.body, text('PR').trimEnd());
+    for (const t of [p.description, p.repos[0].stacks[0].description]) assert.deepEqual(SA.assetRefs(t), [name]);
+    // one file, in the one assets folder, served from the one URL whichever text shows it
+    assert.deepEqual(fs.readdirSync(path.join(dir, 'assets')), [name]);
+    const img = await fetch(`http://127.0.0.1:${port}${SA.assetUrl(slug, name)}`);
+    assert.equal(img.status, 200);
+    assert.deepEqual(Buffer.from(await img.arrayBuffer()), PNG);
+
+    // plan composes all three and reports the one image, unpublished, for each reference alike
+    const before = await PL.buildPlan((await P.loadProject(slug))!);
+    assert.equal(before.prs[0].body.split(`](assets/${name})`).length - 1, 3);
+    assert.deepEqual(before.prs[0].images.map((a) => [a.name, a.url]), [[name, null]]);
+    // once published, every layer's reference points at the URL
+    A.setPublishedUrl(dir, name, 'https://example.com/d.png');
+    const after_ = await PL.buildPlan((await P.loadProject(slug))!);
+    assert.equal(after_.prs[0].body.split('](https://example.com/d.png)').length - 1, 3);
+    assert.ok(!after_.prs[0].body.includes('assets/'));
+
+    // removing the references from every layer leaves the image where it was (never deleted)
+    assert.equal((await call('PUT', `${P_}/description`, { description: null })).status, 200);
+    assert.equal((await call('PUT', `${P_}/repos/r/stacks/1/description`, { description: null, title: 'Only' })).status, 200);
+    assert.equal((await call('PUT', `${P_}/repos/r/commits/${sha}/pr`, { body: null })).status, 200);
+    assert.deepEqual(fs.readFileSync(path.join(dir, 'assets', name)), PNG);
+    assert.ok(fs.existsSync(path.join(dir, 'assets', `${name}.yaml`)));
+  });
+});

@@ -24,7 +24,8 @@ import { REVIEWER } from './reviewer.js';
 import { AssetError, addAsset, assetFile } from './assets.js';
 import { ASSET_MIME, MAX_ASSET_BYTES, typeOfMime, typeOfName } from '../shared/assets.js';
 import { ExamplesConflictError, addExamples, examplesState, removeExamples } from './examples.js';
-import { renderStackSvg, scopeModel, stackWeights, svgToPng, vizModel, type VizScale, type VizScope } from './stackviz.js';
+import { renderStackSvg, scopeModel, stackOnlyModel, stackWeights, svgToPng, vizModel, type VizScale, type VizScope } from './stackviz.js';
+import { parseStackRef, resolveStackRef } from '../shared/stackRef.js';
 
 const app = new Hono();
 
@@ -387,6 +388,18 @@ for (const kind of ['svg', 'png'] as const) {
     const { scope, scale, title } = vizOpts(c);
     const model = scopeModel(await vizModel(project, { repo: repo.cfg.name, sha: commit.sha }), scope);
     return sendViz(c, renderStackSvg(model, { scale, title }), kind, `${project.cfg.slug}-${repo.cfg.name}-pr${index + 1}-stack`);
+  });
+  // one stack, nothing highlighted (the stack page); `ref` as in its URL (shared/stackRef.ts), resolved the same way
+  app.get(`/api/projects/:project/repos/:repo/stacks/:ref/stack.${kind}`, async (c) => {
+    const project = await getProject(c.req.param('project'));
+    const repo = findRepo(project, c.req.param('repo'));
+    const ref = c.req.param('ref');
+    if (!parseStackRef(ref)) throw new HttpError(400, `bad stack '${ref}' (expected <number>[-<title>], unstacked or branch)`);
+    const found = resolveStackRef(repo.stacks, ref);
+    if (!found) throw new HttpError(404, `repo '${repo.cfg.name}' has no stack '${ref}'`);
+    const { scale, title } = vizOpts(c);
+    const model = stackOnlyModel(await vizModel(project, null), repo.cfg.name, found.group.shas);
+    return sendViz(c, renderStackSvg(model, { scale, title }), kind, `${project.cfg.slug}-${repo.cfg.name}-stack-${found.ref}`);
   });
   // the whole project, nothing highlighted (the project homepage)
   app.get(`/api/projects/:project/stack.${kind}`, async (c) => {

@@ -80,6 +80,12 @@ export function scopeModel(m: VizModel, scope: VizScope): VizModel {
   return { ...m, repos: repos.map((r) => ({ ...r, stacks: r.stacks.filter((s) => s.prs.some((p) => p.sha === m.current!.sha)) })) };
 }
 
+/** Narrow the model to one stack of `repo`, the one made of `shas` (the stack page's picture). Nothing highlighted. */
+export function stackOnlyModel(m: VizModel, repo: string, shas: string[]): VizModel {
+  const first = shas[0];
+  return { ...m, current: null, repos: m.repos.filter((r) => r.name === repo).map((r) => ({ ...r, stacks: r.stacks.filter((s) => !!first && s.prs[0]?.sha === first) })) };
+}
+
 /**
  * Bar length, as a fraction of the full bar, for `n` changed lines when the heaviest thing in the image has
  * `max`. One scale for the whole image (stacks and PRs alike), so every bar is comparable. sqrt keeps a small

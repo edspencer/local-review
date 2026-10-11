@@ -903,20 +903,75 @@ button { font-family: inherit; }
 .stack-tab-canvas .flash { margin: 12px; line-height: normal; }
 .stack-tab-hint { font-size: 12px; margin: 8px 0 24px; }
 
-/* ---------- project homepage (/<project>) ---------- */
+/* ---------- project and stack pages (/<project>, /<project>/<repo>/stacks/<ref>): laid out like a PR page ---------- */
 a.header-project { text-decoration: none; }
 a.header-project:hover { color: #f6d29b; }
-.project-home-body { display: flex; gap: 32px; align-items: flex-start; flex-wrap: wrap; }
-.project-home-h2 { font-size: 16px; margin: 0; }
-.project-home-list { flex: 1; min-width: 280px; padding-top: 16px; }
-.project-home-list .project-home-h2 { margin-bottom: 12px; }
-.project-home-repo h3 { font-size: 14px; margin: 16px 0 8px; }
-.project-home-stack { --stack: var(--stack-gray); border-left: 3px solid var(--stack); padding: 2px 0 2px 12px; margin: 0 0 12px; }
-.project-home-stack-title { color: var(--stack); font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 4px; }
-.project-home-stack ol { list-style: none; margin: 0; padding: 0; }
-.project-home-stack li a { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; color: var(--fg); text-decoration: none; font-size: 13px; }
-.project-home-stack li a:hover { color: var(--accent); text-decoration: underline; }
-.project-home-stack .commit-num { flex: none; min-width: 18px; color: var(--fg-muted); font-size: 12px; text-align: right; }
+/* the small uppercase word before the title: PROJECT in plum, STACK 2 in the stack's colour */
+.project-kicker, .stack-page-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 10px;
+  padding: 3px 9px;
+  border-radius: 2em;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  vertical-align: 6px;
+  color: #fff;
+  background: var(--plum-2);
+}
+.stack-page-kicker { background: var(--stack); }
+.stack-page-kicker .octicon { fill: currentColor; }
+.stack-page-name { color: var(--stack); font-weight: 500; }
+.stack-page-title.is-unstacked .stack-page-kicker { background: var(--fg-muted); }
+.stack-page-title.is-unstacked .stack-page-name { color: var(--fg); }
+.project-home-file { font-size: 12px; background: var(--bg-subtle); padding: 1px 5px; border-radius: 4px; }
+/* the readiness tally in a stack's header: "2/4 ready", green once they all are */
+.stack-tally-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border: 1px solid var(--border); border-radius: 2em; background: var(--bg-subtle); color: var(--fg); font-size: 13px; font-weight: 600; }
+.stack-tally-pill.is-ready { border-color: #4ac26b; color: var(--success); }
+/* where the PR page has its author's avatar: the stack's number on its colour, or the project's initial on plum */
+.stack-avatar { flex: none; width: 40px; height: 40px; margin-top: 2px; border-radius: 8px; display: inline-grid; place-items: center; background: var(--stack, var(--stack-gray)); color: #fff; font-weight: 700; font-size: 18px; }
+.stack-avatar .octicon { fill: currentColor; }
+.stack-avatar.is-project { background: var(--plum); }
+.ptext-comment .comment-header { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+.ptext-comment .comment-header .muted { font-size: 12px; }
+.ptext-comment .timeline-comment-body > .markdown-body > :first-child { margin-top: 0; }
+.ptext-comment .timeline-comment-body > .markdown-body > :last-child { margin-bottom: 0; }
+.ptext-comment.is-editing { border-color: var(--accent); }
+.ptext-comment.is-editing .comment-form { border: 0; }
+
+/* breadcrumbs above a stack or PR page: Project › repo · Stack 2 · Groundwork › PR #3 */
+.crumbs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: -6px 0 10px; font-size: 12px; color: var(--fg-muted); min-width: 0; }
+.crumbs a { color: var(--fg-muted); text-decoration: none; }
+.crumbs a:hover { color: var(--accent); text-decoration: underline; }
+.crumbs > a:first-child { font-weight: 600; color: var(--plum-2); }
+.crumbs-sep { color: var(--border); font-size: 14px; line-height: 1; }
+.crumbs-dot { color: var(--fg-muted); }
+.crumbs-repo { font-weight: 600; color: var(--fg); }
+.crumbs .crumbs-stack { color: var(--stack); font-weight: 700; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; }
+.crumbs [aria-current='page'] { color: var(--fg); }
+.crumbs .crumbs-stack[aria-current='page'] { color: var(--stack); }
+
+/* the sidebar's link to the project page, above the repos */
+.sidebar-project { display: flex; align-items: center; gap: 7px; margin: 0 8px 12px; padding: 7px 10px; border: 1px solid var(--border); border-left: 3px solid var(--plum-2); border-radius: var(--radius); background: var(--bg); color: var(--fg); text-decoration: none; font-size: 13px; font-weight: 600; min-width: 0; }
+.sidebar-project .octicon { flex: none; fill: var(--plum-2); }
+.sidebar-project-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-project-hint { flex: none; font-size: 11px; font-weight: 500; color: var(--fg-muted); }
+.sidebar-project:hover .sidebar-project-hint { color: var(--accent); }
+.sidebar-project:hover { border-color: var(--plum-2); }
+.sidebar-project.active { background: var(--plum); border-color: var(--plum); color: #fff; }
+.sidebar-project.active .octicon { fill: #fff; }
+.sidebar-project.active .sidebar-project-hint { color: #f6d29b; }
+/* a stack's inset title opens its page */
+.pr-stack-link { color: inherit; text-decoration: none; }
+.pr-stack-link:hover, .pr-stack-link:focus-visible { text-decoration: underline; text-underline-offset: 2px; }
+.pr-stack.is-current { box-shadow: 0 0 0 2px color-mix(in srgb, var(--stack) 25%, transparent); }
+.pr-stack.is-current > legend .pr-stack-link { background: var(--stack); color: #fff; padding: 2px 6px; border-radius: 4px; }
+.pr-stack.is-current > legend { overflow: visible; }
+.stepper-stack-link { color: inherit; text-decoration: none; }
+.stepper-stack-link:hover { text-decoration: underline; text-underline-offset: 2px; }
 
 /* ---------- first run (Welcome.tsx): plum and amber, like the header ---------- */
 .welcome { max-width: 980px; padding-top: 32px; }
@@ -1110,26 +1165,23 @@ a.header-project:hover { color: #f6d29b; }
 .ptext-hint { font-size: 12px; margin: 6px 0 0; }
 .ptext.is-editing .comment-form { border: 1px solid var(--accent); border-radius: var(--radius); }
 .comment-form.ptext-editor textarea { min-height: 120px; max-height: 60vh; field-sizing: content; }
-.project-home-intro { max-width: 860px; margin: 8px 0 4px; padding: 10px 14px; border: 1px solid var(--border); border-left: 3px solid var(--plum-2); border-radius: var(--radius); background: var(--bg-subtle); }
-.project-home-stack-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 2px; }
-.project-home-stack-head .project-home-stack-title { margin-bottom: 0; }
-.stack-weight { font-size: 12px; color: var(--fg-muted); }
-.stack-weight .color-add, .stack-weight .color-del { font-weight: 500; }
-.project-home-note { font-size: 13px; color: var(--fg); margin: 0 0 4px; }
-.project-home-note .ptext-head { min-height: 0; position: relative; }
-.project-home-note .ptext-head .comment-actions { opacity: 0.5; }
-.project-home-note:hover .ptext-head .comment-actions { opacity: 1; }
-.project-home-note:not(.is-editing) { display: flex; flex-direction: row-reverse; align-items: flex-start; gap: 6px; }
-.project-home-note:not(.is-editing) > .ptext-head { flex: none; }
-.project-home-note:not(.is-editing) > .ptext-head .spacer { display: none; }
-.project-home-note:not(.is-editing) > .ptext-body, .project-home-note:not(.is-editing) > .ptext-empty { flex: 1; }
-.project-home-note .ptext-empty .btn-link { font-size: 12px; color: var(--fg-muted); }
-.project-home-note .ptext-empty .btn-link:hover { color: var(--accent); }
+/* a text with its Copy / Edit icons beside it rather than on a row of their own (the context boxes) */
+.ptext-inline .ptext-head { min-height: 0; position: relative; }
+.ptext-inline .ptext-head .comment-actions { opacity: 0.55; }
+.ptext-inline:hover .ptext-head .comment-actions, .ptext-inline .ptext-head .comment-actions:focus-within { opacity: 1; }
+.ptext-inline:not(.is-editing) { display: flex; flex-direction: row-reverse; align-items: flex-start; gap: 6px; }
+.ptext-inline:not(.is-editing) > .ptext-head { flex: none; }
+.ptext-inline:not(.is-editing) > .ptext-head .spacer { display: none; }
+.ptext-inline:not(.is-editing) > .ptext-body, .ptext-inline:not(.is-editing) > .ptext-empty { flex: 1; min-width: 0; }
+.ptext-inline .ptext-empty .btn-link { font-size: 12px; color: var(--fg-muted); }
+.ptext-inline .ptext-empty .btn-link:hover { color: var(--accent); }
 
-/* the PR page's compact "Project context" box, above the description */
+/* the compact, collapsible context boxes above a page's own text: the project's (plum), then the stack's (its colour) */
 .avatar-spacer { flex: none; width: 40px; }
 .project-context-item { margin-bottom: 12px; }
-.project-context { flex: 1; min-width: 0; border: 1px dashed var(--border); border-left: 3px solid var(--plum-2); border-radius: var(--radius); background: var(--bg-subtle); font-size: 13px; }
+.context-boxes { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.project-context { min-width: 0; border: 1px dashed var(--border); border-left: 3px solid var(--plum-2); border-radius: var(--radius); background: var(--bg-subtle); font-size: 13px; }
+.project-context.is-stack { border-left-color: var(--stack); }
 .project-context-head { display: flex; align-items: center; gap: 8px; padding: 4px 10px 4px 6px; }
 .project-context-toggle { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; background: none; border: 0; padding: 2px 0; font: inherit; color: var(--fg); cursor: pointer; text-align: left; }
 .project-context-chev { flex: none; color: var(--fg-muted); transition: transform 0.1s; }
@@ -1140,15 +1192,16 @@ a.header-project:hover { color: #f6d29b; }
 .project-context-link:hover { color: var(--accent); text-decoration: underline; }
 .project-context-body { padding: 4px 14px 10px 24px; display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--border-muted); }
 .project-context-body .ptext + .ptext { border-top: 1px dashed var(--border-muted); padding-top: 8px; }
-.project-context-stack { color: var(--stack); }
+.project-context-stack { margin-left: 4px; color: var(--stack); font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
 .project-context .ptext-body { color: var(--fg); }
+/* context stays compact: its images are thumbnails here (the lightbox shows them whole), and open it on click */
+.project-context .markdown-body img { max-height: 180px; width: auto; border: 1px solid var(--border-muted); border-radius: 4px; }
 
 /* "Full body" copy button in the description header */
 .btn-octicon.has-caption { display: inline-flex; align-items: center; gap: 4px; }
 .btn-octicon.has-caption .copy-caption { font-size: 12px; line-height: 16px; }
 .ptext .comment-form-tabs { flex-wrap: wrap; }
 .ptext .md-toolbar { flex-wrap: wrap; }
-.project-home-stack li a .readiness-badge { align-self: center; }
 
 /* ---------- follow-on stacks (project.yaml follow_on: true): parked work, always yellow, shown a little faded ---------- */
 .Label--follow-on {
@@ -1165,7 +1218,8 @@ a.header-project:hover { color: #f6d29b; }
   vertical-align: 1px;
   flex: none;
 }
-.pr-stack > legend .Label--follow-on, .stepper-label .Label--follow-on, .project-home-stack-head .Label--follow-on { margin-left: 6px; }
+.pr-stack > legend .Label--follow-on, .stepper-label .Label--follow-on { margin-left: 6px; }
+.stack-page .pr-meta .Label--follow-on { font-size: 12px; line-height: 18px; }
 .follow-on-divider {
   display: flex;
   align-items: center;
@@ -1191,10 +1245,6 @@ a.header-project:hover { color: #f6d29b; }
 .pr-stack.follow-on .commit-item:not(.active):not(:hover) :is(.commit-num, .commit-subject, .commit-branch, .pr-badge, .commit-counts) { opacity: 0.72; }
 /* the stepper: its pills and label in the text-safe yellow (white numbers on the current pill stay readable) */
 .stack-stepper.follow-on { --stack: var(--follow-on-fg); }
-.project-home-stack.follow-on { border-left: 3px dashed var(--follow-on-border); }
-.project-home-stack.follow-on .project-home-stack-title { color: var(--follow-on-fg); }
-.project-home-stack.follow-on li a:not(:hover) { opacity: 0.72; }
-.project-home-list .follow-on-divider { margin: 16px 0 8px; }
 /* aggregates leave follow-on stacks out and say so beside them: "+1 follow-on stack (2 PRs)" */
 .follow-on-note { color: var(--follow-on-fg); font-weight: 600; }
 .merged-note { color: var(--merged); font-weight: 600; }
@@ -1209,8 +1259,7 @@ a.header-project:hover { color: #f6d29b; }
 .landed-note { font-size: 12px; color: var(--fg-muted); }
 .totals-line { font-size: 12px; font-weight: 400; color: var(--fg-muted); }
 .totals-line .color-add, .totals-line .color-del { font-weight: 500; }
-.project-home-repo h3 .totals-line { display: block; margin-top: 2px; }
-.project-home-totals { display: block; margin: -6px 0 4px; }
+.pr-meta .totals-line { font-size: inherit; }
 /* the sidebar repo heading: "9/11 +2", the follow-on PRs not in the viewed count */
 /* dashed and outlined like the follow-on badge, so it doesn't read as the solid amber open-threads counter beside it */
 .repo-progress-follow-on { color: var(--follow-on-fg); font-weight: 600; line-height: 14px; padding: 0 4px; border: 1px dashed var(--follow-on-line); border-radius: 2em; }
