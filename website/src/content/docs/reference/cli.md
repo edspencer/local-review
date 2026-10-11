@@ -150,16 +150,17 @@ this exists: [Publishing: images](/agents/publishing-stacked-prs/#images).
 ## `local-review examples [remove]`
 
 Adds the **example projects**: "Orchard", a made-up booking app in four repos (Go, TypeScript, React, Terraform),
-with three projects to click around: stacked PRs across all four repos, review threads with an agent's replies, and an
-archived project whose PRs have all merged. It's the same as **Add the example projects** on the first-run page, or
+with four projects to click around: stacked PRs across all four repos, review threads with an agent's replies, two
+[linked projects](/concepts/linked-projects/) (*Calendar reminders* builds on *Calendar feed*), and an archived project
+whose PRs have all merged. It's the same as **Add the example projects** on the first-run page, or
 at the bottom of the project switcher once you have projects of your own (where **Remove example projects** takes
 its place while they're there).
 
 ```text
 $ npx local-review examples
-Created example-waitlists, example-calendar-feed, example-webhook-retries
+Created example-waitlists, example-calendar-feed, example-calendar-reminders, example-webhook-retries
 
-The example projects are in /home/you/.local-review/projects (3). `local-review examples remove` hides them again.
+The example projects are in /home/you/.local-review/projects (4). `local-review examples remove` hides them again.
 ```
 
 - It writes four small git repos into `~/.local-review/examples/orchard-<id>/` and the projects as
@@ -170,6 +171,9 @@ The example projects are in /home/you/.local-review/projects (3). `local-review 
   again meanwhile waits for the same run; removing them meanwhile is refused until it's done.
 - Every file is created, never replaced: running it again leaves existing example projects alone, and **restores**
   removed ones exactly as they were (comments you wrote on them included).
+- An update that ships a **new** example project adds just that one: the root page's Examples heading and the
+  project switcher offer **Add the new example project**, and running this again does the same. (Its repos are made
+  next to the old ones, since the example history changed; the projects you have keep theirs.)
 - If a project of yours already has one of the names (`example-waitlists`, …) and isn't an example, it stops
   without writing anything.
 
@@ -177,6 +181,37 @@ The example projects are in /home/you/.local-review/projects (3). `local-review 
 `project.example-removed.yaml.bak`, so the project drops out of the list and every other file stays. Only projects
 whose `project.yaml` says `example: true` are touched. To reclaim the disk space (a few MB), delete
 `~/.local-review/examples/` and the `projects/example-*` directories yourself.
+
+## `local-review move`
+
+```text
+local-review move <from> <to> <repo> (<sha>… | --stack <n>) [--to-repo <name>] [--dry-run]
+```
+
+Moves PRs' review data (their [prs](/reference/pr-files/) and [comment](/reference/comment-files/) files: titles,
+descriptions, readiness, branches, GitHub records, threads, Viewed marks) from project `<from>` to project `<to>`, for
+when a project is split into [linked projects](/concepts/linked-projects/#splitting-a-project) and some of its commits
+now belong to the other one.
+
+```text
+$ npx local-review move waitlists waitlist-controls orchard-api --stack 4
+Moved from waitlists to waitlist-controls:
+  (snapshot first: backups/2026-10-11T09-12-03Z)
+  5c1e9a07 prs: waitlists/prs/orchard-api/5c1e9a07….yaml → waitlist-controls/prs/orchard-api/5c1e9a07….yaml; the original renamed to 5c1e9a07….moved-to-waitlist-controls.yaml.bak
+  …
+Then: check both project.yaml files: each repo's range (…) and its stacks' starts_at should now cover the commits that are in that project.
+```
+
+- **Which PRs:** commit shas or unique prefixes (7+ hex), from `<from>`'s range or with a file there (a commit that
+  already left the range), or `--stack <n>`, every commit of declared stack `n` of `<repo>` in `<from>`.
+  `--to-repo <name>` if the repo is named differently in `<to>`.
+- **Never deletes or replaces.** Each file is written into `<to>` create-only. If any of them is already there, it
+  stops before writing anything. Only then is each original renamed to `<sha>.moved-to-<to>.yaml.bak`, so it drops out
+  of `<from>` with its contents still there. A [snapshot](/reference/data-directory/#snapshots) of `projects/` is taken
+  first. The images the moved descriptions show are copied into `<to>`'s `assets/` too; the originals stay.
+- **Doesn't edit `project.yaml`.** It prints what's left to change: the ranges, `starts_at`, and the `landed:` keys of
+  any merged PRs it moved.
+- `--dry-run` prints the same, writing nothing.
 
 ## `local-review guide`
 
@@ -192,7 +227,7 @@ version that matches the Local Review it is driving, without a checkout.
 | Code | When |
 | --- | --- |
 | `0` | Success. |
-| `1` | An error, printed as `local-review: <message>` (no such project, the port is in use, `init`'s file exists, a file that isn't an image, …). |
+| `1` | An error, printed as `local-review: <message>` (no such project, the port is in use, `init`'s file exists, a file that isn't an image, a `move` that would replace a file, …). |
 | `2` | Bad usage (an unknown command or option, a missing argument): the message, then the usage. |
 
 ## Environment

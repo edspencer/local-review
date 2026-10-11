@@ -30,7 +30,9 @@ leaves them and merged PRs out of the totals and mentions them beside it
 
 The [project page](/using/ui-tour/#the-project-page)'s **Stack** tab (`/<project>?tab=stack`) shows the picture for
 the whole project, and a [stack page](/using/ui-tour/#the-stack-page)'s (`…/stacks/<ref>?tab=stack`) just that stack.
-Nothing is highlighted on either; both have **Show title** and the same **Copy** / **Download**.
+Nothing is highlighted on either; both have **Show title** and the same **Copy** / **Download**. A
+[linked project](/concepts/linked-projects/)'s project page and PR Stack tabs also have **Show *&lt;predecessor&gt;***:
+the stacks it builds on, drawn first in each shared repo, greyed out, unnumbered and left out of the totals.
 
 The [root page](/using/ui-tour/#the-root-page) shows a much smaller **thumbnail** of each project instead: no titles
 or numbers, just a lane per repo, a box per stack and a bar per PR, the same size however big the project is
@@ -48,7 +50,8 @@ curl -o s2.png "http://localhost:5622/api/projects/my-feature/repos/my-service/s
 ```
 
 The SVG is 680px wide and the PNG is drawn at 2x (1360px). Options: `?scope=project|repo|stack`,
-`?scale=sqrt|linear`, `?title=0` and `?download`.
+`?scale=sqrt|linear`, `?title=0`, `?context=1` (a linked project: the predecessor's stacks too, greyed) and
+`?download`.
 
 ![A stack picture for a whole project: four repos, each with its branch, its stacks and a size bar for every PR, and a Local Review footer](../../../assets/shots/crop-stack-picture.png "The picture for a whole project, as Copy image and Download PNG give it to you.")
 

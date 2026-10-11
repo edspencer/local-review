@@ -38,6 +38,10 @@ landed upstream but wasn't frozen (do that now; "After merges"). And for each im
 no published URL, since GitHub can't show a file on this machine ("Images" under "Materializing"). Where a URL is
 recorded, the body already has it in place of `assets/<name>`.
 
+In a linked project ("Linked projects") whose range in a repo starts where the predecessor's ends, the first PR there
+is based on the **predecessor's top PR's branch** instead (`base_from: predecessor`; the others are `repo-base` and
+`previous-pr`), with a warning while that PR isn't published: publish the predecessor first.
+
 Landed (merged) PRs are never planned, with no warnings of their own; the first live PR's base is the repo base. A
 note lists them ("Skipped 9 landed (merged) PRs …"); in JSON, `excluded_landed[]` (`repo`, `prs`).
 

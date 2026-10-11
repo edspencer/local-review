@@ -28,6 +28,8 @@ repos:
 - The header shows the project's title, with a **project switcher** (its first item, **All projects**, is the root
   page). A project whose PRs have all [landed](/concepts/landed-prs/) is archived automatically, into a collapsed
   **Archived** section at the bottom of the switcher and of the root page.
+- An optional `after: <slug>` makes it a [linked project](/concepts/linked-projects/): it builds on that one, and a
+  repo they share starts where that project's range ends.
 - An optional `description:` is the **project intro**: one or two paragraphs of context that go at the top of every
   full PR body. See [Editing PR titles & descriptions](/using/editing-pr-text/#project-and-stack-context).
 - `/` is the [root page](/using/ui-tour/#the-root-page): every project as a card, most recently active first.

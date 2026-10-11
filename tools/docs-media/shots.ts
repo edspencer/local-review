@@ -51,7 +51,23 @@ export const SHOTS: Shot[] = [
     name: 'root-page',
     doc: 'Docs "Using the UI", the root page: every project as a card (thumbnail, totals, readiness, last activity).',
     route: '/',
+    viewport: { width: 1440, height: 1500 },
     storage: { 'lr.rootArchivedOpen': 'true' },
+  },
+  {
+    name: 'crop-linked-chain',
+    doc: 'Docs "Linked projects": the root page\'s card for a chain of linked projects (Calendar feed → Calendar reminders).',
+    route: '/',
+    viewport: { width: 1440, height: 1500 },
+    capture: { selector: '.project-chain', pad: 12 },
+  },
+  {
+    name: 'crop-linked-stack-picture',
+    doc: 'Docs "Linked projects": a successor\'s stack picture with Show <predecessor> on (the feed\'s stack greyed first).',
+    route: '/calendar-reminders?tab=stack',
+    storage: { 'lr.stackContext': '1', 'lr.stackTitle': '0' },
+    actions: [{ waitFor: '.stack-tab-canvas img' }, { wait: 500 }],
+    capture: { selector: '.stack-tab-canvas img', pad: 0 },
   },
   {
     name: 'project-home',

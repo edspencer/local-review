@@ -93,6 +93,7 @@ export default defineConfig({
 						{ label: 'Readiness', slug: 'concepts/readiness' },
 						{ label: 'Landed PRs', slug: 'concepts/landed-prs' },
 						{ label: 'Follow-on stacks', slug: 'concepts/follow-on-stacks' },
+						{ label: 'Linked projects', slug: 'concepts/linked-projects' },
 						{ label: 'Branches', slug: 'concepts/branches' },
 						{ label: 'Following rebases', slug: 'concepts/following-rebases' },
 						{ label: 'Works with your stacking tool', slug: 'concepts/stacking-tools' },

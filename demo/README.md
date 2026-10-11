@@ -39,6 +39,7 @@ demo/out/
     .local-review/projects/
       waitlists/        the flagship: four repos, eight stacks
       calendar-feed/    one repo, no `stacks:` (one stack named after the branch)
+      calendar-reminders/  builds on calendar-feed (`after:`): linked projects
       webhook-retries/  everything merged: archived
   manifest.json
 ```
@@ -62,6 +63,10 @@ never contacted, remote-tracking refs, and Maya's `maya/waitlists` branch checke
 | An **outdated** thread, after an amend | orchard-api #6: made on the first version of the commit (still in the repo, under `maya/promotion-expiry`), on lines the fix removed; `previous_commits` / `matched_by: subject` as the server writes them |
 | Agent replies (`author: claude`), including one asking the reviewer a question | orchard-api #6, orchard-sdk #3, orchard-web #2, orchard-infra #1 |
 | Viewed marks, some files viewed and some not | throughout |
+
+**Calendar reminders** builds on **Calendar feed** ([linked projects](https://local-review.edspencer.net/concepts/linked-projects/)):
+`after: calendar-feed`, and its branch, `theo/calendar-reminders`, sits on top of `theo/calendar-feed` in orchard-api, so
+its range starts where the feed's ends. Two stacks, a ready PR, a draft and one open thread.
 
 **Payment webhook retries** is a three-PR stack merged with merge commits (GitHub stack #87), recorded as landed PRs
 with no branch left: the project switcher files it under **Archived**.
