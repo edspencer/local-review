@@ -16,7 +16,7 @@ import { branchName, githubOf, loadPr, loadPrs, prPath, prView, titleEdited, wri
 import { reconcileBranch, type RefIndex } from './branches.js';
 import { contextFor, inspectOrphan, liveCommits, prContextFor } from './context.js';
 import { emit, startWatchers, subscribe } from './events.js';
-import { isArchived, listProjectSlugs, loadProject, projectModified, type LoadedProject, type LoadedRepo } from './projects.js';
+import { isArchived, listProjectSlugs, loadProject, projectModified, successorsOf, type LoadedProject, type LoadedRepo } from './projects.js';
 import { localOnly } from './security.js';
 import { dirStamp } from './stamps.js';
 import { EditNotFoundError, editProjectYaml, setProjectDescription, setStackDescription } from './projectEdit.js';
@@ -24,8 +24,8 @@ import { aggregate, mergeAggregates } from '../shared/totals.js';
 import { REVIEWER } from './reviewer.js';
 import { AssetError, addAsset, assetFile } from './assets.js';
 import { ASSET_MIME, MAX_ASSET_BYTES, typeOfMime, typeOfName } from '../shared/assets.js';
-import { ExamplesConflictError, addExamples, examplesState, removeExamples } from './examples.js';
-import { renderStackSvg, renderThumbSvg, scopeModel, stackOnlyModel, stackWeights, svgToPng, vizModel, type VizModel, type VizScale, type VizScope } from './stackviz.js';
+import { ExamplesConflictError, addExamples, examplesState, newExamples, removeExamples } from './examples.js';
+import { renderStackSvg, renderThumbSvg, scopeModel, stackOnlyModel, stackWeights, svgToPng, vizModel, withPredecessor, type VizModel, type VizScale, type VizScope } from './stackviz.js';
 import type { PrStatus } from '../shared/readiness.js';
 import { parseStackRef, resolveStackRef } from '../shared/stackRef.js';
 
@@ -192,6 +192,9 @@ async function buildRepoPayload(r: LoadedRepo, withWeights: boolean) {
     from: info.from,
     head: info.head,
     mergeBase: info.mergeBase,
+    // linked projects: the predecessor's range end in this repo, and whether this range starts there
+    after: r.cfg.after ?? null,
+    startsAfter: !!info.startsAfter,
     error: info.error ?? null,
     warnings: r.warnings,
     stacks: weights ? r.stacks.map((g, i) => ({ ...g, weight: weights[i] })) : r.stacks,
@@ -231,6 +234,26 @@ function thumbModel(title: string, repos: RepoPayload[]): VizModel {
 }
 
 const thumbOf = (svg: string) => crypto.createHash('sha1').update(svg).digest('hex').slice(0, 16);
+
+/**
+ * The project's thumbnail SVG. Linked projects: a repo whose range starts where the predecessor's ends shows the
+ * predecessor's stacks first, greyed out (as the stack picture does with ?context=1), so the card shows where it sits.
+ */
+async function thumbSvg(p: LoadedProject, repos: RepoPayload[]): Promise<string> {
+  const m = thumbModel(p.cfg.title, repos);
+  const pred = p.after && p.repos.some((r) => r.info.startsAfter) ? await loadProject(p.after.slug).catch(() => null) : null;
+  if (pred) {
+    const pm = thumbModel(pred.cfg.title, await Promise.all(pred.repos.map((r) => repoPayload(r))));
+    m.repos = m.repos.map((vr, i) => {
+      const r = p.repos[i];
+      if (!r.info.startsAfter) return vr;
+      const j = pred.repos.findIndex((x) => x.cfg.path === r.cfg.path);
+      const theirs = (pm.repos[j >= 0 ? j : pred.repos.findIndex((x) => x.cfg.name === r.cfg.name)]?.stacks ?? []).filter((s) => !s.follow_on && s.prs.length);
+      return { ...vr, stacks: [...theirs.map((s) => ({ ...s, context: true })), ...vr.stacks] };
+    });
+  }
+  return renderThumbSvg(m);
+}
 
 type ActivityKind = 'comment' | 'commit' | 'merged' | 'edit';
 /**
@@ -275,7 +298,7 @@ async function projectSummary(slug: string) {
       );
     }),
   );
-  const thumb = thumbOf(renderThumbSvg(thumbModel(p.cfg.title, repos)));
+  const thumb = thumbOf(await thumbSvg(p, repos));
   const archived = isArchived(p); // everything has landed
   return {
     slug,
@@ -293,6 +316,10 @@ async function projectSummary(slug: string) {
     readiness,
     archived,
     example: !!p.cfg.example,
+    // linked projects: the predecessor's slug (a valid `after:`); `next` (its successors) is filled in by the list
+    after: p.after?.slug ?? null,
+    next: [] as string[],
+    warnings: p.warnings,
     unresolved: repos.reduce((a, r) => a + r.commits.reduce((b, cm) => b + cm.unresolved, 0), 0),
     modified: new Date(projectModified(p.cfg.dir) || 0).toISOString(),
     activity: activityOf(p.cfg.dir, repos, archived),
@@ -302,14 +329,15 @@ async function projectSummary(slug: string) {
 }
 
 app.get('/api/projects', async (c) => {
-  const projects = await Promise.all(listProjectSlugs().map(projectSummary));
-  return c.json({ projectsDir: PROJECTS_DIR, home: os.homedir(), examples: examplesState(), projects: projects.filter(Boolean) });
+  const projects = (await Promise.all(listProjectSlugs().map(projectSummary))).filter((p) => !!p);
+  for (const p of projects) if (p.after) projects.find((x) => x.slug === p.after)?.next.push(p.slug);
+  return c.json({ projectsDir: PROJECTS_DIR, home: os.homedir(), examples: examplesState(), newExamples: newExamples(), projects });
 });
 
 // the root page's card picture: built from the cached sidebar payloads, so it's cheap; revalidated by its hash
 app.get('/api/projects/:project/thumb.svg', async (c) => {
   const p = await getProject(c.req.param('project'));
-  const svg = renderThumbSvg(thumbModel(p.cfg.title, await Promise.all(p.repos.map((r) => repoPayload(r)))));
+  const svg = await thumbSvg(p, await Promise.all(p.repos.map((r) => repoPayload(r))));
   const etag = `"${thumbOf(svg)}"`;
   const headers = { 'Cache-Control': 'no-cache', ETag: etag, 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': VIZ_CSP };
   if (c.req.header('if-none-match') === etag) return c.body(null, 304, headers);
@@ -339,6 +367,10 @@ app.get('/api/projects/:project', async (c) => {
     description: p.cfg.description,
     file: p.cfg.file,
     error: p.cfg.error ?? null,
+    // linked projects: the one this builds on, the ones that build on it, and problems with the link
+    after: p.after,
+    next: successorsOf(p.cfg.slug),
+    warnings: p.warnings,
     repos: await Promise.all(p.repos.map((r) => repoPayload(r, true))),
   });
 });
@@ -419,7 +451,10 @@ function vizOpts(c: Context) {
   const scale: VizScale = c.req.query('scale') === 'linear' ? 'linear' : 'sqrt';
   const t = c.req.query('title');
   const title = !(t === '0' || t === 'false' || t === 'no');
-  return { scope, scale, title };
+  // linked projects: draw the predecessor's stacks too, greyed out, where this project builds on them
+  const x = c.req.query('context');
+  const context = x === '1' || x === 'true' || x === 'yes';
+  return { scope, scale, title, context };
 }
 
 // ---------------- images (assets/) ----------------
@@ -476,8 +511,9 @@ function sendViz(c: Context, svg: string, kind: 'svg' | 'png', name: string) {
 for (const kind of ['svg', 'png'] as const) {
   app.get(`${COMMIT}/stack.${kind}`, async (c) => {
     const { project, repo, commit, index } = await resolveCommit(c);
-    const { scope, scale, title } = vizOpts(c);
-    const model = scopeModel(await vizModel(project, { repo: repo.cfg.name, sha: commit.sha }), scope);
+    const { scope, scale, title, context } = vizOpts(c);
+    const full = await vizModel(project, { repo: repo.cfg.name, sha: commit.sha });
+    const model = scopeModel(context ? await withPredecessor(full, project) : full, scope);
     return sendViz(c, renderStackSvg(model, { scale, title }), kind, `${project.cfg.slug}-${repo.cfg.name}-pr${index + 1}-stack`);
   });
   // one stack, nothing highlighted (the stack page); `ref` as in its URL (shared/stackRef.ts), resolved the same way
@@ -495,7 +531,9 @@ for (const kind of ['svg', 'png'] as const) {
   // the whole project, nothing highlighted (the project homepage)
   app.get(`/api/projects/:project/stack.${kind}`, async (c) => {
     const project = await getProject(c.req.param('project'));
-    return sendViz(c, renderStackSvg(await vizModel(project, null), vizOpts(c)), kind, `${project.cfg.slug}-stacks`);
+    const o = vizOpts(c);
+    const m = await vizModel(project, null);
+    return sendViz(c, renderStackSvg(o.context ? await withPredecessor(m, project) : m, o), kind, `${project.cfg.slug}-stacks`);
   });
 }
 

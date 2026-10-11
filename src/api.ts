@@ -92,6 +92,9 @@ export interface RepoData {
   from: string | null;
   head: string | null;
   mergeBase: string | null;
+  /** linked projects: the predecessor's range end in this repo (null: not shared), and whether this range starts there */
+  after: string | null;
+  startsAfter: boolean;
   error: string | null;
   warnings: string[];
   stacks: StackGroup[];
@@ -106,7 +109,16 @@ export interface ProjectData {
   description: string | null;
   file: string;
   error: string | null;
+  /** linked projects: the project this one builds on (`after:`), the ones that build on it, and link problems */
+  after: ProjectLink | null;
+  next: ProjectLink[];
+  warnings: string[];
   repos: RepoData[];
+}
+
+export interface ProjectLink {
+  slug: string;
+  title: string;
 }
 
 export interface ProjectSummary {
@@ -139,6 +151,11 @@ export interface ProjectSummary {
   activity: { at: string; kind: 'comment' | 'commit' | 'merged' | 'edit' };
   /** the thumbnail's version (a hash of …/thumb.svg) */
   thumb: string;
+  /** linked projects: the predecessor's slug (`after:`, when valid) and the successors' */
+  after: string | null;
+  next: string[];
+  /** project-level problems that aren't errors (a bad `after:`) */
+  warnings: string[];
 }
 
 export interface ProjectsResponse {
@@ -147,6 +164,8 @@ export interface ProjectsResponse {
   home: string;
   /** the example projects: some listed ('present'), removed earlier and restorable ('removed'), or never added */
   examples: 'none' | 'present' | 'removed';
+  /** example projects new in this version, not added yet (the others are there): "Add" creates just these */
+  newExamples?: string[];
   projects: ProjectSummary[];
 }
 

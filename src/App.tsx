@@ -13,7 +13,9 @@ import { TextDraftsProvider, repoAggregate } from './ProjectText';
 import { ExamplesMenuItem, ExamplesStrip, Welcome } from './Welcome';
 import { Projects } from './Projects';
 import { tildify } from '../shared/paths';
-import { HomeContext, ProjectContext, hashString, isTyping, linkTo, navigate, projectUrl, relativeTime, routeUrl, useLocalStorage, useRoute, useTick, useTilde, type Route } from './util';
+import { chainGroups } from '../shared/chains';
+import { LINK_ICON } from './Projects';
+import { HomeContext, LinksContext, ProjectContext, hashString, isTyping, linkTo, navigate, projectUrl, relativeTime, routeUrl, useLocalStorage, useRoute, useTick, useTilde, type Route } from './util';
 
 // The first screen's data, asked for all at once as the page loads, rather than each request waiting for the one
 // before it (the reviewer, the project list, the project, the PR): App takes these promises on its first refresh.
@@ -172,6 +174,8 @@ export function App() {
   );
 
   const tilde = (s: string) => tildify(s, list?.home);
+  // linked projects (`after:`): what the breadcrumbs, the project page's bar and the stack pictures need
+  const links = useMemo(() => ({ after: project?.after ?? null, next: project?.next ?? [], buildsOn: !!project?.repos.some((r) => r.startsAfter) }), [project]);
   const isExample = !!list?.projects.find((p) => p.slug === activeSlug)?.example;
   const exampleCount = list?.projects.filter((p) => p.example).length ?? 0;
   const examplesAdded = (slug: string) => {
@@ -210,6 +214,7 @@ export function App() {
             {isExample && <ExamplesStrip count={exampleCount} onRemoved={examplesRemoved} />}
             {loadError && <div className="flash flash-error">{tilde(loadError)}</div>}
             {project?.error && <div className="flash flash-error">{tilde(project.error)}</div>}
+            {project && project.warnings.length > 0 && <div className="flash flash-warn sidebar-flash" role="status">{project.warnings.map((w, i) => <div key={i}>⚠ {tilde(w)}</div>)}</div>}
             {!project && !loadError && list && list.projects.length > 0 && <div className="loading">Loading project…</div>}
             {list && list.projects.length === 0 && (
               <div className="sidebar-empty">No projects yet.</div>
@@ -226,6 +231,22 @@ export function App() {
                 <span className="sidebar-project-title">{project.title}</span>
                 <span className="sidebar-project-hint">Project page</span>
               </a>
+            )}
+            {project && (project.after || project.next.length > 0) && (
+              <div className="sidebar-links">
+                {project.after && (
+                  <a href={projectUrl(project.after.slug)} onClick={linkTo(projectUrl(project.after.slug))} title={`${project.title} builds on ${project.after.title} (project.yaml after:)`}>
+                    <svg className="octicon" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d={LINK_ICON} /></svg>
+                    <span className="muted">Builds on</span> <span className="sidebar-links-title">{project.after.title}</span>
+                  </a>
+                )}
+                {project.next.map((n) => (
+                  <a key={n.slug} href={projectUrl(n.slug)} onClick={linkTo(projectUrl(n.slug))} title={`${n.title} builds on ${project.title}`}>
+                    <svg className="octicon" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d={LINK_ICON} /></svg>
+                    <span className="muted">Next</span> <span className="sidebar-links-title">{n.title}</span> →
+                  </a>
+                ))}
+              </div>
             )}
             {project && project.repos.length === 0 && !project.error && <div className="sidebar-empty">No repos in <code>{tilde(project.file)}</code>.</div>}
             {project?.repos.map((r) => (
@@ -245,11 +266,12 @@ export function App() {
         )}
         <main className="main">
           <ProjectContext.Provider value={project?.slug ?? null}>
+          <LinksContext.Provider value={links}>
           <TextDraftsProvider refresh={refreshAll}>
           {held && project ? (
             <div aria-busy="true">
               <TopProgress />
-              {held.stack !== null && heldRepo ? <StackPage project={project} repo={heldRepo} route={held} version={vizVersion} /> : <ProjectHome project={project} route={held} version={vizVersion} />}
+              {held.stack !== null && heldRepo ? <StackPage project={project} repo={heldRepo} route={held} version={vizVersion} /> : <ProjectHome project={project} route={held} version={vizVersion} summaries={list?.projects} />}
             </div>
           ) : onCommit ? (
             <CommitPage
@@ -266,7 +288,7 @@ export function App() {
           ) : onStack ? (
             <StackPage project={project} repo={repoData} route={route} version={vizVersion} />
           ) : onProjectPage ? (
-            <ProjectHome project={project} route={route} version={vizVersion} />
+            <ProjectHome project={project} route={route} version={vizVersion} summaries={list?.projects} />
           ) : unknownProject ? (
             <div className="page blankslate">
               No project or repo named <code>{route.parts[0]}</code>.{' '}
@@ -282,6 +304,7 @@ export function App() {
             <div className="page loading">Loading…</div>
           )}
           </TextDraftsProvider>
+          </LinksContext.Provider>
           </ProjectContext.Provider>
         </main>
       </div>
@@ -311,13 +334,15 @@ function ProjectSwitcher({ list, current, title, onExamplesAdded, onExamplesRemo
         {title}
       </a>
     );
-  const sorted = list.projects.slice().sort((a, b) => b.activity.at.localeCompare(a.activity.at));
+  // linked projects stay together, each successor right after the one it builds on (indented)
+  const sorted = chainGroups(list.projects.slice().sort((a, b) => b.activity.at.localeCompare(a.activity.at))).flat();
   // archived projects (everything landed) go in their own section, collapsed unless the open one is archived
   const active = sorted.filter((p) => !p.archived);
   const archived = sorted.filter((p) => p.archived);
   const showArchived = archivedOpen || archived.some((p) => p.slug === current);
+  const linked = (p: ProjectSummary) => !!p.after && list.projects.some((x) => x.slug === p.after);
   const item = (p: ProjectSummary) => (
-    <li key={p.slug}>
+    <li key={p.slug} className={linked(p) ? 'is-successor' : ''}>
       <a
         href={`/${encodeURIComponent(p.slug)}`}
         role="option"
@@ -325,7 +350,10 @@ function ProjectSwitcher({ list, current, title, onExamplesAdded, onExamplesRemo
         className={`${p.slug === current ? 'current' : ''} ${p.archived ? 'is-archived' : ''}`}
         onClick={(e) => { e.preventDefault(); setOpen(false); navigate(`/${encodeURIComponent(p.slug)}`); }}
       >
-        <span className="project-menu-title">{p.title}{p.example && <span className="example-tag">Example</span>}</span>
+        <span className="project-menu-title">
+          {linked(p) && <span className="project-menu-after" title={`Builds on ${list.projects.find((x) => x.slug === p.after)?.title}`}>↳ </span>}
+          {p.title}{p.example && <span className="example-tag">Example</span>}
+        </span>
         <span className="project-menu-meta">
           {p.repoCount} repo{p.repoCount === 1 ? '' : 's'} · {p.archived ? <span className="merged-note">{p.mergedCount} merged</span> : <>{p.commitCount} commit{p.commitCount === 1 ? '' : 's'}</>}
           {p.followOnCount > 0 && <span className="follow-on-note"> +{p.followOnCount} follow-on</span>}
@@ -392,7 +420,7 @@ function RepoSection({ project, repo: r, route, closed, toggle }: { project: Pro
     <section className={`repo ${closed ? 'closed' : ''} ${r.error ? 'has-error' : ''}`}>
       <button
         className="repo-heading"
-        title={`${tilde(r.path)}\nrange end: ${r.end || '(none: all landed)'}\n${r.from ? `from: ${r.from}` : `base: ${r.base ?? '?'}`}${merged ? `\n${merged} landed (merged) PR${merged === 1 ? '' : 's'}` : ''}${closed ? '\n(click to expand)' : ''}`}
+        title={`${tilde(r.path)}\nrange end: ${r.end || '(none: all landed)'}\n${r.from ? `from: ${r.from}` : r.startsAfter ? `starts after: ${r.after} (${project.after?.title ?? 'the project it builds on'}); base: ${r.base ?? '?'}` : `base: ${r.base ?? '?'}`}${merged ? `\n${merged} landed (merged) PR${merged === 1 ? '' : 's'}` : ''}${closed ? '\n(click to expand)' : ''}`}
         aria-expanded={!closed}
         onClick={toggle}
       >

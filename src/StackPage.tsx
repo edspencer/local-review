@@ -160,7 +160,7 @@ function StackMeta({ repo, group: g, commits }: { repo: RepoData; group: StackGr
   // what the stack sits on: the branch of the commit before it (stacked), else the repo's base; and its top branch
   const first = commits.length ? repo.commits.findIndex((c) => c.sha === commits[0].sha) : -1;
   const below = first > 0 ? repo.commits[first - 1] : null;
-  const base = below ? below.branch?.name ?? below.short : repo.base ?? repo.from;
+  const base = below ? below.branch?.name ?? below.short : repo.startsAfter && repo.after ? repo.after : repo.base ?? repo.from;
   const top = commits[commits.length - 1];
   const head = top ? top.branch?.name ?? top.short : null;
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;

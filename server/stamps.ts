@@ -32,7 +32,7 @@ export function trustPolled(ms: number) {
   trustMs = ms;
 }
 
-const rangeKey = (cfg: RepoRange) => [cfg.path, rangeEnd(cfg), cfg.from ?? '', cfg.base ?? ''].join('\0');
+const rangeKey = (cfg: RepoRange) => [cfg.path, rangeEnd(cfg), cfg.from ?? '', cfg.base ?? '', cfg.after ?? ''].join('\0');
 
 async function readState(cfg: RepoRange): Promise<RepoState> {
   const at = Date.now();

@@ -11,7 +11,7 @@ import { reconcileBranch } from './branches.js';
 import { filesOf } from './commits.js';
 import { inspectOrphan, liveCommits } from './context.js';
 import { loadPrs } from './prs.js';
-import { FOLLOW_ON_COLOR, type LoadedProject, type LoadedRepo } from './projects.js';
+import { FOLLOW_ON_COLOR, loadProject, type LoadedProject, type LoadedRepo } from './projects.js';
 import { repoLabel } from '../shared/repoLabel.js';
 import { aggregate, num, plural, summary } from '../shared/totals.js';
 import type { PrStatus } from '../shared/readiness.js';
@@ -37,6 +37,7 @@ export interface VizStack {
   color: string; // a palette name or #hex
   implicit?: 'unstacked' | 'branch';
   follow_on?: boolean; // parked work: drawn muted, with a "follow-on" tag
+  context?: boolean; // linked projects: one of the predecessor's stacks, for context: greyed out, left out of every total
   prs: VizPr[];
 }
 export interface VizRepo {
@@ -143,6 +144,28 @@ export async function vizModel(project: LoadedProject, current?: { repo: string;
     }),
   );
   return { title: project.cfg.title, repos, current: current ?? null };
+}
+
+/**
+ * Linked projects: `m` (the successor's picture) with the predecessor's stacks drawn first, greyed out, in each repo
+ * whose range starts where the predecessor's ends (`context: true`: left out of every total). Its follow-on stacks
+ * are left out: nothing builds on held-back work. No predecessor, or no such repo: `m` as it was.
+ */
+export async function withPredecessor(m: VizModel, project: LoadedProject): Promise<VizModel> {
+  if (!project.after || !project.repos.some((r) => r.info.startsAfter)) return m;
+  const pred = await loadProject(project.after.slug);
+  if (!pred) return m;
+  const pm = await vizModel(pred, null);
+  return {
+    ...m,
+    repos: m.repos.map((vr) => {
+      const r = project.repos.find((x) => x.cfg.name === vr.name);
+      if (!r?.info.startsAfter) return vr;
+      const i = pred.repos.findIndex((x) => x.cfg.path === r.cfg.path);
+      const theirs = (pm.repos[i >= 0 ? i : pred.repos.findIndex((x) => x.cfg.name === r.cfg.name)]?.stacks ?? []).filter((s) => !s.follow_on && s.prs.length);
+      return { ...vr, stacks: [...theirs.map((s) => ({ ...s, context: true, label: `${pred.cfg.title} · ${s.label}` })), ...vr.stacks] };
+    }),
+  };
 }
 
 /** Each stack's weight (PRs, distinct files, +/−), by index into `r.stacks`, as in the picture. */
@@ -319,6 +342,8 @@ const MARKER = '◀ this PR';
 const FOLLOW_ON_TAG = 'follow-on';
 // the border, weight and rows of a follow-on stack; its label and tag stay at full strength. As the sidebar's rows.
 const FOLLOW_ON_OPACITY = 0.72;
+// a predecessor's stack, drawn for context above the successor's own (linked projects): grey and faint
+const CONTEXT_OPACITY = 0.5;
 
 export interface RenderOpts {
   scale?: VizScale;
@@ -331,6 +356,7 @@ export function renderStackSvg(m: VizModel, opts: RenderOpts = {}): string {
   const out: string[] = [];
   let clip = 0;
   const all = m.repos.flatMap((r) => r.stacks.map((s) => ({ r, s, t: stackTotals(s.prs) })));
+  const own = all.filter((x) => !x.s.context); // the predecessor's stacks (context) count toward nothing
   // one scale for every bar in the image: the heaviest stack is the full width
   const max = Math.max(1, ...all.map((x) => x.t.additions + x.t.deletions));
   // the header totals leave follow-on stacks out (shared/totals.ts, as in the UI)
@@ -343,7 +369,7 @@ export function renderStackSvg(m: VizModel, opts: RenderOpts = {}): string {
     const t = [x.note, x.merged].filter(Boolean).join(' · ');
     return t ? { text: t, fill: x.note ? C.foFg : C.merged } : null;
   };
-  const grand = summary(aggregate(all.map((x) => statOf(x.s, x.t))), m.repos.length);
+  const grand = summary(aggregate(own.map((x) => statOf(x.s, x.t))), m.repos.length);
   // once any PR has a branch or a GitHub number, every row gets a second line for them (the sha moves there)
   const twoLine = all.some((x) => x.s.prs.some((p) => p.branch || p.pr));
   const rowH = twoLine ? ROW2 : ROW;
@@ -392,7 +418,7 @@ export function renderStackSvg(m: VizModel, opts: RenderOpts = {}): string {
     // ---- repo heading: name · branch pill, its totals on the right
     y += 30;
     // "11 PRs  +3,374 −140 · +1 follow-on stack (2 PRs)", right-aligned
-    const rt = summary(aggregate(repo.stacks.map((s) => statOf(s, stackTotals(s.prs)))));
+    const rt = summary(aggregate(repo.stacks.filter((s) => !s.context).map((s) => statOf(s, stackTotals(s.prs)))));
     const rn = sideNote(rt);
     const right = rt.counts;
     const DOT_GAP = 14; // "·" centred between the − number and the note
@@ -441,13 +467,14 @@ export function renderStackSvg(m: VizModel, opts: RenderOpts = {}): string {
       // ---- one stack: a coloured rounded border with the title inset on its top line
       const t = stackTotals(s.prs);
       // follow-on stacks are always yellow, whatever their colour says: a darker yellow for the label text
-      const color = s.follow_on ? C.foBorder : s.implicit === 'unstacked' ? STACK_HEX.gray : hex(s.color);
+      const color = s.context ? C.faint : s.follow_on ? C.foBorder : s.implicit === 'unstacked' ? STACK_HEX.gray : hex(s.color);
       const labelColor = s.follow_on ? C.foFg : color;
       const here = s.prs.some((p) => isCurrent(m, repo.name, p.sha));
       const top = y + 16;
       const bottom = top + 12 + s.prs.length * rowH + 8;
       // follow-on (held back): the stack faded a little; its label and tag (drawn after the rows) at full strength
       if (s.follow_on) out.push(`<g opacity="${FOLLOW_ON_OPACITY}">`);
+      if (s.context) out.push(`<g opacity="${CONTEXT_OPACITY}">`); // the predecessor's: everything, label included
       out.push(
         `<rect x="${BOX_L}" y="${top}" width="${BOX_R - BOX_L}" height="${bottom - top}" rx="9" fill="${here ? color : 'none'}" fill-opacity="${here ? 0.045 : 0}" stroke="${color}" stroke-width="${here ? 2.5 : 1.75}"${s.implicit === 'unstacked' ? ' stroke-dasharray="5 4"' : ''}/>`,
       );
@@ -489,7 +516,7 @@ export function renderStackSvg(m: VizModel, opts: RenderOpts = {}): string {
         out.push(
           `<circle cx="${NUM_X}" cy="${cy}" r="10.5" fill="${cur ? C.plum : p.merged ? C.merged : C.track}"/>`,
           cur && p.merged ? `<circle cx="${NUM_X}" cy="${cy}" r="12" fill="none" stroke="${C.merged}" stroke-width="1.5"/>` : '',
-          text(NUM_X, cy + 4, String(p.position), { face: 'semibold', size: p.position >= 100 ? 9 : 11, fill: cur || p.merged ? '#fff' : C.muted, anchor: 'middle' }),
+          text(NUM_X, cy + 4, s.context ? '' : String(p.position), { face: 'semibold', size: p.position >= 100 ? 9 : 11, fill: cur || p.merged ? '#fff' : C.muted, anchor: 'middle' }),
         );
         const markerW = cur ? textWidth(MARKER, 'bold', 12) + 10 : 0;
         const face: Face = cur ? 'semibold' : 'regular';
@@ -518,6 +545,7 @@ export function renderStackSvg(m: VizModel, opts: RenderOpts = {}): string {
         cy += rowH;
       }
       if (s.follow_on) out.push('</g>', ...labelSvg);
+      if (s.context) out.push('</g>');
       y = bottom;
     }
   }
@@ -599,7 +627,7 @@ export function renderThumbSvg(m: VizModel, opts: ThumbOpts = {}): string {
   );
   const laneH = lanes.length ? Math.min(34, (H - 2 * THUMB_PAD_Y - moreH) / lanes.length - THUMB_LABEL - 4) : 0;
   const max = Math.max(1, ...m.repos.flatMap((r) => r.stacks.flatMap((s) => s.prs.map((p) => p.additions + p.deletions))));
-  const colorKey = (s: VizStack) => (s.follow_on ? 'yellow' : s.implicit === 'unstacked' ? 'gray' : s.color);
+  const colorKey = (s: VizStack) => (s.context ? 'gray' : s.follow_on ? 'yellow' : s.implicit === 'unstacked' ? 'gray' : s.color);
   const keys = new Set<string>();
   let hatch = 0;
   // the lanes, centred vertically so a small project doesn't hug the top
@@ -621,7 +649,8 @@ export function renderThumbSvg(m: VizModel, opts: ThumbOpts = {}): string {
       const cls = custom ? '' : ` class="s-${STACK_HEX[key] ? key : 'gray'}"`;
       const paint = (attr: 'fill' | 'stroke') => (custom ? ` ${attr}="${key}"` : '');
       const w = s.prs.length * unit;
-      out.push(`<g${cls}>`);
+      // the predecessor's stacks (linked projects): grey and faint, at the start of the lane, where this one builds on them
+      out.push(`<g${cls}${s.context ? ' opacity="0.45"' : ''}>`);
       if (s.follow_on) {
         // parked work: yellow hatching under a dashed yellow border, as in the sidebar
         const id = `h${++hatch}`;
@@ -641,7 +670,7 @@ export function renderThumbSvg(m: VizModel, opts: ThumbOpts = {}): string {
         const bw = unit - Math.min(2, unit * 0.25);
         s.prs.forEach((p, i) => {
           const h = thumbHeight(p.additions + p.deletions, max) * laneH;
-          const status: PrStatus = p.status ?? (p.merged ? 'merged' : 'draft');
+          const status: PrStatus = s.context ? 'ready' : (p.status ?? (p.merged ? 'merged' : 'draft'));
           const bx = x + i * unit;
           const by = y + laneH - h;
           if (status === 'merged') out.push(`<rect x="${r1(bx)}" y="${r1(by)}" width="${r1(bw)}" height="${r1(h)}" rx="${r1(Math.min(1.5, bw / 3))}" class="t-merged"/>`);

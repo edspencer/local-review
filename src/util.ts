@@ -152,6 +152,19 @@ export function hashString(s: string): string {
 /** The project being shown: Markdown resolves `assets/<name>` images against it, and editors upload to it. */
 export const ProjectContext = createContext<string | null>(null);
 
+// ---------- linked projects ----------
+/**
+ * The project on screen's links (project.yaml `after:`): the project it builds on, the ones that build on it, and
+ * whether any of its repos starts where the predecessor's range ends (then the stack picture can show that one's
+ * stacks too, greyed out).
+ */
+export interface ProjectLinks {
+  after: { slug: string; title: string } | null;
+  next: { slug: string; title: string }[];
+  buildsOn: boolean;
+}
+export const LinksContext = createContext<ProjectLinks>({ after: null, next: [], buildsOn: false });
+
 // ---------- paths ----------
 /** The server's home directory (from /api/projects), so paths under it can be shown as `~/…`. */
 export const HomeContext = createContext<string | null>(null);

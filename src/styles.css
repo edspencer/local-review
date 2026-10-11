@@ -946,7 +946,8 @@ a.header-project:hover { color: #f6d29b; }
 .crumbs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: -6px 0 10px; font-size: 12px; color: var(--fg-muted); min-width: 0; }
 .crumbs a { color: var(--fg-muted); text-decoration: none; }
 .crumbs a:hover { color: var(--accent); text-decoration: underline; }
-.crumbs > a:first-child { font-weight: 600; color: var(--plum-2); }
+.crumbs > a.crumbs-project { font-weight: 600; color: var(--plum-2); }
+.crumbs > a.crumbs-after { color: var(--fg-muted); }
 .crumbs-sep { color: var(--border); font-size: 14px; line-height: 1; }
 .crumbs-dot { color: var(--fg-muted); }
 .crumbs-repo { font-weight: 600; color: var(--fg); }
@@ -1330,3 +1331,32 @@ a.header-project:hover { color: #f6d29b; }
 @media (prefers-color-scheme: dark) {
   .project-card:hover { box-shadow: 0 3px 14px rgba(1, 4, 9, 0.7); border-color: #b0629f; }
 }
+
+/* ---------- linked projects (project.yaml `after:`) ---------- */
+/* the root page: a chain spans the row, its cards in order with an arrow from each to the next */
+.project-chain { grid-column: 1 / -1; padding: 10px 14px 14px; border: 1px solid color-mix(in srgb, var(--plum-2) 30%, var(--border)); border-radius: 12px; background: color-mix(in srgb, var(--plum-2) 5%, var(--bg)); }
+.project-chain-head { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--plum-2); }
+.project-chain-head .octicon { fill: currentColor; flex: none; }
+.project-chain-head .muted { font-weight: 400; }
+.project-chain-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px 30px; margin: 0; padding: 0; list-style: none; }
+.project-chain-step { position: relative; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.project-chain-step + .project-chain-step::before { content: '→'; position: absolute; left: -23px; top: 45%; font-size: 18px; font-weight: 700; color: var(--plum-2); }
+.project-chain-step-label { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.project-chain-step-label strong { color: var(--fg); text-transform: none; letter-spacing: 0; }
+.project-chain-step .project-card { flex: 1; }
+/* the project page: ← Builds on … · Next: … → */
+.linked-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: -4px 0 14px; padding: 7px 12px; border: 1px solid color-mix(in srgb, var(--plum-2) 30%, var(--border)); border-radius: var(--radius); background: color-mix(in srgb, var(--plum-2) 5%, var(--bg)); font-size: 13px; }
+.linked-bar a { display: inline-flex; align-items: center; gap: 6px; color: var(--fg); text-decoration: none; }
+.linked-bar a:hover strong { color: var(--accent); text-decoration: underline; }
+.linked-bar-tally { display: inline-flex; gap: 6px; font-size: 12px; color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+.linked-bar-tally > span { display: inline-flex; align-items: center; gap: 2px; }
+/* the sidebar: under the project link */
+.sidebar-links { display: flex; flex-direction: column; gap: 2px; margin: -6px 8px 12px; }
+.sidebar-links a { display: flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: var(--radius); font-size: 12px; color: var(--fg); text-decoration: none; min-width: 0; }
+.sidebar-links a:hover { background: var(--bg-subtle); }
+.sidebar-links .octicon { fill: var(--plum-2); flex: none; }
+.sidebar-links-title { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-flash { margin: 0 8px 10px; font-size: 12px; }
+/* the switcher: a successor indented under the project it builds on */
+.project-menu li.is-successor a { padding-left: 22px; }
+.project-menu-after { color: var(--plum-2); font-weight: 700; }

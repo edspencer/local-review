@@ -86,6 +86,15 @@ export function examplesState(): ExamplesState {
   return 'none';
 }
 
+/**
+ * Example projects this version ships that aren't in the list yet and weren't removed: new in an update (a fresh
+ * install has all or none). Adding the examples again creates just these, leaving the others as they are.
+ */
+export function newExamples(): string[] {
+  if (examplesState() !== 'present') return [];
+  return EXAMPLE_SLUGS.filter((s) => !fs.existsSync(yamlOf(s)) && !removedCopies(s).length);
+}
+
 function world(): Repos {
   return { api: buildApi(), sdk: buildSdk(), web: buildWeb(), infra: buildInfra() };
 }
