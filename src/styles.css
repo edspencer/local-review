@@ -77,6 +77,35 @@ button { font-family: inherit; }
   color: #fff;
   border-bottom: 3px solid #e8a33d;
 }
+/* while the next PR loads (TopProgress.tsx): a thin amber bar along the top of the window, over the plum header
+   (or the page, scrolled down), never a blank page. It waits a moment first, so a quick load shows nothing at all. */
+.top-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 1000;
+  pointer-events: none;
+}
+.top-progress::before {
+  content: '';
+  display: block;
+  height: 100%;
+  width: 0;
+  background: #e8a33d;
+  box-shadow: 0 0 8px rgba(232, 163, 61, 0.7);
+  border-radius: 0 2px 2px 0;
+  animation: top-progress 6s cubic-bezier(0.08, 0.75, 0.2, 1) 120ms forwards;
+}
+@keyframes top-progress {
+  from { width: 0; }
+  to { width: 92%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .top-progress::before { animation: top-progress-still 0s 120ms forwards; }
+  @keyframes top-progress-still { to { width: 100%; opacity: 0.8; } }
+}
 .header-btn {
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.3);

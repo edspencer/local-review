@@ -33,7 +33,7 @@ const BASE_ARGS = [
 ];
 
 // Options that make otherwise read-only commands write files or run external programs.
-const FORBIDDEN_ARG = /^--(output|output-directory|no-index|ext-diff|textconv|exec|upload-pack|receive-pack)(=|$)/;
+const FORBIDDEN_ARG = /^--(output|output-directory|no-index|ext-diff|textconv|filters|exec|upload-pack|receive-pack)(=|$)/;
 
 export class GitError extends Error {
   constructor(message: string, public stderr = '') {
@@ -81,17 +81,22 @@ export function gitBuffer(repo: string, args: string[]): Promise<Buffer> {
   });
 }
 
-/** Pipe `input` to a read-only git command's stdin (used for `git patch-id`). */
-export function gitWithInput(repo: string, args: string[], input: string): Promise<string> {
+/** Pipe `input` to a read-only git command's stdin (`git patch-id`, `git cat-file --batch-check`). */
+export async function gitWithInput(repo: string, args: string[], input: string): Promise<string> {
+  return (await gitBufferWithInput(repo, args, input)).toString('utf8');
+}
+
+/** Like gitWithInput() but returns a Buffer (`git cat-file --batch`: blobs that may be binary). */
+export function gitBufferWithInput(repo: string, args: string[], input: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const argv = check(repo, args); // a throw here rejects the promise
     const child = spawn('git', argv, { env: ENV, stdio: ['pipe', 'pipe', 'pipe'] });
-    let out = '';
+    const out: Buffer[] = [];
     let err = '';
-    child.stdout.setEncoding('utf8').on('data', (d) => (out += d));
+    child.stdout.on('data', (d: Buffer) => out.push(d));
     child.stderr.setEncoding('utf8').on('data', (d) => (err += d));
     child.on('error', reject);
-    child.on('close', (code) => (code === 0 ? resolve(out) : reject(new GitError(`git ${args[0]} failed: ${err.trim()}`))));
+    child.on('close', (code) => (code === 0 ? resolve(Buffer.concat(out)) : reject(new GitError(`git ${args[0]} failed: ${err.trim()}`))));
     child.stdin.on('error', () => {});
     child.stdin.end(input);
   });

@@ -6,6 +6,7 @@ import { repoLabel } from '../shared/repoLabel';
 import { mergeAggregates, summary } from '../shared/totals';
 import { ImageActions, useCopyImage } from './StackTab';
 import { navigate, routeUrl, useTilde } from './util';
+import { hoverPrefetch } from './commitCache';
 
 // as in the sidebar (App's stackLabel; not imported from App, which imports this file)
 const stackLabel = (g: StackGroup) => (g.number !== null && !g.implicit ? `Stack ${g.number} · ${g.title}` : g.title);
@@ -71,7 +72,7 @@ export function ProjectHome({ project, version }: { project: ProjectData; versio
                     <ol>
                       {g.shas.map((s) => r.commits.find((c) => c.sha === s)).filter((c) => !!c).map((c) => (
                         <li key={c.sha}>
-                          <a href={routeUrl(project.slug, r.name, c.short)} onClick={go(r.name, c.short)}>
+                          <a href={routeUrl(project.slug, r.name, c.short)} onClick={go(r.name, c.short)} {...hoverPrefetch({ project: project.slug, repo: r.name }, c.short)}>
                             <span className="commit-num">{c.position}</span> {c.title} <ReadinessBadge status={c.status} progress={c.progress} github={c.github} size={14} />
                           </a>
                         </li>

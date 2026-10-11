@@ -50,9 +50,10 @@ differently.)
 
 Nothing needs a restart:
 
-- branch heads are polled every 3 seconds, so a new commit, an amend or a rebase shows up on its own;
-- every file under `~/.local-review/projects/` is re-read on each request and watched, and edits push a refresh to the
-  browser.
+- each repo's branches (its range end, its base and every other branch) are polled every 2 seconds, so a new commit, an
+  amend, a rebase, the base moving or a new branch shows up on its own;
+- every file under `~/.local-review/projects/` is watched, and edits push a refresh to the browser. What the server
+  works out from them is kept only while the files are unchanged, so the next request always reads an edit.
 
 A missing repo or branch shows as an error in the sidebar (a missing branch isn't one in a repo with landed PRs), and
 stack problems as a warning. See [Errors and warnings](/reference/project-yaml/#errors-and-warnings).

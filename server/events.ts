@@ -3,8 +3,8 @@ import path from 'node:path';
 import { watch } from 'chokidar';
 import { BACKUPS_DIR, PROJECTS_DIR } from './config.js';
 import { startSnapshots } from './backups.js';
-import { headOf } from './commits.js';
 import { listProjectSlugs, loadProjectConfig } from './projects.js';
+import { repoState, trustPolled } from './stamps.js';
 
 export type ServerEvent =
   | { type: 'review'; project: string; repo: string; sha: string }
@@ -72,19 +72,37 @@ export function startWatchers() {
     .on('unlinkDir', onPath)
     .on('error', (err) => console.error('[watch projects]', err));
 
-  // poll range ends (branch heads) so new / amended / rebased commits show up
-  const heads = new Map<string, string | null>();
-  const poll = async () => {
-    for (const slug of listProjectSlugs()) {
-      const cfg = loadProjectConfig(slug);
-      for (const r of cfg?.repos ?? []) {
-        const key = `${slug}\0${r.name}\0${r.path}\0${r.to ?? r.branch}`;
-        const h = await headOf(r);
-        if (heads.has(key) && heads.get(key) !== h) emit({ type: 'project', project: slug, reason: 'head', repo: r.name });
-        heads.set(key, h);
-      }
+  // poll each range's git state (stamps.ts: its end, base and branches) so new / amended / rebased commits, a moved
+  // base and new branch tags show up; requests use what the poll read (trustPolled) rather than asking git again
+  const seen = new Map<string, { stamp: string; head: string | null }>();
+  const poll = () =>
+    Promise.all(
+      listProjectSlugs().flatMap((slug) =>
+        (loadProjectConfig(slug)?.repos ?? []).map(async (r) => {
+          const key = `${slug}\0${r.name}\0${r.path}\0${r.to ?? r.branch}\0${r.from ?? ''}\0${r.base ?? ''}`;
+          const s = await repoState(r, { fresh: true });
+          const was = seen.get(key);
+          if (was && was.stamp !== s.stamp) emit({ type: 'project', project: slug, reason: was.head !== s.refs.head ? 'head' : 'refs', repo: r.name });
+          seen.set(key, { stamp: s.stamp, head: s.refs.head });
+        }),
+      ),
+    );
+  let polling = false;
+  const tick = async () => {
+    if (polling) return; // a slow round (many repos) doesn't stack up
+    polling = true;
+    try {
+      await poll();
+    } catch {
+      /* next round */
+    } finally {
+      polling = false;
     }
   };
-  poll().catch(() => {});
-  setInterval(() => poll().catch(() => {}), 3000).unref();
+  tick();
+  setInterval(tick, POLL_MS).unref();
+  // a poll round can be late or slow; past this, a request reads git itself
+  trustPolled(POLL_MS * 2 + 1000);
 }
+
+const POLL_MS = 2000;
