@@ -348,8 +348,9 @@ button { font-family: inherit; }
 .commit-branch.is-missing .mid-trunc-head, .commit-branch.is-missing .mid-trunc-tail { text-decoration: line-through; }
 .commit-counts { flex: none; display: inline-flex; gap: 6px; margin-left: auto; padding-left: 4px; }
 .mid-trunc { display: inline-flex; min-width: 0; max-width: 100%; white-space: nowrap; }
-.mid-trunc-head { min-width: 1.5em; overflow: hidden; text-overflow: ellipsis; }
-.mid-trunc-tail { flex: none; }
+.mid-trunc-head { flex-shrink: 1000; min-width: 1.5em; overflow: hidden; text-overflow: ellipsis; }
+/* the tail gives way only once the head is down to its minimum (a narrow sidebar): clipped, never overlapping */
+.mid-trunc-tail { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .branch-status { flex: none; display: inline-flex; color: var(--attention); }
 .branch-status-missing { color: var(--fg-muted); }
 /* GitHub's PR number, small and muted, linking out */
@@ -1360,3 +1361,56 @@ a.header-project:hover { color: #f6d29b; }
 /* the switcher: a successor indented under the project it builds on */
 .project-menu li.is-successor a { padding-left: 22px; }
 .project-menu-after { color: var(--plum-2); font-weight: 700; }
+
+/* ---------- the sidebar's resize handle (SidebarResizer in App.tsx): on its right border, the height of the window ---------- */
+.sidebar-resizer {
+  flex: none;
+  position: sticky;
+  top: 0;
+  width: 0;
+  height: 100vh;
+  z-index: 20;
+}
+/* the hit area: 9px, centred on the sidebar's border (most of it over the page's own padding) */
+.sidebar-resizer-hit {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  width: 9px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+/* the line, drawn over the sidebar's border: accent-coloured on hover, while dragging and when focused */
+.sidebar-resizer-hit::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 3px;
+  background: transparent;
+  transition: background-color 0.12s ease 0.05s;
+}
+/* the grip: a small pill halfway down, there all the time so the edge reads as draggable */
+.sidebar-resizer-hit::after {
+  content: '';
+  position: absolute;
+  top: calc(50% - 16px);
+  left: 3px;
+  width: 3px;
+  height: 32px;
+  border-radius: 2px;
+  background: var(--border);
+}
+.sidebar-resizer-hit:hover::before,
+.sidebar-resizer-hit:focus-visible::before,
+.sidebar-resizer.is-dragging .sidebar-resizer-hit::before { background: var(--accent); }
+.sidebar-resizer-hit:hover::after,
+.sidebar-resizer-hit:focus-visible::after,
+.sidebar-resizer.is-dragging .sidebar-resizer-hit::after { background: var(--accent); }
+/* while dragging: no text selection anywhere (the diff's shadow DOM inherits it), and the cursor stays put */
+body.is-resizing-sidebar { user-select: none; -webkit-user-select: none; cursor: col-resize; }
+body.is-resizing-sidebar * { cursor: col-resize !important; }
+
