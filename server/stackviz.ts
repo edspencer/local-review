@@ -14,6 +14,7 @@ import { loadPrs } from './prs.js';
 import { FOLLOW_ON_COLOR, type LoadedProject, type LoadedRepo } from './projects.js';
 import { repoLabel } from '../shared/repoLabel.js';
 import { aggregate, num, plural, summary } from '../shared/totals.js';
+import type { PrStatus } from '../shared/readiness.js';
 
 // ---------------------------------------------------------------- model
 export interface VizPr {
@@ -29,6 +30,7 @@ export interface VizPr {
   branchMissing?: boolean; // recorded, but no longer in git: drawn struck through
   pr?: number | null; // the GitHub PR number, if it has been published
   merged?: boolean; // landed on GitHub (prs/ `landed:`): a purple number, left out of the totals
+  status?: PrStatus; // draft / ready / published / merged: the thumbnail's fill (renderThumbSvg)
 }
 export interface VizStack {
   label: string; // "Stack 1 · Groundwork", or "Unstacked"
@@ -533,6 +535,140 @@ export function renderStackSvg(m: VizModel, opts: RenderOpts = {}): string {
     `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${height}" viewBox="0 0 ${WIDTH} ${height}">`,
     `<rect width="100%" height="100%" fill="#ffffff"/>`,
     ...out.filter(Boolean),
+    `</svg>`,
+  ].join('\n');
+}
+
+// ---------------------------------------------------------------- thumbnail (the root page's project cards)
+// A compact picture of a project's shape, legible at about 280×150 however big the project is: one lane per repo,
+// one outlined box per stack (left to right, in its colour), one bar per PR inside it. A bar's width is one unit,
+// the same in every lane, so a 1-PR repo is visibly short beside an 11-PR one; its height is the PR's lines changed
+// on a log scale (√ let one huge PR flatten the rest); its fill is the PR's readiness. No titles: the card has them.
+// Drawn for an <img>, so it follows the page's light or dark mode through its own <style>.
+export const THUMB_W = 280;
+export const THUMB_H = 150;
+const THUMB_PAD_X = 12;
+const THUMB_PAD_Y = 10;
+const THUMB_LANES = 4; // more repos than this: the first three, then "+N more repos"
+const THUMB_GAP = 5; // between stacks
+const THUMB_LABEL = 12; // the repo name above a lane
+const THUMB_UNIT_MAX = 16; // a PR bar's width, at most
+const THUMB_FONT = `font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"`;
+// the app's dark-mode stack colours (src/styles.css), for the same palette names as STACK_HEX
+const STACK_HEX_DARK: Record<string, string> = {
+  blue: '#4493f8',
+  green: '#3fb950',
+  purple: '#ab7df8',
+  orange: '#f0883e',
+  pink: '#f778ba',
+  teal: '#39c5cf',
+  red: '#f85149',
+  yellow: '#d29922',
+  gray: '#6e7681',
+};
+// fill opacity by readiness: a draft is mostly outline, published and merged are solid (merged in its own purple)
+const THUMB_FILL: Record<PrStatus, number> = { draft: 0.22, ready: 0.6, published: 1, merged: 1 };
+
+export interface ThumbOpts {
+  width?: number;
+  height?: number;
+}
+
+/** Bar height as a fraction of the lane, for `n` changed lines when the project's biggest PR has `max`. */
+export function thumbHeight(n: number, max: number): number {
+  if (max <= 0) return 0.22;
+  return Math.max(0.22, Math.min(1, Math.log1p(Math.max(0, n)) / Math.log1p(max)));
+}
+
+/** The project as a small SVG of lanes, stacks and PR bars: see above. */
+export function renderThumbSvg(m: VizModel, opts: ThumbOpts = {}): string {
+  const W = opts.width ?? THUMB_W;
+  const H = opts.height ?? THUMB_H;
+  const out: string[] = [];
+  const extra = m.repos.length > THUMB_LANES ? m.repos.length - (THUMB_LANES - 1) : 0;
+  const lanes = extra ? m.repos.slice(0, THUMB_LANES - 1) : m.repos;
+  const inner = W - 2 * THUMB_PAD_X;
+  const moreH = extra ? 14 : 0;
+  // one unit for every lane: the widest lane (its PRs plus the gaps between its stacks) fills the width
+  const unit = Math.min(
+    THUMB_UNIT_MAX,
+    ...lanes.map((r) => {
+      const prs = r.stacks.reduce((a, s) => a + s.prs.length, 0);
+      return prs ? (inner - Math.max(0, r.stacks.length - 1) * THUMB_GAP) / prs : THUMB_UNIT_MAX;
+    }),
+  );
+  const laneH = lanes.length ? Math.min(34, (H - 2 * THUMB_PAD_Y - moreH) / lanes.length - THUMB_LABEL - 4) : 0;
+  const max = Math.max(1, ...m.repos.flatMap((r) => r.stacks.flatMap((s) => s.prs.map((p) => p.additions + p.deletions))));
+  const colorKey = (s: VizStack) => (s.follow_on ? 'yellow' : s.implicit === 'unstacked' ? 'gray' : s.color);
+  const keys = new Set<string>();
+  let hatch = 0;
+  // the lanes, centred vertically so a small project doesn't hug the top
+  let y = (H - lanes.length * (THUMB_LABEL + laneH + 4) - moreH) / 2;
+  for (const repo of lanes) {
+    out.push(`<text x="${THUMB_PAD_X}" y="${r1(y + 9)}" ${THUMB_FONT} font-size="9" font-weight="600" class="t-label">${esc(truncate(repo.name, 'semibold', 9, inner))}</text>`);
+    y += THUMB_LABEL;
+    out.push(`<rect x="${THUMB_PAD_X}" y="${r1(y + laneH + 1.5)}" width="${inner}" height="1" class="t-track"/>`);
+    if (repo.error || !repo.stacks.length) {
+      out.push(`<text x="${THUMB_PAD_X}" y="${r1(y + laneH / 2 + 3)}" ${THUMB_FONT} font-size="9" class="${repo.error ? 't-error' : 't-label'}">${repo.error ? '⚠ can’t read this repo' : 'No commits'}</text>`);
+      y += laneH + 4;
+      continue;
+    }
+    let x = THUMB_PAD_X;
+    for (const s of repo.stacks) {
+      const key = colorKey(s);
+      const custom = key.startsWith('#');
+      if (!custom) keys.add(STACK_HEX[key] ? key : 'gray');
+      const cls = custom ? '' : ` class="s-${STACK_HEX[key] ? key : 'gray'}"`;
+      const paint = (attr: 'fill' | 'stroke') => (custom ? ` ${attr}="${key}"` : '');
+      const w = s.prs.length * unit;
+      out.push(`<g${cls}>`);
+      if (s.follow_on) {
+        // parked work: yellow hatching under a dashed yellow border, as in the sidebar
+        const id = `h${++hatch}`;
+        out.push(
+          `<pattern id="${id}" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.5" height="4" class="t-hatch"/></pattern>`,
+          `<rect x="${r1(x - 1.5)}" y="${r1(y - 1.5)}" width="${r1(w + 3)}" height="${r1(laneH + 3)}" rx="3" fill="url(#${id})" class="t-box" stroke-dasharray="3 2"/>`,
+        );
+      } else {
+        out.push(`<rect x="${r1(x - 1.5)}" y="${r1(y - 1.5)}" width="${r1(w + 3)}" height="${r1(laneH + 3)}" rx="3" fill="none" class="t-box"${paint('stroke')}${s.implicit === 'unstacked' ? ' stroke-dasharray="3 2"' : ''}/>`);
+      }
+      if (unit < 1.5) {
+        // too many PRs for a bar each: the stack as one block, its height the average PR's
+        const avg = s.prs.reduce((a, p) => a + p.additions + p.deletions, 0) / Math.max(1, s.prs.length);
+        const h = thumbHeight(avg, max) * laneH;
+        out.push(`<rect x="${r1(x)}" y="${r1(y + laneH - h)}" width="${r1(w)}" height="${r1(h)}" class="t-bar"${paint('fill')} fill-opacity="0.6"/>`);
+      } else {
+        const bw = unit - Math.min(2, unit * 0.25);
+        s.prs.forEach((p, i) => {
+          const h = thumbHeight(p.additions + p.deletions, max) * laneH;
+          const status: PrStatus = p.status ?? (p.merged ? 'merged' : 'draft');
+          const bx = x + i * unit;
+          const by = y + laneH - h;
+          if (status === 'merged') out.push(`<rect x="${r1(bx)}" y="${r1(by)}" width="${r1(bw)}" height="${r1(h)}" rx="${r1(Math.min(1.5, bw / 3))}" class="t-merged"/>`);
+          else out.push(`<rect x="${r1(bx)}" y="${r1(by)}" width="${r1(bw)}" height="${r1(h)}" rx="${r1(Math.min(1.5, bw / 3))}" class="t-bar"${paint('fill')} fill-opacity="${THUMB_FILL[status]}"/>`);
+          // a draft's outline, so it reads as unfinished rather than just pale
+          if (status === 'draft' && bw > 2) out.push(`<rect x="${r1(bx + 0.4)}" y="${r1(by + 0.4)}" width="${r1(bw - 0.8)}" height="${r1(Math.max(0, h - 0.8))}" rx="1" fill="none" class="t-outline"${paint('stroke')} stroke-width="0.8"/>`);
+        });
+      }
+      out.push('</g>');
+      x += w + THUMB_GAP;
+    }
+    y += laneH + 4;
+  }
+  if (extra) out.push(`<text x="${THUMB_PAD_X}" y="${r1(y + 10)}" ${THUMB_FONT} font-size="9" class="t-faint">+${extra} more repos</text>`);
+  if (!m.repos.length) out.push(`<text x="${W / 2}" y="${H / 2 + 3}" ${THUMB_FONT} font-size="10" text-anchor="middle" class="t-faint">No repos</text>`);
+  // colours as classes, so the dark-mode block can swap them; a custom "#hex" stack keeps its own colour
+  const palette = (hexes: Record<string, string>) => [...keys].map((k) => `.s-${k} .t-box,.s-${k} .t-outline{stroke:${hexes[k]}}.s-${k} .t-bar{fill:${hexes[k]}}`).join('');
+  const style = [
+    `.t-label{fill:${C.muted}}.t-faint{fill:${C.faint}}.t-error{fill:${C.del}}.t-track{fill:${C.track}}.t-merged{fill:${C.merged}}.t-hatch{fill:${C.foBorder};opacity:.35}.t-box{stroke-width:1;stroke-opacity:.6}`,
+    palette(STACK_HEX),
+    `@media (prefers-color-scheme: dark){.t-label{fill:#8d96a0}.t-faint{fill:#6e7681}.t-error{fill:#f85149}.t-track{fill:#30363d}.t-merged{fill:#ab7df8}.t-hatch{fill:#d29922}.t-box{stroke-opacity:.75}${palette(STACK_HEX_DARK)}}`,
+  ].join('');
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img">`,
+    `<title>${esc(m.title)}</title>`,
+    `<style>${style}</style>`,
+    ...out,
     `</svg>`,
   ].join('\n');
 }

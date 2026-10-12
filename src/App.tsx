@@ -11,6 +11,7 @@ import { stackRef } from '../shared/stackRef';
 import { FOLLOW_ON_TIP, FollowOnBadge, ReadinessBadge } from './Readiness';
 import { TextDraftsProvider, repoAggregate } from './ProjectText';
 import { ExamplesMenuItem, ExamplesStrip, Welcome } from './Welcome';
+import { Projects } from './Projects';
 import { tildify } from '../shared/paths';
 import { HomeContext, ProjectContext, hashString, isTyping, linkTo, navigate, projectUrl, relativeTime, routeUrl, useLocalStorage, useRoute, useTick, useTilde, type Route } from './util';
 
@@ -26,8 +27,6 @@ const early: { projects: Promise<ProjectsResponse> | null; project: { slug: stri
   return { projects, project };
 })();
 
-const mostRecent = (l: ProjectsResponse | null) => (l?.projects ?? []).slice().sort((a, b) => b.modified.localeCompare(a.modified))[0] ?? null;
-
 export function App() {
   const route = useRoute();
   const [list, setList] = useState<ProjectsResponse | null>(null);
@@ -40,8 +39,9 @@ export function App() {
   useTick();
 
   const isProject = (slug: string | null) => !!slug && !!list?.projects.some((p) => p.slug === slug);
-  // the project on screen: the one in the URL, or (at `/`) the most recently modified one
-  const activeSlug = list ? (isProject(route.project) ? route.project : route.parts.length === 0 ? mostRecent(list)?.slug ?? null : null) : null;
+  // the project on screen: the one in the URL (`/` is the root page, every project: Projects.tsx)
+  const onRoot = route.parts.length === 0;
+  const activeSlug = list && isProject(route.project) ? route.project : null;
 
   const refreshList = useCallback(
     () => {
@@ -105,7 +105,7 @@ export function App() {
   // every commit of the project in sidebar order, for j/k, prev/next and redirects
   const flat = useMemo(() => (project?.repos ?? []).flatMap((r) => r.commits.map((c) => ({ repo: r.name, sha: c.sha }))), [project]);
 
-  // redirects: `/` and `/<project>/<repo>` to a first commit; old `/<repo>/<sha>` URLs into their project
+  // redirects: `/<project>/<repo>` to its first commit; old `/<repo>/<sha>` URLs into their project
   useEffect(() => {
     if (!list) return;
     const parts = route.parts;
@@ -178,7 +178,7 @@ export function App() {
     setNotice(null);
     refreshList().then(() => navigate(slug ? `/${encodeURIComponent(slug)}` : '/'));
   };
-  // the list first, then `/`: with the old list, `/` would redirect straight back into a removed example
+  // the list first, then `/`: the root page (or, if the examples were all you had, the first-run page)
   const examplesRemoved = () => {
     // the notice is for the welcome page, where you land if the examples were all you had
     if (list?.projects.every((p) => p.example)) setNotice('The example projects are removed. Nothing was deleted: you can bring them back from here any time.');
@@ -191,19 +191,21 @@ export function App() {
     <HomeContext.Provider value={list?.home ?? null}>
     <div className="app">
       <header className="app-header">
-        <button className="header-btn" onClick={() => setSidebarOpen(!sidebarOpen)} title="Toggle sidebar">☰</button>
-        <a className="wordmark" href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }}>
+        {!onRoot && <button className="header-btn" onClick={() => setSidebarOpen(!sidebarOpen)} title="Toggle sidebar">☰</button>}
+        <a className="wordmark" href="/" onClick={linkTo('/')} title="All projects">
           LOCAL REVIEW
         </a>
         <span className="not-github-pill">not on GitHub</span>
-        {list && (project || activeSlug) && <ProjectSwitcher list={list} current={project?.slug ?? activeSlug!} title={project?.title ?? list.projects.find((p) => p.slug === activeSlug)?.title ?? ''} onExamplesAdded={examplesAdded} onExamplesRemoved={examplesRemoved} />}
+        {list && list.projects.length > 0 && (project || activeSlug || onRoot) && (
+          <ProjectSwitcher list={list} current={project?.slug ?? activeSlug} title={project?.title ?? list.projects.find((p) => p.slug === activeSlug)?.title ?? 'All projects'} onExamplesAdded={examplesAdded} onExamplesRemoved={examplesRemoved} />
+        )}
         <span className="header-crumbs">{route.repo && route.sha && <>{route.repo} / <code>{route.sha.slice(0, 8)}</code></>}</span>
         <span className="spacer" />
         <span className={`live-dot ${live ? 'on' : ''}`} title={live ? 'Live: watching project files and branches' : 'Disconnected, retrying…'}>{live ? '● live' : '○ offline'}</span>
-        <span className="header-hint" title="Keyboard shortcuts">j / k: next / prev commit · n / p: next / prev file</span>
+        <span className="header-hint" title="Keyboard shortcuts">{onRoot ? '/: filter projects' : 'j / k: next / prev commit · n / p: next / prev file'}</span>
       </header>
       <div className="app-body">
-        {sidebarOpen && (
+        {sidebarOpen && !onRoot && (
           <aside className="sidebar">
             {isExample && <ExamplesStrip count={exampleCount} onRemoved={examplesRemoved} />}
             {loadError && <div className="flash flash-error">{tilde(loadError)}</div>}
@@ -268,10 +270,12 @@ export function App() {
           ) : unknownProject ? (
             <div className="page blankslate">
               No project or repo named <code>{route.parts[0]}</code>.{' '}
-              <button className="btn-link" onClick={() => navigate('/')}>Open the latest project</button>
+              <a href="/" onClick={linkTo('/')}>See all projects</a>
             </div>
           ) : list && list.projects.length === 0 ? (
             <Welcome list={list} notice={notice} onChanged={() => { setNotice(null); return refreshList(); }} />
+          ) : list && onRoot ? (
+            <Projects list={list} onExamplesAdded={examplesAdded} onExamplesRemoved={examplesRemoved} />
           ) : project && flat.length === 0 ? (
             <div className="page blankslate">No commits to review in <strong>{project.title}</strong>. Check <code>{tilde(project.file)}</code>.</div>
           ) : (
@@ -286,7 +290,7 @@ export function App() {
   );
 }
 
-function ProjectSwitcher({ list, current, title, onExamplesAdded, onExamplesRemoved }: { list: ProjectsResponse; current: string; title: string; onExamplesAdded: (slug: string) => void; onExamplesRemoved: () => void }) {
+function ProjectSwitcher({ list, current, title, onExamplesAdded, onExamplesRemoved }: { list: ProjectsResponse; current: string | null; title: string; onExamplesAdded: (slug: string) => void; onExamplesRemoved: () => void }) {
   const [open, setOpen] = useState(false);
   const [archivedOpen, setArchivedOpen] = useLocalStorage('lr.archivedOpen', false);
   const ref = useRef<HTMLDivElement>(null);
@@ -301,13 +305,13 @@ function ProjectSwitcher({ list, current, title, onExamplesAdded, onExamplesRemo
   }, [open]);
   // a plain link when there's nothing to switch to; but the menu also offers the example projects, so it's a menu
   // whenever they aren't there yet
-  if (list.projects.length < 2 && list.examples === 'present')
+  if (current && list.projects.length < 2 && list.examples === 'present')
     return (
       <a className="header-project" href={`/${encodeURIComponent(current)}`} title={`Project: ${current} (overview)`} onClick={(e) => { e.preventDefault(); navigate(`/${encodeURIComponent(current)}`); }}>
         {title}
       </a>
     );
-  const sorted = list.projects.slice().sort((a, b) => b.modified.localeCompare(a.modified));
+  const sorted = list.projects.slice().sort((a, b) => b.activity.at.localeCompare(a.activity.at));
   // archived projects (everything landed) go in their own section, collapsed unless the open one is archived
   const active = sorted.filter((p) => !p.archived);
   const archived = sorted.filter((p) => p.archived);
@@ -326,7 +330,7 @@ function ProjectSwitcher({ list, current, title, onExamplesAdded, onExamplesRemo
           {p.repoCount} repo{p.repoCount === 1 ? '' : 's'} · {p.archived ? <span className="merged-note">{p.mergedCount} merged</span> : <>{p.commitCount} commit{p.commitCount === 1 ? '' : 's'}</>}
           {p.followOnCount > 0 && <span className="follow-on-note"> +{p.followOnCount} follow-on</span>}
           {!p.archived && p.mergedCount > 0 && <span className="merged-note"> +{p.mergedCount} merged</span>}
-          {p.unresolved > 0 && <> · <span className="attn">{p.unresolved} open</span></>} · {relativeTime(p.modified)}
+          {p.unresolved > 0 && <> · <span className="attn">{p.unresolved} open</span></>} · {relativeTime(p.activity.at)}
         </span>
       </a>
     </li>
@@ -338,6 +342,13 @@ function ProjectSwitcher({ list, current, title, onExamplesAdded, onExamplesRemo
       </button>
       {open && (
         <ul className="project-menu" role="listbox">
+          <li>
+            <a href="/" role="option" aria-selected={current === null} className={`project-menu-all ${current === null ? 'current' : ''}`} onClick={(e) => { e.preventDefault(); setOpen(false); navigate('/'); }}>
+              <svg className="octicon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d={APPS_ICON} /></svg>
+              <span className="project-menu-title">All projects</span>
+              <span className="project-menu-count">{list.projects.length}</span>
+            </a>
+          </li>
           {active.map(item)}
           {archived.length > 0 && (
             <li className="project-menu-section" role="presentation">
@@ -357,6 +368,9 @@ function ProjectSwitcher({ list, current, title, onExamplesAdded, onExamplesRemo
 
 const CHEV_RIGHT = 'M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z';
 const CHEV_DOWN = 'M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z';
+
+// octicon apps-16 (the switcher's "All projects": the root page)
+const APPS_ICON = 'M1.5 3.25c0-.966.784-1.75 1.75-1.75h2.5c.966 0 1.75.784 1.75 1.75v2.5A1.75 1.75 0 0 1 5.75 7.5h-2.5A1.75 1.75 0 0 1 1.5 5.75Zm7 0c0-.966.784-1.75 1.75-1.75h2.5c.966 0 1.75.784 1.75 1.75v2.5a1.75 1.75 0 0 1-1.75 1.75h-2.5A1.75 1.75 0 0 1 8.5 5.75Zm-7 7c0-.966.784-1.75 1.75-1.75h2.5c.966 0 1.75.784 1.75 1.75v2.5a1.75 1.75 0 0 1-1.75 1.75h-2.5a1.75 1.75 0 0 1-1.75-1.75Zm7 0c0-.966.784-1.75 1.75-1.75h2.5c.966 0 1.75.784 1.75 1.75v2.5a1.75 1.75 0 0 1-1.75 1.75h-2.5a1.75 1.75 0 0 1-1.75-1.75ZM3.25 3a.25.25 0 0 0-.25.25v2.5c0 .138.112.25.25.25h2.5A.25.25 0 0 0 6 5.75v-2.5A.25.25 0 0 0 5.75 3Zm7 0a.25.25 0 0 0-.25.25v2.5c0 .138.112.25.25.25h2.5a.25.25 0 0 0 .25-.25v-2.5a.25.25 0 0 0-.25-.25ZM3 10.25v2.5c0 .138.112.25.25.25h2.5a.25.25 0 0 0 .25-.25v-2.5a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Zm7.25-.25a.25.25 0 0 0-.25.25v2.5c0 .138.112.25.25.25h2.5a.25.25 0 0 0 .25-.25v-2.5a.25.25 0 0 0-.25-.25Z';
 
 // octicon project-16 (the sidebar's link to the project page)
 const PROJECT_ICON = 'M1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75 1.75 0 0 1 0 14.25V1.75C0 .784.784 0 1.75 0ZM1.5 1.75v12.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25H1.75a.25.25 0 0 0-.25.25ZM11.75 3a.75.75 0 0 1 .75.75v7.5a.75.75 0 0 1-1.5 0v-7.5a.75.75 0 0 1 .75-.75Zm-8.25.75a.75.75 0 0 1 1.5 0v5.5a.75.75 0 0 1-1.5 0ZM8 3a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 3Z';

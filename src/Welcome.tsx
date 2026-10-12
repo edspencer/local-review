@@ -7,7 +7,7 @@ import { navigate, useTilde } from './util';
 
 const DOCS = 'https://local-review.edspencer.net';
 
-function CopyLine({ text, label }: { text: string; label?: string }) {
+export function CopyLine({ text, label }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="copy-line">
