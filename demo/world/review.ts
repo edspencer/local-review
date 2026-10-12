@@ -1,4 +1,4 @@
-// The Local Review data home: three projects over the four repos, with PR overrides, readiness, branches, GitHub
+// The Local Review data home: four projects over the four repos (two of them linked), with PR overrides, readiness, branches, GitHub
 // records, landed PRs and review threads, written as plain YAML following the schemas on the docs site
 // (website/src/content/docs/reference/: project.yaml, PR files, comment files). Line numbers are looked up in the generated files, never hard-coded.
 import crypto from 'node:crypto';
@@ -79,8 +79,8 @@ export async function patchIds(repos: Repos, repoDir: (name: string) => string):
   return out;
 }
 
-/** The three projects, by their plain names (before DataHomeOptions.slug). */
-export const PROJECTS = ['waitlists', 'calendar-feed', 'webhook-retries'] as const;
+/** The four projects, by their plain names (before DataHomeOptions.slug). */
+export const PROJECTS = ['waitlists', 'calendar-feed', 'calendar-reminders', 'webhook-retries'] as const;
 
 export function buildDataHome(repos: Repos, repoDir: (name: string) => string, opts: DataHomeOptions = {}): DataFile[] {
   const out: DataFile[] = [];
@@ -577,6 +577,50 @@ repos:
         line: 'r.Get("/calendar/{token}", h.calendarFeed)',
         comments: [
           { at: at('2026-09-11 15:40'), body: "Outside the auth group, by design (calendar apps can't send a bearer token). With 32 random bytes guessing is hopeless, but a leaked URL can be polled forever. Should a token expire if nothing fetches it for a few months?" },
+        ],
+      }),
+    ],
+  });
+
+  // ======================================================================== calendar-reminders (builds on calendar-feed)
+  // Linked projects: Theo's follow-up is its own project, `after:` the calendar feed. Its branch sits on top of
+  // theo/calendar-feed in orchard-api, so its range starts where the feed's ends.
+  const R = slug('calendar-reminders');
+  out.push({
+    path: `projects/${R}/project.yaml`,
+    mtime: at('2026-09-13 17:00'),
+    content: `title: Calendar reminders
+description: |
+  Theo's follow-up to the calendar feed: each class in the feed gets a reminder, an hour before by
+  default, and members can change or turn off the reminder time.
+# builds on the calendar feed: in orchard-api this range starts where that one ends (theo/calendar-feed)
+after: ${C}
+repos:
+  - path: ${repoPath('orchard-api')}
+    branch: theo/calendar-reminders
+    base: origin/main
+    stacks:
+      - title: Reminders
+        color: purple
+        description: |
+          Alarms in the feed, an hour before every class. Goes up on top of the calendar feed's last PR.
+      - title: Reminder settings
+        color: teal
+        starts_at: "Let members choose their reminder time"
+`,
+  });
+  const rem1 = 'Add reminder alarms to calendar events';
+  prs(R, api, rem1, { status: 'ready', branch: 'theo/calendar-alarms', mtime: at('2026-09-12 14:10') });
+  prs(R, api, 'Remind members an hour before each class', { branch: 'theo/calendar-remind-hour', mtime: at('2026-09-12 14:12') });
+  review(R, api, rem1, 'theo/calendar-reminders', {
+    mtime: at('2026-09-13 17:30'),
+    viewed: ['internal/ical/ical_test.go'],
+    threads: [
+      thread(api, rem1, 'trigger', {
+        file: 'internal/ical/ical.go',
+        line: 'line(fmt.Sprintf("TRIGGER:-PT%dM", int(e.Remind/time.Minute)))',
+        comments: [
+          { at: at('2026-09-13 17:20'), body: 'A reminder under a minute (say `Remind: 30 * time.Second`) writes `-PT0M`, which most apps treat as "at the start". Round up to a minute, or refuse anything shorter?' },
         ],
       }),
     ],

@@ -48,6 +48,8 @@ at `merge-base(base, branch)`). Each repo has `stacks`, consecutive groups of co
 intro. `starts_at` is a commit **subject** (or a sha prefix): a stack runs from that commit up to the next stack's
 start. A stack may have `follow_on: true`: parked work for later (below). After merges, a repo also has
 `landed:`, the keys of its merged PRs' prs files, bottom to top ("After merges"), and its `branch` becomes optional.
+A project may name the project it builds on, `after: <slug>` ("Linked projects"): then a repo they share starts
+where the predecessor's range ends.
 The full schema: [project.yaml](/reference/project-yaml/).
 
 **Follow-on stacks** are parked work: PRs to get to later, not part of the stacks going up now. They're
@@ -237,6 +239,10 @@ order), and when a prs file with a `github:` record and no `landed:` has a commi
 landed upstream but wasn't frozen (do that now; "After merges"). And for each image (`assets/<name>`) in a body with
 no published URL, since GitHub can't show a file on this machine ("Images" under "Materializing"). Where a URL is
 recorded, the body already has it in place of `assets/<name>`.
+
+In a linked project ("Linked projects") whose range in a repo starts where the predecessor's ends, the first PR there
+is based on the **predecessor's top PR's branch** instead (`base_from: predecessor`; the others are `repo-base` and
+`previous-pr`), with a warning while that PR isn't published: publish the predecessor first.
 
 Landed (merged) PRs are never planned, with no warnings of their own; the first live PR's base is the repo base. A
 note lists them ("Skipped 9 landed (merged) PRs …"); in JSON, `excluded_landed[]` (`repo`, `prs`).
@@ -461,6 +467,56 @@ Stacking tools leave merged stacks looking different on GitHub. Check which kind
 - **Sapling: cumulative PRs.** Each PR targets `main` and contains every PR below it, so its head/base diff is the
   whole stack so far, and GitHub's numbers are cumulative too. Set each PR's `landed.base` to the `headRefOid` of the
   PR below it (the bottom PR keeps its own base), so each one shows just its own change.
+
+## Linked projects
+
+One effort can be split into **linked projects**: the second builds on the first. Each is an ordinary project
+with its own intro, stacks and review; the successor names its predecessor in `project.yaml`:
+
+```yaml
+title: Calendar reminders
+after: calendar-feed           # the project this one builds on (its slug)
+repos:
+  - path: ~/code/orchard-api   # the same clone the predecessor reviews
+    branch: theo/calendar-reminders
+    base: origin/main
+```
+
+**Ranges.** In a repo the predecessor also has (the same `path`, else the same `name`), the successor's range
+starts where the predecessor's ends (its `branch:`, or `to:`) **while that's an ancestor of the successor's branch**.
+Otherwise it starts at `merge-base(base, branch)` as usual, which is what you want once the predecessor has merged
+and the successor is rebased onto the base. `from:` still wins. A repo only the successor has is unaffected. A bad
+`after:` (no such project, itself, a cycle) is a warning, and the projects aren't linked.
+
+**Creating one.** Put the successor's commits on their **own branch, on top of the predecessor's branch** (one
+branch per project, stacked like Graphite or git-town branches), not as a `to:` range of one branch: a `to:` sha
+moves with every rebase. Then `local-review init <slug>`, fill in `after:`, the repos and stacks.
+
+**Keeping them aligned.** A fix in the predecessor rebases the successor too: rebase the successor's branch onto
+the predecessor's with `git rebase --update-refs` (so every PR's branch tag follows). Don't rebase the successor
+onto the base while the predecessor hasn't merged.
+
+**Splitting an existing project.** Ask the reviewer first. Make the branches (above), create the new project with
+`after:`, narrow the old one's range, and move the review data of the commits that changed project:
+
+```sh
+local-review move <old> <new> <repo> --stack 3 --dry-run     # or commit shas instead of --stack
+local-review move <old> <new> <repo> --stack 3
+```
+
+It copies those commits' prs and reviews files into the new project (never over an existing file: then it moves
+nothing) and renames the originals to `<sha>.moved-to-<new>.yaml.bak`, after a snapshot. It doesn't edit either
+`project.yaml`; it prints what's left to change there (ranges, `starts_at`, `landed:` keys).
+
+**Publishing.** `local-review plan <successor>` bases the first PR of a shared repo on the predecessor's top PR
+branch (`base_from: predecessor`) and warns while that PR isn't published: publish the predecessor first. The
+predecessor's own plan is unchanged.
+
+**After the predecessor merges.** Freeze its merged PRs in **its** project, as always ("After merges"). Then rebase
+the successor's branch onto the base (`git rebase --onto origin/main <predecessor's branch> <successor's branch>
+--update-refs`): its range then starts at the base. If the predecessor was **squash-merged** and its branch deleted
+before you rebased, the successor's range picks up the predecessor's commits; Local Review warns ("includes N
+commits of the project it builds on") and says which. Rebase as above; never delete files to hide them.
 
 ## Hand-off prompt template
 

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { watch } from 'chokidar';
 import { BACKUPS_DIR, PROJECTS_DIR } from './config.js';
 import { startSnapshots } from './backups.js';
-import { listProjectSlugs, loadProjectConfig } from './projects.js';
+import { linkedRepos, listProjectSlugs, loadProjectConfig } from './projects.js';
 import { repoState, trustPolled } from './stamps.js';
 
 export type ServerEvent =
@@ -78,8 +78,11 @@ export function startWatchers() {
   const poll = () =>
     Promise.all(
       listProjectSlugs().flatMap((slug) =>
-        (loadProjectConfig(slug)?.repos ?? []).map(async (r) => {
-          const key = `${slug}\0${r.name}\0${r.path}\0${r.to ?? r.branch}\0${r.from ?? ''}\0${r.base ?? ''}`;
+        (() => {
+          const cfg = loadProjectConfig(slug);
+          return cfg ? linkedRepos(cfg) : [];
+        })().map(async (r) => {
+          const key = `${slug}\0${r.name}\0${r.path}\0${r.to ?? r.branch}\0${r.from ?? ''}\0${r.base ?? ''}\0${r.after ?? ''}`;
           const s = await repoState(r, { fresh: true });
           const was = seen.get(key);
           if (was && was.stamp !== s.stamp) emit({ type: 'project', project: slug, reason: was.head !== s.refs.head ? 'head' : 'refs', repo: r.name });

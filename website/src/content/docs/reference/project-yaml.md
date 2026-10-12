@@ -45,6 +45,7 @@ repos:
 | `title` | string | The project's name in the header, the project switcher, the sidebar and the project page. |
 | `description` | markdown, optional | The **project intro**: context for the whole effort. Shown on the project page and in the Project context box of each stack and PR page, and first in every [full PR body](/using/editing-pr-text/#copying-text-for-the-real-pr). Editable in the UI; can show [images](/using/editing-pr-text/#images). |
 | `repos` | list | One entry per repo, below. |
+| `after` | slug, optional | The project this one **builds on** ([linked projects](/concepts/linked-projects/)): another project's slug. In a repo both have, this project's range starts where that one's ends, while that's an ancestor of this branch. No such project, this project itself or a cycle is a warning, and no link. |
 | `example` | boolean, optional | Marks one of the [example projects](/reference/cli/#local-review-examples-remove): the UI labels it **Example** and offers to remove it. Set by `local-review examples`; you don't need it. |
 
 The project's **slug** is its directory name (not a field): it's used in URLs, `/<slug>/<repo>/<sha>`.
@@ -57,7 +58,7 @@ The project's **slug** is its directory name (not a field): it's used in URLs, `
 | `name` | optional | Used in URLs and as the directory name under `prs/` and `reviews/`. Default: the path's basename. Two repos with the same name get `-2`, `-3`, … by position, with a warning: name them. Letters, digits, `.`, `_`, `-`, no leading dot. |
 | `branch` | ref | The range **end**: this branch's head. Optional once the repo has `landed:`. |
 | `to` | sha or ref | Instead of `branch`: the range end, inclusive. |
-| `base` | ref | The range **start**: `merge-base(base, end)`, exclusive. Default: `origin/HEAD`, else `main`, else `master`. |
+| `base` | ref | The range **start**: `merge-base(base, end)`, exclusive. Default: `origin/HEAD`, else `main`, else `master`. In a project with `after:`, a repo the predecessor also has starts at the predecessor's range end instead while that's an ancestor of `end` ([linked projects](/concepts/linked-projects/#the-ranges)). |
 | `from` | sha or ref | Instead of `base`: the first commit included. Overrides `base`. |
 | `landed` | list, optional | The repo's merged PRs, bottom to top: the keys (file names) of their `prs/<repo>/<sha>.yaml` files, a full sha or a unique prefix (quote prefixes). See [Landed PRs](/concepts/landed-prs/). |
 | `github_stack` | number, optional | Informational: the GitHub stack these PRs went up as. |
@@ -95,7 +96,10 @@ Problems show on the repo in the sidebar:
 
 - **Errors** (an error card): a missing repo, or a missing branch. A missing branch isn't an error in a repo with
   landed PRs; there, other range problems are only warnings.
-- **Warnings**: a `starts_at` that matches nothing, or matches only commits at or before the previous stack's start
+- **Project warnings** (on the project page and at the top of the sidebar): a bad `after:` (no such project, the
+  project itself, a cycle).
+- **Warnings**: a range that includes the commits of the project it builds on, or whose predecessor's branch is gone
+  ([when the link doesn't hold](/concepts/linked-projects/#when-the-link-doesnt-hold)); a `starts_at` that matches nothing, or matches only commits at or before the previous stack's start
   (that stack is then empty); `color: yellow` on a regular stack; a regular stack after a follow-on one; an invalid
   `follow_on` value; duplicate repo names; `landed:` keys that match no prs file, several, or one without a usable
   `landed:` block, and duplicates.

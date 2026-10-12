@@ -1,5 +1,6 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Loc } from './api';
+import { LinksContext } from './util';
 
 type Scope = 'project' | 'repo' | 'stack';
 const SCOPES: [Scope, string, string][] = [
@@ -9,6 +10,7 @@ const SCOPES: [Scope, string, string][] = [
 ];
 const SCOPE_KEY = 'lr.stackScope';
 const TITLE_KEY = 'lr.stackTitle'; // global, like the scope: one choice for every PR and project
+const CONTEXT_KEY = 'lr.stackContext'; // linked projects: draw the predecessor's stacks too
 
 /**
  * The "Stack" tab: the server-rendered picture of the project's PR stacks with this PR highlighted
@@ -31,6 +33,7 @@ export function StackTab({ loc, sha, version }: { loc: Loc; sha: string; version
       version={version}
       alt={`PR stacks of ${loc.project}, with this PR highlighted`}
       hint={<code>…/commits/{sha.slice(0, 8)}/stack.png</code>}
+      allowContext
       controls={
         <div className="BtnGroup" role="group" aria-label="What to show">
           {SCOPES.map(([s, label, title]) => (
@@ -46,14 +49,23 @@ export function StackTab({ loc, sha, version }: { loc: Loc; sha: string; version
  * A stack picture from the server (`base`.png / .svg, with `query`), with the Show title toggle and Copy image /
  * Download PNG / SVG: the PR page's Stack tab, and the stack and project pages' ones. `controls` go first in the toolbar.
  */
-export function StackPicture({ base, query = '', version, alt, hint, controls }: { base: string; query?: string; version: string; alt: string; hint: ReactNode; controls?: ReactNode }) {
+export function StackPicture({ base, query = '', version, alt, hint, controls, allowContext }: { base: string; query?: string; version: string; alt: string; hint: ReactNode; controls?: ReactNode; allowContext?: boolean }) {
+  // linked projects: where a repo builds on the predecessor, its stacks can be drawn first, greyed out (off by default:
+  // the picture is what gets pasted into PRs)
+  const links = useContext(LinksContext);
+  const [context, setContextState] = useState(() => localStorage.getItem(CONTEXT_KEY) === '1');
+  const setContext = (v: boolean) => {
+    setContextState(v);
+    localStorage.setItem(CONTEXT_KEY, v ? '1' : '0');
+  };
+  const withContext = !!allowContext && links.buildsOn && !!links.after && context;
   const [showTitle, setShowTitleState] = useState(() => localStorage.getItem(TITLE_KEY) !== '0');
   const setShowTitle = (v: boolean) => {
     setShowTitleState(v);
     localStorage.setItem(TITLE_KEY, v ? '1' : '0');
   };
   const [loadError, setLoadError] = useState(false);
-  const q = [query, !showTitle && 'title=0'].filter(Boolean).join('&');
+  const q = [query, !showTitle && 'title=0', withContext && 'context=1'].filter(Boolean).join('&');
   const png = `${base}.png${q ? `?${q}` : ''}`;
   // the cache-busting `v` only changes the URL when the data does, so the <img> re-fetches exactly then
   const shown = `${png}${q ? '&' : '?'}v=${encodeURIComponent(version)}`;
@@ -67,6 +79,11 @@ export function StackPicture({ base, query = '', version, alt, hint, controls }:
         <label className="stack-tab-check" title="The project title and summary line at the top of the image">
           <input type="checkbox" checked={showTitle} onChange={(e) => setShowTitle(e.target.checked)} /> Show title
         </label>
+        {allowContext && links.buildsOn && links.after && (
+          <label className="stack-tab-check" title={`Also draw the stacks of ${links.after.title}, the project this one builds on, greyed out, above this one's in each repo they share`}>
+            <input type="checkbox" checked={context} onChange={(e) => setContext(e.target.checked)} /> Show {links.after.title}
+          </label>
+        )}
         <span className="spacer" />
         <ImageActions base={base} q={q} copy={copy} onCopy={copyImage} />
       </div>

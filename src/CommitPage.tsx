@@ -343,7 +343,7 @@ function landedTip(l: LandedInfo | null | undefined): string | undefined {
 
 /**
  * What this commit's PR merges into: the GitHub PR's base, else the branch of the commit before it in the repo
- * (stacked PRs), else the repo's base ref for the first commit.
+ * (stacked PRs), else for the first commit the predecessor's end (linked projects) or the repo's base ref.
  */
 function prBase(github: GithubInfo | null, repoData: RepoData | undefined, sha: string): { name: string; title: string } | null {
   if (github?.base) return { name: github.base, title: `Base of GitHub PR #${github.number}` };
@@ -352,6 +352,8 @@ function prBase(github: GithubInfo | null, repoData: RepoData | undefined, sha: 
     const prev = repoData!.commits[i - 1].branch;
     return prev ? { name: prev.name, title: `Base: the previous commit's branch (stacked)` } : null;
   }
+  // linked projects: the range starts where the predecessor's ends, so the first PR goes up on top of it
+  if (i === 0 && repoData?.startsAfter && repoData.after) return { name: repoData.after, title: 'Base: where the project this one builds on ends here (project.yaml after:)' };
   if (i === 0 && repoData?.base) return { name: repoData.base, title: "Base: the repo's base ref in project.yaml" };
   return null;
 }

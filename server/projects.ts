@@ -45,6 +45,8 @@ export interface ProjectConfig {
   repos: RepoConfig[];
   error?: string;
   example?: boolean; // `example: true`: one of the example projects (server/examples.ts); the UI labels it and offers to remove it
+  after?: string; // `after: <slug>`: the project this one builds on (linked projects; see resolveLink)
+  warnings: string[]; // project-level problems that aren't errors (a bad `after:`)
 }
 
 export interface StackGroup {
@@ -93,7 +95,7 @@ const text = (v: unknown): string | undefined => (v === null || v === undefined 
 /** Parse a project.yaml. Never throws: problems are reported as `error` (whole file) or repo `warnings`. */
 export function parseProject(slug: string, dir: string, raw: string): ProjectConfig {
   const file = path.join(dir, 'project.yaml');
-  const out: ProjectConfig = { slug, dir, file, title: slug, description: null, repos: [] };
+  const out: ProjectConfig = { slug, dir, file, title: slug, description: null, repos: [], warnings: [] };
   let doc: any;
   try {
     doc = YAML.parse(raw) ?? {};
@@ -108,6 +110,11 @@ export function parseProject(slug: string, dir: string, raw: string): ProjectCon
   out.title = text(doc.title)?.trim() || slug;
   out.description = text(doc.description) ?? null;
   if (flag(doc.example)) out.example = true;
+  if (doc.after != null) {
+    const a = text(doc.after)?.trim();
+    if (a && SAFE_NAME.test(a)) out.after = a;
+    else out.warnings.push(`\`after\` must be the slug of another project (its directory name under projects/), not ${JSON.stringify(doc.after)}; ignored`);
+  }
   const list: any[] = Array.isArray(doc.repos) ? doc.repos : [];
   if (doc.repos != null && !Array.isArray(doc.repos)) out.error = `${file}: \`repos\` must be a list`;
   const used = new Set<string>();
@@ -283,6 +290,54 @@ export interface LoadedRepo {
 export interface LoadedProject {
   cfg: ProjectConfig;
   repos: LoadedRepo[];
+  /** linked projects: the predecessor (`after:`), if it's valid, and the project-level warnings (config and link) */
+  after: { slug: string; title: string } | null;
+  warnings: string[];
+}
+
+/**
+ * A project's predecessor (`after: <slug>`), if it names another existing project without a cycle; else a warning
+ * and no link. Reads configs only (no git, no loading), so following a chain is cheap.
+ */
+export function resolveLink(cfg: ProjectConfig): { pred: ProjectConfig | null; warnings: string[] } {
+  if (!cfg.after) return { pred: null, warnings: [] };
+  if (cfg.after === cfg.slug) return { pred: null, warnings: ['`after` names this project itself; ignored'] };
+  const pred = projectConfig(cfg.after)?.cfg ?? null;
+  if (!pred) return { pred: null, warnings: [`\`after: ${cfg.after}\`: there's no project '${cfg.after}' (a directory under projects/ with a project.yaml); ignored`] };
+  // a cycle (a after b after a) would make every one of them start where another ends: refuse the link
+  const seen = new Set([cfg.slug]);
+  for (let c: ProjectConfig | null = pred; c?.after; c = projectConfig(c.after)?.cfg ?? null) {
+    if (seen.has(c.slug) || seen.size > 100) return { pred: null, warnings: [`\`after: ${cfg.after}\` makes a cycle (${[...seen, c.slug].join(' → ')}); ignored`] };
+    seen.add(c.slug);
+    if (c.after === cfg.slug) return { pred: null, warnings: [`\`after: ${cfg.after}\` makes a cycle (${[...seen, cfg.slug].join(' → ')}); ignored`] };
+  }
+  return { pred, warnings: [] };
+}
+
+/** The predecessor's repo that this one continues: the same clone (path), else the same name. */
+export function sharedRepo(pred: ProjectConfig, rc: RepoConfig): RepoConfig | null {
+  return pred.repos.find((p) => p.path === rc.path) ?? pred.repos.find((p) => p.name === rc.name) ?? null;
+}
+
+/**
+ * The project's repos with each one's `after` set (the predecessor's range end in that repo) where it continues the
+ * predecessor's range: the ranges as they're actually read. The branch poll (events.ts) watches these too.
+ */
+export function linkedRepos(cfg: ProjectConfig, pred = resolveLink(cfg).pred): RepoConfig[] {
+  return cfg.repos.map((rc): RepoConfig => {
+    const shared = pred && !rc.from ? sharedRepo(pred, rc) : null;
+    const end = shared ? rangeEnd(shared) : '';
+    return end ? { ...rc, after: end } : rc;
+  });
+}
+
+/** Each successor project of `slug`: the projects whose valid `after:` names it, by title. */
+export function successorsOf(slug: string): { slug: string; title: string }[] {
+  return listProjectSlugs()
+    .map((s) => (s === slug ? null : projectConfig(s)?.cfg ?? null))
+    .filter((c): c is ProjectConfig => !!c && c.after === slug && resolveLink(c).pred?.slug === slug)
+    .map((c) => ({ slug: c.slug, title: c.title }))
+    .sort((a, b) => a.title.localeCompare(b.title));
 }
 
 export function repoDirs(project: ProjectConfig, repo: string) {
@@ -320,11 +375,16 @@ export async function loadProject(slug: string): Promise<LoadedProject | null> {
     return null;
   }
   const { cfg } = c;
-  const states = await Promise.all(cfg.repos.map((rc) => repoState(rc)));
-  const key = JSON.stringify([c.version, cfg.repos.map((rc, i) => [states[i].stamp, dirStamp(repoDirs(cfg, rc.name).prsDir)])]);
+  // linked projects: a repo the predecessor also has starts where the predecessor's range there ends (its branch or
+  // `to:`), while that's an ancestor; `from:` still wins (commits.ts loadRepo)
+  const link = resolveLink(cfg);
+  const repos = linkedRepos(cfg, link.pred);
+  const states = await Promise.all(repos.map((rc) => repoState(rc)));
+  const predPrs = link.pred ? repos.map((rc) => (rc.after ? dirStamp(repoDirs(link.pred!, sharedRepo(link.pred!, rc)!.name).prsDir) : '')) : [];
+  const key = JSON.stringify([c.version, link.pred?.slug ?? null, link.pred?.title ?? null, link.warnings, predPrs, repos.map((rc, i) => [rc.after ?? null, states[i].stamp, dirStamp(repoDirs(cfg, rc.name).prsDir)])]);
   const hit = loaded.get(slug);
   if (hit?.key === key) return hit.p;
-  const p = buildProject(cfg, states);
+  const p = buildProject({ ...cfg, repos }, states, link);
   loaded.set(slug, { key, p });
   p.catch(() => {
     if (loaded.get(slug)?.p === p) loaded.delete(slug);
@@ -332,7 +392,7 @@ export async function loadProject(slug: string): Promise<LoadedProject | null> {
   return p;
 }
 
-async function buildProject(cfg: ProjectConfig, states: RepoState[]): Promise<LoadedProject> {
+async function buildProject(cfg: ProjectConfig, states: RepoState[], link: { pred: ProjectConfig | null; warnings: string[] }): Promise<LoadedProject> {
   const repos = await Promise.all(
     cfg.repos.map(async (rc, ri): Promise<LoadedRepo> => {
       const dirs = repoDirs(cfg, rc.name);
@@ -356,12 +416,44 @@ async function buildProject(cfg: ProjectConfig, states: RepoState[]): Promise<Lo
         part = partitionStacks(info.commits.map((c) => ({ sha: c.sha, subject: c.subject, title: titles.get(c.sha) ?? prs.get(c.sha)?.override.title })), rc.stacks, defaultTitle);
       }
       const { stacks, warnings } = part;
+      if (rc.after && link.pred && !info.error) extra.push(...linkWarnings(link.pred, rc, info, states[ri].refs.after ?? null));
       const stackOf = new Map<string, number>();
       for (const g of stacks) for (const sha of g.shas) stackOf.set(sha, g.index);
       return { cfg: rc, info, stacks, warnings: [...rc.warnings, ...extra, ...warnings], stackOf, ...dirs, refIndex: states[ri].refIndex };
     }),
   );
-  return { cfg, repos };
+  return { cfg, repos, after: link.pred ? { slug: link.pred.slug, title: link.pred.title } : null, warnings: [...cfg.warnings, ...link.warnings] };
+}
+
+/**
+ * Linked projects: when a shared repo's range doesn't start at the predecessor's end, check it hasn't picked up the
+ * predecessor's own commits. That happens when the predecessor was squash-merged (its commits never reach the base)
+ * and this branch hasn't been rebased onto the base yet, with the predecessor's branch gone: the range then runs from
+ * the merge-base with the base and includes them. They're recognised by sha: the predecessor's prs files are named
+ * after its commits. Never drops or hides them; it says what to do.
+ */
+function linkWarnings(pred: ProjectConfig, rc: RepoConfig, info: RepoInfo, afterSha: string | null): string[] {
+  if (info.startsAfter) return [];
+  const shared = sharedRepo(pred, rc)!;
+  const out: string[] = [];
+  const predPrs = repoDirs(pred, shared.name).prsDir;
+  let keys = new Set<string>();
+  try {
+    keys = new Set(fs.readdirSync(predPrs).filter((f) => /^[0-9a-f]{40}\.yaml$/.test(f)).map((f) => f.slice(0, 40)));
+  } catch {
+    /* none */
+  }
+  const theirs = info.commits.filter((c) => keys.has(c.sha));
+  if (theirs.length)
+    out.push(
+      `includes ${theirs.length} commit${theirs.length === 1 ? '' : 's'} of the project it builds on, ${pred.slug} (${theirs.map((c) => c.short).join(', ')}): ` +
+        (afterSha
+          ? `its range end '${rc.after}' isn't an ancestor of this branch any more, so this range starts at ${info.base ?? 'the base'} instead. If ${pred.slug} was squash-merged, rebase this branch onto ${info.base ?? 'the base'}`
+          : `its range end '${rc.after}' doesn't exist (a deleted branch?). Restore it, or rebase this branch onto ${info.base ?? 'the base'} once ${pred.slug} has merged`),
+    );
+  else if (!afterSha && !shared.landed.length)
+    out.push(`builds on ${pred.slug}, whose range end here, '${rc.after}', doesn't exist, and none of its PRs have landed: this range starts at ${info.base ?? 'the base'} instead`);
+  return out;
 }
 
 /**

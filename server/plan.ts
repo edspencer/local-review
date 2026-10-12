@@ -8,7 +8,7 @@ import { baseSha, commitBody, isAncestor } from './commits.js';
 import { inspectOrphan, liveCommits } from './context.js';
 import { loadRefs, reconcileBranch, stripRemote, type BranchInfo } from './branches.js';
 import { loadPrs, prPath, prView, readPrFile, type GithubPr, type LoadedPr } from './prs.js';
-import type { LoadedProject, LoadedRepo } from './projects.js';
+import { loadProject, type LoadedProject, type LoadedRepo } from './projects.js';
 import { prStatus, type PrStatus } from '../shared/readiness.js';
 import { assetsDir, resolveAssetRefs, type AssetUse } from './assets.js';
 
@@ -21,7 +21,7 @@ export interface PlanPr {
   subject: string;
   branch: BranchInfo | null;
   base: string | null;
-  base_from: 'previous-pr' | 'repo-base';
+  base_from: 'previous-pr' | 'repo-base' | 'predecessor'; // predecessor: the top PR of the project this one builds on (`after:`)
   title: string;
   title_source: 'commit' | 'override';
   body: string; // the full PR body: intro, stack note, ---, PR description (images with a published URL point at it)
@@ -110,6 +110,8 @@ async function repoPlan(project: LoadedProject, r: LoadedRepo, onlyStack?: numbe
   const tip = r.cfg.branch ?? r.info.end ?? null;
   const position = new Map(r.info.commits.map((c, i) => [c.sha, i + 1]));
   const repoBase = r.info.base ? stripRemote(refs, r.info.base) : null;
+  // linked projects: a range that starts at the predecessor's end goes up on top of the predecessor's top PR
+  const pred = r.info.startsAfter ? await predecessorTop(project, r) : null;
   const out: PlanPr[] = [];
   let prevBranch: string | null = null;
   let first = true; // the first live (unmerged) PR goes onto the repo base
@@ -124,7 +126,7 @@ async function repoPlan(project: LoadedProject, r: LoadedRepo, onlyStack?: numbe
     const branch = reconcileBranch(refs, c.sha, l?.override, tip);
     const isFirst = first;
     first = false;
-    const base = isFirst ? repoBase : prevBranch;
+    const base = isFirst ? (pred ? pred.base : repoBase) : prevBranch;
     const inScope = (onlyStack === undefined || g?.number === onlyStack) && !(g?.number != null && skip.has(g.number));
     if (inScope) {
       const view = prView(l, { subject: c.subject, body: await commitBody(r.info.path, c.sha) });
@@ -136,7 +138,8 @@ async function repoPlan(project: LoadedProject, r: LoadedRepo, onlyStack?: numbe
         w.push(`branch '${branch.name}' points at ${branch.points_at?.slice(0, 8)}${at ? ` (PR #${at})` : ', not in the range'}, not this commit (rebased without --update-refs?)`);
       }
       // (no base because the previous PR has no branch is that PR's warning, not another one)
-      if (base === null && isFirst) w.push(r.info.from ? 'no base: the range starts with `from:`; give the repo a `base:`' : 'no base branch');
+      if (isFirst && pred) w.push(...pred.warnings);
+      else if (base === null && isFirst) w.push(r.info.from ? 'no base: the range starts with `from:`; give the repo a `base:`' : 'no base branch');
       const gb = l?.override.github?.base;
       if (gb && base && gb !== base) w.push(`its GitHub PR #${l!.override.github!.number} has base '${gb}', but the plan's base is '${base}' (retarget the PR, or check the order)`);
       if (l?.parseError) w.push(`prs file doesn't parse: ${l.parseError}`);
@@ -156,7 +159,7 @@ async function repoPlan(project: LoadedProject, r: LoadedRepo, onlyStack?: numbe
         subject: c.subject,
         branch,
         base,
-        base_from: isFirst ? 'repo-base' : 'previous-pr',
+        base_from: isFirst ? (pred ? 'predecessor' : 'repo-base') : 'previous-pr',
         title: view.title,
         title_source: view.title_source,
         body,
@@ -184,6 +187,27 @@ async function repoPlan(project: LoadedProject, r: LoadedRepo, onlyStack?: numbe
       warnings.push(`${name} ${stackLabel(ps[0])}: ${drafts.length} of ${ps.length} PR${ps.length === 1 ? ' is' : 's are'} still draft (${drafts.map((p) => `PR #${p.number}`).join(', ')}); only the reviewer marks PRs ready`);
   }
   return { prs: out, warnings, landed };
+}
+
+/**
+ * The base for the first PR of a repo whose range starts at the predecessor's end (linked projects, `after:`): the
+ * branch of the predecessor's top live PR in the same repo, as its own plan would name it. Warns if it has no branch
+ * or isn't published yet (GitHub needs the base branch to exist).
+ */
+async function predecessorTop(project: LoadedProject, r: LoadedRepo): Promise<{ base: string | null; warnings: string[] } | null> {
+  if (!project.after) return null;
+  const p = await loadProject(project.after.slug);
+  const pr = p?.repos.find((x) => x.cfg.path === r.cfg.path) ?? p?.repos.find((x) => x.cfg.name === r.cfg.name);
+  const top = pr?.info.commits.filter((c) => !c.landed).at(-1);
+  if (!p || !pr || !top) return null;
+  const [loaded, refs] = await Promise.all([loadPrs(pr.prsDir, liveCommits(pr.cfg, pr.info), inspectOrphan(pr.cfg, pr.info)).catch(() => new Map<string, LoadedPr>()), loadRefs(pr.info.path)]);
+  const l = loaded.get(top.sha);
+  const branch = reconcileBranch(refs, top.sha, l?.override, pr.cfg.branch ?? pr.info.end ?? null);
+  const n = pr.info.commits.indexOf(top) + 1;
+  const warnings: string[] = [];
+  if (!branch) warnings.push(`no base: the top PR of ${p.cfg.slug} here (PR #${n}, ${top.short}) has no branch yet`);
+  else if (!l?.override.github) warnings.push(`based on ${p.cfg.slug}'s top PR here (PR #${n}, branch '${branch.name}'), which isn't published yet: publish ${p.cfg.slug} first`);
+  return { base: branch?.name ?? null, warnings };
 }
 
 /**
@@ -250,7 +274,7 @@ export function planMarkdown(plan: Plan): string {
     o.push(`- Commit: \`${p.short}\` ${p.subject}`);
     o.push(`- Branch: ${br}`);
     if (p.branch && p.branch.discovered.filter((d) => d !== p.branch!.name).length) o.push(`- Also pointing here: ${p.branch.discovered.filter((d) => d !== p.branch!.name).map((d) => `\`${d}\``).join(', ')}`);
-    o.push(`- Base: ${p.base ? `\`${p.base}\`` : p.base_from === 'previous-pr' ? `(none: PR #${p.number - 1} has no branch yet)` : '(none)'}${p.base_from === 'repo-base' ? ' (repo base)' : ''}`);
+    o.push(`- Base: ${p.base ? `\`${p.base}\`` : p.base_from === 'previous-pr' ? `(none: PR #${p.number - 1} has no branch yet)` : '(none)'}${p.base_from === 'repo-base' ? ' (repo base)' : p.base_from === 'predecessor' ? ' (the top PR of the project this builds on)' : ''}`);
     o.push(`- Status: ${p.status}`);
     o.push(`- Title: ${p.title}${p.title_source === 'override' ? ' (edited)' : ''}`);
     o.push(`- GitHub: ${p.github ? `#${p.github.number}${p.github.url ? ` ${p.github.url}` : ''}${p.github.branch ? ` (branch ${p.github.branch}${p.github.base ? ` → ${p.github.base}` : ''})` : ''}` : 'not created'}`);

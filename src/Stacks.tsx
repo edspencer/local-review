@@ -2,7 +2,8 @@
 // link to its page. Here, not in App.tsx, so the pages can import it without importing App.
 import { stackColor, type CommitSummary, type StackGroup } from './api';
 import { stackRef } from '../shared/stackRef';
-import { linkTo, projectUrl, stackUrl, type Route } from './util';
+import { useContext } from 'react';
+import { LinksContext, linkTo, projectUrl, stackUrl, type Route } from './util';
 
 /** "Stack 2 · Groundwork", or the implicit group's own title ("Unstacked", the branch). */
 export const stackLabel = (g: StackGroup) => (g.number !== null && !g.implicit ? `Stack ${g.number} · ${g.title}` : g.title);
@@ -32,9 +33,17 @@ export function StackLink({ project, repo, group, tab = 'conversation', classNam
  */
 export function Crumbs({ project, title, repo, group, pr }: { project: string; title: string; repo?: string; group?: StackGroup | null; pr?: number }) {
   const sep = <span className="crumbs-sep" aria-hidden="true">›</span>;
+  // linked projects: the project this one builds on comes first, as where it continues from
+  const { after } = useContext(LinksContext);
   return (
     <nav className="crumbs" aria-label="Breadcrumbs">
-      <a href={projectUrl(project)} onClick={linkTo(projectUrl(project))} title="The project page: its intro and the picture of all its stacks">{title}</a>
+      {after && (
+        <>
+          <a className="crumbs-after" href={projectUrl(after.slug)} onClick={linkTo(projectUrl(after.slug))} title={`Builds on ${after.title}: the project this one continues (project.yaml after:)`}>{after.title}</a>
+          <span className="crumbs-sep" aria-hidden="true">→</span>
+        </>
+      )}
+      <a className="crumbs-project" href={projectUrl(project)} onClick={linkTo(projectUrl(project))} title="The project page: its intro and the picture of all its stacks">{title}</a>
       {repo && (
         <>
           {sep}

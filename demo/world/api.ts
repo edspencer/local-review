@@ -1570,6 +1570,98 @@ func (db *DB) SetCalendarToken(ctx context.Context, memberID int64, hash []byte)
     'internal/httpapi/router.go': after('        r.Delete("/me/bookings/{id}", h.cancelBooking)\n', '        r.Post("/me/calendar-token", h.rotateCalendarToken)\n'),
   }, { author: theo, at: at('2026-09-11 09:12') });
 
+  // Theo's follow-up, calendar reminders: a second project that builds on the calendar feed (project.yaml
+  // `after:`), on its own branch on top of theo/calendar-feed
+  const rem1 = r.commit(cal3, 'Add reminder alarms to calendar events\n\nA VALARM inside the VEVENT, triggered the given time before the start. Calendar apps\nshow it as their own notification, so nothing has to be sent from our side.', {
+    'internal/ical/ical.go': edits(
+      ['    End      time.Time\n}', '    End      time.Time\n    // Remind, if non-zero, adds an alarm this long before Start.\n    Remind   time.Duration\n}'],
+      [
+        '        line("END:VEVENT")',
+        `        if e.Remind > 0 {
+            line("BEGIN:VALARM")
+            line("ACTION:DISPLAY")
+            line("DESCRIPTION:" + escape(e.Summary))
+            line(fmt.Sprintf("TRIGGER:-PT%dM", int(e.Remind/time.Minute)))
+            line("END:VALARM")
+        }
+        line("END:VEVENT")`,
+      ],
+    ),
+    'internal/ical/ical_test.go': append(`
+func TestWriteAlarm(t *testing.T) {
+    var b strings.Builder
+    start := time.Date(2026, 9, 21, 7, 0, 0, 0, time.UTC)
+    if err := Write(&b, "My classes", []Event{{UID: "booking-2@orchard", Summary: "Pilates", Start: start, End: start.Add(time.Hour), Remind: 90 * time.Minute}}); err != nil {
+        t.Fatal(err)
+    }
+    if !strings.Contains(b.String(), "BEGIN:VALARM\\r\\nACTION:DISPLAY\\r\\nDESCRIPTION:Pilates\\r\\nTRIGGER:-PT90M\\r\\nEND:VALARM\\r\\n") {
+        t.Errorf("no alarm, or the wrong one:\\n%s", b.String())
+    }
+}
+`),
+  }, { author: theo, at: at('2026-09-12 10:20') });
+
+  const rem2 = r.commit(rem1, 'Remind members an hour before each class', {
+    'internal/httpapi/calendar.go': replace(
+      '            End:     b.Class.StartsAt.Add(time.Duration(b.Class.Minutes) * time.Minute),\n',
+      '            End:     b.Class.StartsAt.Add(time.Duration(b.Class.Minutes) * time.Minute),\n            Remind:  time.Hour,\n',
+    ),
+  }, { author: theo, at: at('2026-09-12 11:05') });
+
+  const rem3 = r.commit(rem2, 'Let members choose their reminder time\n\nPUT /me/calendar-reminder {"minutes": 30}; 0 turns reminders off. The feed reads it on every\nfetch, so a change shows up the next time the calendar app refreshes.', {
+    'migrations/0006_calendar_reminders.sql': `ALTER TABLE members ADD COLUMN calendar_reminder_minutes integer NOT NULL DEFAULT 60
+    CHECK (calendar_reminder_minutes BETWEEN 0 AND 1440);
+`,
+    'internal/httpapi/calendar.go': edits(
+      ['    "encoding/base64"\n', '    "encoding/base64"\n    "encoding/json"\n'],
+      [
+        '    events := make([]ical.Event, 0, len(list))',
+        `    remind, err := h.db.CalendarReminder(r.Context(), m.ID)
+    if err != nil {
+        h.fail(w, r, err)
+        return
+    }
+    events := make([]ical.Event, 0, len(list))`,
+      ],
+      ['            Remind:  time.Hour,\n', '            Remind:  remind,\n'],
+      [
+        '// GET /calendar/{token}.ics: the member',
+        `// PUT /me/calendar-reminder {"minutes": 60}: how long before each class the feed reminds the
+// member; 0 turns reminders off.
+func (h *handlers) setCalendarReminder(w http.ResponseWriter, r *http.Request) {
+    var body struct {
+        Minutes int \`json:"minutes"\`
+    }
+    if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Minutes < 0 || body.Minutes > 24*60 {
+        writeError(w, http.StatusBadRequest, "bad_request", "minutes must be between 0 and 1440.")
+        return
+    }
+    if err := h.db.SetCalendarReminder(r.Context(), memberFrom(r.Context()).ID, body.Minutes); err != nil {
+        h.fail(w, r, err)
+        return
+    }
+    w.WriteHeader(http.StatusNoContent)
+}
+
+// GET /calendar/{token}.ics: the member`,
+      ],
+    ),
+    'internal/store/members.go': append(`
+// CalendarReminder is how long before a class the member's calendar feed reminds them (0: never).
+func (db *DB) CalendarReminder(ctx context.Context, memberID int64) (time.Duration, error) {
+    var minutes int
+    err := db.pool.QueryRow(ctx, \`SELECT calendar_reminder_minutes FROM members WHERE id = $1\`, memberID).Scan(&minutes)
+    return time.Duration(minutes) * time.Minute, notFound(err)
+}
+
+func (db *DB) SetCalendarReminder(ctx context.Context, memberID int64, minutes int) error {
+    _, err := db.pool.Exec(ctx, \`UPDATE members SET calendar_reminder_minutes = $2 WHERE id = $1\`, memberID, minutes)
+    return err
+}
+`),
+    'internal/httpapi/router.go': after('        r.Post("/me/calendar-token", h.rotateCalendarToken)\n', '        r.Put("/me/calendar-reminder", h.setCalendarReminder)\n'),
+  }, { author: theo, at: at('2026-09-13 16:40') });
+
   // ---------------------------------------------------------------- Maya's waitlists branch (off a16)
   const f1 = r.commit(a16, 'Add the waitlist_entries table\n\nOne row per member per class. Position is set when they join; status tracks the offer\nlifecycle (waiting, offered, accepted, left, expired). Nothing reads or writes it yet.', {
     'migrations/0005_waitlist.sql': `CREATE TYPE waitlist_status AS ENUM ('waiting', 'offered', 'accepted', 'left', 'expired');
@@ -2176,6 +2268,10 @@ func CountWaiting(ctx context.Context, tx pgx.Tx, classID int64) (int, error) {
   // Theo's calendar feed
   r.ref('theo/calendar-feed', cal3);
   r.ref('refs/remotes/origin/theo/calendar-feed', cal3);
+  // Theo's calendar reminders (builds on the calendar feed), one branch tag per PR
+  r.ref('theo/calendar-reminders', rem3);
+  r.ref('theo/calendar-alarms', rem1);
+  r.ref('theo/calendar-remind-hour', rem2);
   return r;
 }
 

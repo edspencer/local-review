@@ -13,7 +13,7 @@ import YAML from 'yaml';
 import { tmpDir } from './fixture.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const SLUGS = ['example-waitlists', 'example-calendar-feed', 'example-webhook-retries'];
+const SLUGS = ['example-waitlists', 'example-calendar-feed', 'example-calendar-reminders', 'example-webhook-retries'];
 
 function sandbox() {
   const home = tmpDir('lr-test-examples-');
@@ -54,10 +54,10 @@ describe('the example projects, from the CLI', () => {
   const s = sandbox();
   after(() => fs.rmSync(s.home, { recursive: true, force: true }));
 
-  test('adding creates the three projects and the four repos, with the demo\'s shas', async () => {
+  test('adding creates the four projects and the four repos, with the demo\'s shas', async () => {
     const r = await s.lr(['examples']);
     assert.equal(r.code, 0, r.stderr);
-    assert.match(r.stdout, /Created example-waitlists, example-calendar-feed, example-webhook-retries/);
+    assert.match(r.stdout, /Created example-waitlists, example-calendar-feed, example-calendar-reminders, example-webhook-retries/);
     for (const slug of SLUGS) {
       const doc = YAML.parse(fs.readFileSync(path.join(s.projects, slug, 'project.yaml'), 'utf8'));
       assert.equal(doc.example, true, slug);
@@ -73,7 +73,7 @@ describe('the example projects, from the CLI', () => {
     const before = s.files();
     const r = await s.lr(['examples']);
     assert.equal(r.code, 0, r.stderr);
-    assert.match(r.stdout, /Already there: example-waitlists, example-calendar-feed, example-webhook-retries/);
+    assert.match(r.stdout, /Already there: example-waitlists, example-calendar-feed, example-calendar-reminders, example-webhook-retries/);
     assert.deepEqual(s.files(), before);
   });
 
@@ -85,7 +85,7 @@ describe('the example projects, from the CLI', () => {
     const before = s.files();
     const r = await s.lr(['examples', 'remove']);
     assert.equal(r.code, 0, r.stderr);
-    assert.match(r.stdout, /Removed example-waitlists, example-calendar-feed, example-webhook-retries/);
+    assert.match(r.stdout, /Removed example-waitlists, example-calendar-feed, example-calendar-reminders, example-webhook-retries/);
     const now = s.files();
     keptAll(before, now, (f) => f.replace(/project\.yaml$/, 'project.example-removed.yaml.bak'));
     for (const slug of SLUGS) assert.ok(!fs.existsSync(path.join(s.projects, slug, 'project.yaml')));
@@ -95,7 +95,7 @@ describe('the example projects, from the CLI', () => {
 
     const add = await s.lr(['examples']);
     assert.equal(add.code, 0, add.stderr);
-    assert.match(add.stdout, /Restored example-waitlists, example-calendar-feed, example-webhook-retries/);
+    assert.match(add.stdout, /Restored example-waitlists, example-calendar-feed, example-calendar-reminders, example-webhook-retries/);
     assert.deepEqual(s.files(), before, 'back exactly as it was');
     assert.match(fs.readFileSync(reviewFile, 'utf8'), /# my note\n$/);
   });
@@ -226,5 +226,36 @@ describe('adding the example projects without blocking the server', () => {
     const after = await fetch(url('/examples/remove'), JSON_POST);
     assert.equal(after.status, 200);
     assert.deepEqual((await after.json()).removed, SLUGS);
+  });
+});
+
+describe('an update that ships a new example project', () => {
+  const s = sandbox();
+  let server: ChildProcess | undefined;
+  after(() => {
+    server?.kill();
+    fs.rmSync(s.home, { recursive: true, force: true });
+  });
+
+  test('it is offered on its own, adding creates just it, and it builds on the calendar feed', async () => {
+    assert.equal((await s.lr(['examples'])).code, 0);
+    // an install from before calendar-reminders existed: everything but it
+    fs.renameSync(path.join(s.projects, 'example-calendar-reminders'), path.join(s.home, 'set-aside'));
+    const before = s.files();
+    let url: (p: string) => string;
+    ({ url, server } = await serve(s));
+    const list = await (await fetch(url('/projects'))).json();
+    assert.equal(list.examples, 'present');
+    assert.deepEqual(list.newExamples, ['example-calendar-reminders']);
+    const add = await (await fetch(url('/examples'), JSON_POST)).json();
+    assert.deepEqual([add.created, add.restored], [['example-calendar-reminders'], []]);
+    assert.deepEqual(add.existing.sort(), ['example-calendar-feed', 'example-waitlists', 'example-webhook-retries']);
+    keptAll(before, s.files());
+    assert.deepEqual((await (await fetch(url('/projects'))).json()).newExamples, []);
+    const rem = await (await fetch(url('/projects/example-calendar-reminders'))).json();
+    assert.deepEqual(rem.after, { slug: 'example-calendar-feed', title: 'Calendar feed' });
+    assert.equal(rem.repos[0].startsAfter, true);
+    assert.equal(rem.repos[0].commits.length, 3);
+    assert.deepEqual(rem.warnings, []);
   });
 });

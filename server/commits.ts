@@ -44,6 +44,13 @@ export interface RepoRange {
   to?: string; // explicit range end (sha or ref), inclusive
   base?: string; // range start = merge-base(base, end), exclusive; default origin/HEAD, main, master
   from?: string; // alternative start: the first commit included (overrides base)
+  /**
+   * Linked projects (project.yaml `after:`): the predecessor's range end in this same repo (a ref). While it's an
+   * ancestor of this range's end, the range starts there (exclusive) instead of at merge-base(base, end); once it
+   * isn't (the predecessor merged and this branch was rebased, or its branch is gone), `base` applies as usual.
+   * Set by projects.ts, never written in project.yaml itself; `from` still wins.
+   */
+  after?: string;
 }
 
 export interface RepoInfo {
@@ -55,6 +62,8 @@ export interface RepoInfo {
   from: string | null;
   head: string | null; // sha of `end`
   mergeBase: string | null; // exclusive start of the range (null for a range starting at a root commit)
+  /** the range starts at the predecessor's end (`after`, linked projects) rather than at its base */
+  startsAfter?: boolean;
   commits: CommitSummary[];
   error?: string;
   warning?: string; // a problem with the live range that isn't an error (the repo has landed PRs to show)
@@ -129,15 +138,17 @@ export async function resolveCommits(repo: string, refs: (string | null | undefi
 export interface RangeRefs {
   head: string | null;
   from: string | null;
+  after?: string | null; // the predecessor's range end (linked projects), if given and it resolves
   base: { ref: string; sha: string } | null;
 }
 
 /** Resolve a range's refs, in one git call. */
 export async function resolveRange(cfg: RepoRange): Promise<RangeRefs> {
   const candidates = cfg.from ? [] : baseCandidates(cfg);
-  const [head, from, ...bases] = await resolveCommits(cfg.path, [rangeEnd(cfg), cfg.from, ...candidates]);
+  const after = cfg.from ? undefined : cfg.after;
+  const [head, from, afterSha, ...bases] = await resolveCommits(cfg.path, [rangeEnd(cfg), cfg.from, after, ...candidates]);
   const i = bases.findIndex(Boolean);
-  return { head, from, base: i >= 0 ? { ref: candidates[i], sha: bases[i]! } : null };
+  return { head, from, ...(after ? { after: afterSha } : {}), base: i >= 0 ? { ref: candidates[i], sha: bases[i]! } : null };
 }
 
 /** The sha the range ends at (branch head or `to`), or null if it doesn't resolve. */
@@ -205,6 +216,11 @@ export async function loadRepo(cfg: RepoRange, opts: { optional?: boolean; refs?
       if (!first) throw new Error(`'from' commit '${cfg.from}' not found`);
       if (!(await isAncestor(cfg.path, first, info.head))) throw new Error(`'from' commit '${cfg.from}' is not an ancestor of ${end}`);
       info.mergeBase = (await summarize(cfg.path, first)).parent;
+    } else if (refs.after && (refs.after === info.head || (await isAncestor(cfg.path, refs.after, info.head)))) {
+      // linked projects: this range builds on the predecessor's, so it starts where that one ends
+      info.base = refs.base?.ref ?? cfg.base ?? null;
+      info.mergeBase = refs.after;
+      info.startsAfter = true;
     } else {
       if (!refs.base) throw new Error(cfg.base ? `base ref '${cfg.base}' not found` : `no base found (tried origin/HEAD, main, master)`);
       info.base = refs.base.ref;
@@ -212,7 +228,7 @@ export async function loadRepo(cfg: RepoRange, opts: { optional?: boolean; refs?
       if (!mb) throw new Error(`${refs.base.ref} and ${end} have no common ancestor`);
       info.mergeBase = mb;
     }
-    const shas = await revList(cfg.path, info.mergeBase, info.head);
+    const shas = info.mergeBase === info.head ? [] : await revList(cfg.path, info.mergeBase, info.head);
     info.commits = await Promise.all(shas.map(async (sha) => ({ sha, short: sha.slice(0, 8), ...(await summarize(cfg.path, sha)) })));
   } catch (e) {
     if (opts.optional) {

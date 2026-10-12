@@ -235,6 +235,13 @@ export function ExamplesMenuItem({ list, onAdded, onRemoved }: { list: ProjectsR
           {present ? 'Remove example projects' : busy ? 'Adding example projects…' : list.examples === 'removed' ? 'Bring back the example projects' : 'Add example projects'}
         </button>
       )}
+      {present && !confirming && !!list.newExamples?.length && (
+        // new in this version (the ones you have are left as they are)
+        <button type="button" className="project-menu-examples-btn" onClick={add} disabled={busy}>
+          <span className="example-tag">New</span>
+          {busy ? 'Adding…' : list.newExamples.length === 1 ? 'Add the new example project' : `Add ${list.newExamples.length} new example projects`}
+        </button>
+      )}
       {error && <div className="flash flash-error project-menu-examples-error" role="alert">{error}</div>}
     </li>
   );

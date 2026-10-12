@@ -39,6 +39,8 @@ commit ranges, and the [PR stacks](/concepts/pr-stacks/) they split into ([Proje
   follow-on and merged PRs beside them ([Totals](/concepts/pr-stacks/#totals)), a bar of the PRs by readiness (merged,
   published, ready, draft), the same as readiness badges with counts, the open threads, and the **last activity**: the
   newest comment, commit, merge or edit to any of the project's files (a Viewed mark, a title, an agent's YAML).
+- **Linked projects** ([`after:`](/concepts/linked-projects/)) are one card spanning the row, in order, with arrows;
+  the successor's thumbnail starts with the predecessor's stacks in grey.
 - **Sections:** Active; **Examples**, once you have projects of your own besides the [example projects](/reference/cli/#local-review-examples-remove)
   (with **Remove example projects**); and **Archived**, collapsed.
 - **Filter** (press `/`) matches the title, slug, repo names and branch names; **Sort** by recent activity, title, size
@@ -98,6 +100,8 @@ left out and mentioned, as in the picture) and where its `project.yaml` is, then
   and Copy / Download.
 
 It doesn't list the repos, stacks and PRs: the sidebar does that, and each stack's title there opens its stack page.
+A [linked project](/concepts/linked-projects/) has a bar above the title: "← Builds on *…*" (with that project's
+readiness) and "Next: *…* →", and the sidebar links both ways under the project link.
 
 ![The project page: the PROJECT label, the totals, and the project intro on the Conversation tab](../../../assets/shots/project-home-full.png)
 

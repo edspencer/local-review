@@ -4,6 +4,7 @@
 // anything but read-only git, via server/git.ts). `init` only ever creates a new project.yaml, never replaces one.
 // `examples` only ever creates (the example projects and their repos); `examples remove` renames, never deletes.
 // `asset add` only ever creates a new, content-named image file; `asset url` writes only the asset's own <name>.yaml.
+// `move` copies prs / reviews files into another project (create-only) and renames the originals to .bak.
 import fs from 'node:fs';
 import path from 'node:path';
 import { AGENT_GUIDE, DEFAULT_PORT, EXAMPLE_PROJECT, PROJECTS_DIR, ROOT, SAFE_NAME, parsePort } from './config.js';
@@ -18,6 +19,7 @@ const USAGE = `Usage: local-review [serve] [--port <n>]
        local-review init <project>
        local-review asset add <project> <file> [--alt <text>]
        local-review asset url <project> <name> <url>
+       local-review move <from> <to> <repo> (<sha>… | --stack <n>) [--to-repo <name>] [--dry-run]
        local-review examples [remove]
        local-review guide
        local-review --version | --help
@@ -45,6 +47,15 @@ const USAGE = `Usage: local-review [serve] [--port <n>]
   asset url
           Record where an asset is published (a URL GitHub's readers can reach), so \`plan\` puts that URL in
           the bodies instead of the local assets/<name> reference.
+  move    Move PRs' review data (prs/ and reviews/ files: titles, descriptions, readiness, branches, comments,
+          Viewed marks) from project <from> to project <to>, e.g. after splitting a project into linked projects.
+          Each file is copied into <to> (never over an existing one: then nothing is moved) and the original is
+          renamed to <sha>.moved-to-<to>.yaml.bak; images the descriptions show are copied too. A snapshot is
+          taken first. project.yaml files aren't edited: what's left to change there is printed.
+          <sha>…           commit shas or unique prefixes (7+ hex), in <from>'s range or with a file there
+          --stack <n>      instead: every commit of declared stack <n> of <repo> in <from>
+          --to-repo <name> the repo's name in <to>, if it differs
+          --dry-run        print what it would do; write nothing
   examples
           Add the example projects: "Orchard", a made-up app in four repos, to click around before reviewing your
           own work. Makes the repos in <data>/examples/ and the projects as projects/example-*. Running it again
@@ -58,7 +69,7 @@ Data: $LOCAL_REVIEW_HOME/projects (default ~/.local-review/projects). Agents: ru
 /** Bad usage: exit 2, with the usage. Anything else thrown exits 1. */
 class UsageError extends Error {}
 
-const VALUE_FLAGS = ['repo', 'stack', 'format', 'port', 'alt'];
+const VALUE_FLAGS = ['repo', 'stack', 'format', 'port', 'alt', 'to-repo'];
 
 function parseArgs(argv: string[]) {
   const pos: string[] = [];
@@ -68,6 +79,7 @@ function parseArgs(argv: string[]) {
     if (a === '-h' || a === '--help') flags.help = '1';
     else if (a === '-v' || a === '--version') flags.version = '1';
     else if (a === '--include-follow-on') flags['include-follow-on'] = '1';
+    else if (a === '--dry-run') flags['dry-run'] = '1';
     else if (a.startsWith('--')) {
       const eq = a.indexOf('=');
       const [k, v] = eq > 0 ? [a.slice(2, eq), a.slice(eq + 1)] : [a.slice(2), argv[++i]];
@@ -172,6 +184,26 @@ function asset(args: string[], flags: Record<string, string>) {
   throw new UsageError(sub ? `unknown asset command '${sub}' (add or url)` : 'asset needs a command: add or url');
 }
 
+async function move(args: string[], flags: Record<string, string>) {
+  const [from, to, repo, ...shas] = args;
+  if (!from || !to || !repo) throw new UsageError('move needs <from> <to> <repo>, then commit shas or --stack <n>');
+  for (const s of [from, to]) if (!SAFE_NAME.test(s)) throw new UsageError(`bad project name '${s}'`);
+  let stack: number | undefined;
+  if (flags.stack !== undefined) {
+    if (!/^[1-9][0-9]{0,3}$/.test(flags.stack)) throw new UsageError(`--stack must be a stack number (1, 2, …)`);
+    if (shas.length) throw new UsageError('give commit shas or --stack, not both');
+    stack = Number(flags.stack);
+  } else if (!shas.length) throw new UsageError('move needs commit shas or --stack <n>');
+  const { MoveError, movePrs, moveReport } = await import('./move.js');
+  const o = { from, to, repo, toRepo: flags['to-repo'], shas, stack, dryRun: !!flags['dry-run'] };
+  try {
+    process.stdout.write(moveReport(await movePrs(o), o) + '\n');
+  } catch (e) {
+    if (e instanceof MoveError) throw new Error(e.message);
+    throw e;
+  }
+}
+
 async function examples(sub: string | undefined) {
   const { addExamples, removeExamples } = await import('./examples.js');
   if (sub === undefined || sub === 'add') {
@@ -235,6 +267,10 @@ async function main(argv: string[]): Promise<number | undefined> {
     case 'asset':
       check(cmd, flags, ['alt'], args, 4);
       asset(args, flags);
+      return 0;
+    case 'move':
+      check(cmd, flags, ['stack', 'to-repo', 'dry-run'], args, 1000);
+      await move(args, flags);
       return 0;
     case 'examples':
       check(cmd, flags, [], args, 1);

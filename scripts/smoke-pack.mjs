@@ -123,9 +123,12 @@ try {
   assert.equal(added.status, 201, await added.clone().text());
   const withExamples = await (await get(base, '/api/projects', /json/)).json();
   assert.equal(withExamples.examples, 'present');
-  assert.deepEqual(withExamples.projects.map((p) => p.slug).sort(), ['demo', 'example-calendar-feed', 'example-waitlists', 'example-webhook-retries']);
+  assert.deepEqual(withExamples.projects.map((p) => p.slug).sort(), ['demo', 'example-calendar-feed', 'example-calendar-reminders', 'example-waitlists', 'example-webhook-retries']);
   const waitlists = await (await get(base, '/api/projects/example-waitlists', /json/)).json();
   assert.deepEqual(waitlists.repos.map((r) => [r.name, r.error, r.commits.length]), [['orchard-api', null, 10], ['orchard-sdk', null, 4], ['orchard-web', null, 5], ['orchard-infra', null, 3]]);
+  // linked projects: calendar reminders builds on the calendar feed, in the same repo
+  const reminders = await (await get(base, '/api/projects/example-calendar-reminders', /json/)).json();
+  assert.deepEqual([reminders.after?.slug, reminders.repos[0].startsAfter, reminders.repos[0].commits.length, reminders.warnings], ['example-calendar-feed', true, 3, []]);
   assert.equal((await post('/api/examples/remove')).status, 200);
   assert.deepEqual((await (await get(base, '/api/projects', /json/)).json()).projects.map((p) => p.slug), ['demo']);
   console.log('smoke:pack: ok');

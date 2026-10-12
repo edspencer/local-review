@@ -7,6 +7,7 @@ import { ReadinessBadge } from './Readiness';
 import { CopyLine } from './Welcome';
 import { STATUS_LABEL, type PrStatus } from '../shared/readiness';
 import { num, plural, summary } from '../shared/totals';
+import { chainGroups } from '../shared/chains';
 import { isTyping, linkTo, projectUrl, relativeTime, useLocalStorage, useTilde } from './util';
 
 type Sort = 'recent' | 'title' | 'size' | 'open';
@@ -59,12 +60,22 @@ export function Projects({ list, onExamplesAdded, onExamplesRemoved }: { list: P
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const shown = useMemo(() => list.projects.filter((p) => matchesFilter(p, query)).sort(COMPARE[COMPARE[sort] ? sort : 'recent']), [list.projects, query, sort]);
-  // the examples get their own section once you have projects of your own; archived ones (everything landed) go last
+  // linked projects (`after:`) stay together, in chain order, as one group: shown if any of them matches the filter,
+  // sorted by their most recently active member (or the first one's title, their total size, their open threads)
+  const shown = useMemo(() => {
+    const cmp = COMPARE[COMPARE[sort] ? sort : 'recent'];
+    const lead = (g: ProjectSummary[]) => (sort === 'recent' ? g.slice().sort(byRecent)[0] : sort === 'title' ? g[0] : { ...g[0], commitCount: g.reduce((a, p) => a + size(p), 0), followOnCount: 0, mergedCount: 0, unresolved: g.reduce((a, p) => a + p.unresolved, 0), activity: g.slice().sort(byRecent)[0].activity });
+    return chainGroups(list.projects)
+      .filter((g) => g.some((p) => matchesFilter(p, query)))
+      .sort((a, b) => cmp(lead(a), lead(b)));
+  }, [list.projects, query, sort]);
+  // the examples get their own section once you have projects of your own; archived ones (everything landed) go last.
+  // A chain is archived only once all of it is, and an example chain only if all of it is examples.
   const own = list.projects.some((p) => !p.example);
-  const active = shown.filter((p) => !p.archived && !(own && p.example));
-  const examples = own ? shown.filter((p) => !p.archived && p.example) : [];
-  const archived = shown.filter((p) => p.archived);
+  const archived = shown.filter((g) => g.every((p) => p.archived));
+  const examples = own ? shown.filter((g) => !g.every((p) => p.archived) && g.every((p) => p.example)) : [];
+  const active = shown.filter((g) => !archived.includes(g) && !examples.includes(g));
+  const count = (gs: ProjectSummary[][]) => gs.reduce((a, g) => a + g.length, 0);
   const showArchived = archivedOpen || (!!query && archived.length > 0);
   const n = list.projects.length;
 
@@ -108,19 +119,36 @@ export function Projects({ list, onExamplesAdded, onExamplesRemoved }: { list: P
         </div>
       )}
       {active.length > 0 && (
-        <Section title="Active" count={active.length} projects={active} extra={!own && list.examples === 'present' ? <RemoveExamples count={list.projects.length} onRemoved={onExamplesRemoved} /> : undefined} />
+        <Section title="Active" count={count(active)} groups={active} extra={
+            !own && list.examples === 'present' ? (
+              <>
+                <RemoveExamples count={list.projects.length} onRemoved={onExamplesRemoved} />
+                {!!list.newExamples?.length && <AddExamples removed={false} count={list.newExamples.length} onAdded={onExamplesAdded} inline />}
+              </>
+            ) : undefined
+          } />
       )}
       {examples.length > 0 && (
-        <Section title="Examples" count={examples.length} projects={examples} extra={<RemoveExamples count={list.projects.filter((p) => p.example).length} onRemoved={onExamplesRemoved} />} />
+        <Section
+          title="Examples"
+          count={count(examples)}
+          groups={examples}
+          extra={
+            <>
+              <RemoveExamples count={list.projects.filter((p) => p.example).length} onRemoved={onExamplesRemoved} />
+              {!!list.newExamples?.length && <AddExamples removed={false} count={list.newExamples.length} onAdded={onExamplesAdded} inline />}
+            </>
+          }
+        />
       )}
       {archived.length > 0 && (
         <section className="projects-section">
           <h2 className="projects-section-head">
             <button type="button" className="projects-section-toggle" aria-expanded={showArchived} onClick={() => setArchivedOpen(!archivedOpen)} title="Projects whose PRs have all merged">
-              <span aria-hidden="true">{showArchived ? '▾' : '▸'}</span> Archived <span className="Counter">{archived.length}</span>
+              <span aria-hidden="true">{showArchived ? '▾' : '▸'}</span> Archived <span className="Counter">{count(archived)}</span>
             </button>
           </h2>
-          {showArchived && <div className="projects-grid">{archived.map((p) => <ProjectCard key={p.slug} p={p} />)}</div>}
+          {showArchived && <Groups groups={archived} />}
         </section>
       )}
       {list.examples !== 'present' && <AddExamples removed={list.examples === 'removed'} onAdded={onExamplesAdded} />}
@@ -128,17 +156,48 @@ export function Projects({ list, onExamplesAdded, onExamplesRemoved }: { list: P
   );
 }
 
-function Section({ title, count, projects, extra }: { title: string; count: number; projects: ProjectSummary[]; extra?: React.ReactNode }) {
+function Section({ title, count, groups, extra }: { title: string; count: number; groups: ProjectSummary[][]; extra?: React.ReactNode }) {
   return (
     <section className="projects-section">
       <h2 className="projects-section-head">
         {title} <span className="Counter">{count}</span>
         {extra}
       </h2>
-      <div className="projects-grid">{projects.map((p) => <ProjectCard key={p.slug} p={p} />)}</div>
+      <Groups groups={groups} />
     </section>
   );
 }
+
+function Groups({ groups }: { groups: ProjectSummary[][] }) {
+  return <div className="projects-grid">{groups.map((g) => (g.length === 1 ? <ProjectCard key={g[0].slug} p={g[0]} /> : <ProjectChain key={g[0].slug} chain={g} />))}</div>;
+}
+
+/**
+ * Linked projects (`after:`) as one group spanning the row: the cards in chain order, an arrow from each project to
+ * the ones that build on it, headed by the first one's title.
+ */
+function ProjectChain({ chain }: { chain: ProjectSummary[] }) {
+  const titleOf = (slug: string | null) => chain.find((p) => p.slug === slug)?.title ?? slug;
+  return (
+    <section className="project-chain" aria-label={`${chain.length} linked projects`}>
+      <h3 className="project-chain-head">
+        <svg className="octicon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d={LINK_ICON} /></svg>
+        {chain[0].title} <span className="muted">· {chain.length} linked projects, each building on the one before</span>
+      </h3>
+      <ol className="project-chain-list">
+        {chain.map((p, i) => (
+          <li key={p.slug} className="project-chain-step">
+            <span className="project-chain-step-label">{i + 1} · {i === 0 ? 'first' : <>builds on <strong>{titleOf(p.after)}</strong></>}</span>
+            <ProjectCard p={p} />
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+// octicon link-16
+export const LINK_ICON = 'm7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z';
 
 export function ProjectCard({ p }: { p: ProjectSummary }) {
   const s = summary(p.totals, p.repoCount);
@@ -226,7 +285,7 @@ function RemoveExamples({ count, onRemoved }: { count: number; onRemoved: () => 
   );
 }
 
-function AddExamples({ removed, onAdded }: { removed: boolean; onAdded: (slug: string) => void }) {
+function AddExamples({ removed, onAdded, count, inline }: { removed: boolean; onAdded: (slug: string) => void; count?: number; inline?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const tilde = useTilde();
@@ -242,6 +301,15 @@ function AddExamples({ removed, onAdded }: { removed: boolean; onAdded: (slug: s
       setBusy(false);
     }
   };
+  if (inline)
+    return (
+      <span className="projects-section-extra">
+        <button className="btn-link" onClick={add} disabled={busy} title="Example projects new in this version of Local Review; the ones you have are left as they are">
+          {busy ? 'Adding…' : `Add ${count === 1 ? 'the new example project' : `${count} new example projects`}`}
+        </button>
+        {error && <span className="flash flash-error" role="alert">{error}</span>}
+      </span>
+    );
   return (
     <p className="projects-examples-hint">
       <span className="example-tag">Example</span> Want something to explore?{' '}
