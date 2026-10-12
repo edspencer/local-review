@@ -297,6 +297,23 @@ describe('HTTP API', () => {
     assert.equal(fs.existsSync(prsDir), false);
   });
 
+  test('/llms.txt: live facts (what /api/projects and /api/me show), URLs for the Host it was reached on; localhost only', async () => {
+    const r = await req('GET', '/llms.txt', { headers: { host: `localhost:${port}` } });
+    assert.equal(r.status, 200);
+    const text: string = r.json;
+    assert.match(text, /^# Local Review\n\n> /);
+    assert.ok(text.includes(`Projects directory: \`${projectsDir}\``), 'the projects directory');
+    assert.ok(text.includes("The reviewer's id: `ada`"), 'the reviewer id (LOCAL_REVIEW_USER)');
+    assert.ok(text.includes(`\`demo-proj\`: Demo project, http://localhost:${port}/demo-proj; repos \`demo\` (\`${repo.dir}\`, \`feature\`)`), 'the existing projects');
+    assert.ok(text.includes(`curl -s http://localhost:${port}/api/projects/<slug>`), 'URLs on this port');
+    assert.ok(!text.includes('localhost:5622'), 'no default-port URLs left');
+    const full = await req('GET', '/llms-full.txt');
+    assert.equal(full.status, 200);
+    assert.ok(full.json.includes('## Handling review threads'), 'llms-full.txt has the whole guide');
+    assert.match((await req('GET', '/agent-guide.md')).json, /^# Driving Local Review/);
+    for (const p of ['/llms.txt', '/llms-full.txt', '/agent-guide.md']) assert.equal((await req('GET', p, { headers: { host: 'evil.example' } })).status, 403, p);
+  });
+
   test('non-localhost Host, cross-site Origin and non-JSON writes are refused', async () => {
     assert.equal((await req('GET', '/api/projects', { headers: { host: 'evil.example:5622' } })).status, 403);
     const p = `${P}/${sha}/threads`;

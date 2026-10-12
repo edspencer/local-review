@@ -29,7 +29,11 @@ The human-facing version, with setup, CI and pull request expectations, is [CONT
 - **The docs site** (`website/`, Astro + Starlight, see `website/CLAUDE.md`) holds the reference docs; the README is
   a short landing page that links to them. Its agent-guide pages are generated from `AGENT-GUIDE.md`: after editing
   that file, run `node scripts/sync-agent-guide.mjs` in `website/` and commit the result (`npm test` fails until you
-  do).
+  do). The same goes for the docs site's `llms.txt` and `llms-full.txt` (`website/public/`): `shared/llms.ts` builds
+  them from `AGENT-GUIDE.md` and `examples/project.example.yaml`, and the running server builds its own copies, with
+  live facts, from the same code. After changing any of those three, run `npm run docs:llms` and commit the result.
+- **`/llms.txt` shows nothing the UI doesn't** (docs: `website/src/content/docs/agents/llms-txt.md`). It's read-only,
+  behind `localOnly`, and its live facts come from what `/api/projects` and `/api/me` already return. Keep it that way.
 - Personal, machine-specific rules go in a git-ignored `CLAUDE.local.md` next to this file.
 
 ## Commands
@@ -47,6 +51,7 @@ npm run demo:seed     # the demo test bed: fake repos + a data home, in demo/out
 npm run docs:media    # screenshots of it for the docs (tools/docs-media/README.md)
 npm run docs:media:gif   # the demo GIF and the landing page's video (ffmpeg)
 npm run docs:media:sync  # copy the captures the site and the README use into place
+npm run docs:llms     # regenerate website/public/llms.txt, llms-full.txt (after editing AGENT-GUIDE.md)
 ```
 
 To try a change by hand, run it on the demo test bed (`tools/docs-media/serve.sh`) rather than on real data. If you

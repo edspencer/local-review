@@ -51,6 +51,9 @@ More recipes are in the [agent guide](/agents/agent-guide/#api-httplocalhost5622
 | GET | `…/stack.svg`, `…/stack.png` | The [stack picture](/using/stack-pictures/) with this PR highlighted. See below. |
 | GET | `/api/projects/:p/stack.svg`, `…/stack.png` | The same for the whole project, nothing highlighted (as on the project page). |
 | GET | `/api/projects/:p/repos/:r/stacks/:ref/stack.svg`, `…/stack.png` | Just one stack, nothing highlighted (as on its stack page). `:ref` is the stack's number in `stacks:`, optionally with its title as a slug (`2-groundwork`), or `unstacked` / `branch`, resolved like the [stack page's URL](/using/ui-tour/#urls) (a reordered list follows the title). `?title=0`, `?scale=linear` and `?download` as below; no `scope`. 400 for a malformed ref, 404 for no such stack. |
+| GET | `/llms.txt` | For coding agents: how to set up a project, with this server's data directory, existing projects and URLs ([llms.txt](/agents/llms-txt/)). `text/plain`, `Cache-Control: no-store`. |
+| GET | `/llms-full.txt` | The same, followed by the whole [agent guide](/agents/agent-guide/). |
+| GET | `/agent-guide.md` | The agent guide on its own (`text/markdown`), with this server's URLs. |
 | GET | `/api/me` | The reviewer: `{id, name}` (see [`LOCAL_REVIEW_USER`](/reference/environment/#local_review_user-the-reviewer)). |
 | GET | `/api/health` | `{ok: true}`. |
 | GET | `/api/events` | Server-Sent Events, below. |

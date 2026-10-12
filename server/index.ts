@@ -8,7 +8,7 @@ import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { streamSSE } from 'hono/streaming';
 import { bodyLimit } from 'hono/body-limit';
-import { PROJECTS_DIR, SAFE_NAME, WEB_DIST } from './config.js';
+import { AGENT_GUIDE, DEFAULT_PORT, EXAMPLE_PROJECT, HOME, PROJECTS_DIR, ROOT, SAFE_NAME, WEB_DIST } from './config.js';
 import { detailOf, filesOf, type CommitSummary } from './commits.js';
 import { prStatus, progressOf, storedStatus } from '../shared/readiness.js';
 import { ReviewConflictError, loadReview, mutateReview, randomId, reviewPath, unresolvedCount, viewReview, type Review, type ReviewContext, type Thread } from './reviews.js';
@@ -16,7 +16,7 @@ import { branchName, githubOf, loadPr, loadPrs, prPath, prView, titleEdited, wri
 import { reconcileBranch, type RefIndex } from './branches.js';
 import { contextFor, inspectOrphan, liveCommits, prContextFor } from './context.js';
 import { emit, startWatchers, subscribe } from './events.js';
-import { isArchived, listProjectSlugs, loadProject, projectModified, successorsOf, type LoadedProject, type LoadedRepo } from './projects.js';
+import { isArchived, listProjectSlugs, loadProject, loadProjectConfig, projectModified, successorsOf, type LoadedProject, type LoadedRepo } from './projects.js';
 import { localOnly } from './security.js';
 import { dirStamp } from './stamps.js';
 import { EditNotFoundError, editProjectYaml, setProjectDescription, setStackDescription } from './projectEdit.js';
@@ -28,6 +28,7 @@ import { EXAMPLE_SLUGS, ExamplesConflictError, addExamples, examplesState, newEx
 import { THUMB_MAX_W, THUMB_MIN_W, renderStackSvg, renderThumbSvg, scopeModel, stackOnlyModel, stackWeights, svgToPng, vizModel, withPredecessor, type VizModel, type VizScale, type VizScope } from './stackviz.js';
 import type { PrStatus } from '../shared/readiness.js';
 import { parseStackRef, resolveStackRef } from '../shared/stackRef.js';
+import { agentGuide, llmsFullTxt, llmsTxt, type LlmsInput } from '../shared/llms.js';
 
 const app = new Hono();
 
@@ -736,6 +737,31 @@ app.get('/api/events', (c) =>
     unsub();
   }),
 );
+
+// ---------------- for coding agents: llms.txt (shared/llms.ts) ----------------
+// Read-only, and nothing the UI doesn't already show to localhost (/api/projects, /api/me). Its URLs use the Host
+// the agent came in on, which localOnly has checked is localhost (and which is the UI's port under `npm run dev`).
+const VERSION: string = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+function llmsInput(c: Context): LlmsInput {
+  const projects = listProjectSlugs().map((slug) => {
+    const cfg = loadProjectConfig(slug);
+    return { slug, title: cfg?.title ?? slug, repos: (cfg?.repos ?? []).map((r) => ({ name: r.name, path: r.path, branch: r.branch ?? r.to ?? null })) };
+  });
+  return {
+    guide: fs.readFileSync(AGENT_GUIDE, 'utf8'),
+    example: fs.readFileSync(EXAMPLE_PROJECT, 'utf8'),
+    url: `http://${c.req.header('host')}`,
+    defaultUrl: `http://localhost:${DEFAULT_PORT}`,
+    live: { version: VERSION, home: HOME, projectsDir: PROJECTS_DIR, reviewer: REVIEWER.id, projects },
+  };
+}
+const agentText = (c: Context, text: string, type: string) => {
+  c.header('Cache-Control', 'no-store');
+  return c.body(text, 200, { 'Content-Type': `${type}; charset=utf-8` });
+};
+app.get('/llms.txt', (c) => agentText(c, llmsTxt(llmsInput(c)), 'text/plain'));
+app.get('/llms-full.txt', (c) => agentText(c, llmsFullTxt(llmsInput(c)), 'text/plain'));
+app.get('/agent-guide.md', (c) => agentText(c, agentGuide(llmsInput(c)), 'text/markdown'));
 
 app.get('/api/health', (c) => c.json({ ok: true }));
 app.get('/api/me', (c) => c.json(REVIEWER));

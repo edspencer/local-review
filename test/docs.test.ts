@@ -40,6 +40,20 @@ describe('docs site', () => {
     }
   });
 
+  test("the docs site's llms.txt and llms-full.txt are in sync (npm run docs:llms), and link pages that exist", async () => {
+    const { siteLlmsFiles } = await import('../scripts/sync-llms.ts');
+    const files: Record<string, string> = siteLlmsFiles();
+    for (const [name, text] of Object.entries(files)) {
+      const file = path.join(WEBSITE, 'public', name);
+      assert.ok(fs.existsSync(file), `website/public/${name} is missing (npm run docs:llms)`);
+      assert.equal(fs.readFileSync(file, 'utf8'), text, `website/public/${name} is stale (npm run docs:llms)`);
+      // links to the site's pages' Markdown copies (src/pages/[...slug].md.ts): each must be a page
+      for (const m of text.matchAll(/https:\/\/local-review\.edspencer\.net\/([a-z0-9/-]+)\.md\b/g)) {
+        assert.ok(['.md', '.mdx'].some((ext) => fs.existsSync(path.join(DOCS, m[1] + ext))), `${name} links ${m[0]}: no such page`);
+      }
+    }
+  });
+
   // Docs may write the port out (in code blocks, which can't interpolate it), so every `localhost:<port>` must be the
   // default, the dev API port next to it, or one of the few other ports that are mentioned on purpose.
   test(`every localhost:<port> in the docs is ${DEFAULT_PORT}, or deliberately another`, () => {

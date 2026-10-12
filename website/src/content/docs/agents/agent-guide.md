@@ -42,6 +42,38 @@ The server watches these files (re-reading them whenever they change) and pushes
 up live. When the
 server is running, prefer its API (below): its writes are atomic and are merged with concurrent edits.
 
+## Setting up a project
+
+When the reviewer asks you to set up a project for their work (say, "the feature-xyz branch of ~/code/my-service"):
+
+1. **Look at the repo, read-only.** Find the branch and what it's based on, then list the commits in the range,
+   oldest first: `git -C ~/code/my-service log --reverse --format='%h %s' origin/main..feature-xyz`. Each commit
+   will be one PR. Don't commit, rebase, check out or push anything while you set up: Local Review never modifies
+   the repos it shows, and neither should setting it up. Reshaping the commits is a separate job, done only when
+   the reviewer asks (the agent guide's "Building the local representation").
+2. **Pick a slug** for the project: letters, digits, `.`, `_` and `-`, not starting with `.`, e.g. `feature-xyz`.
+   It's the project's directory name and its URL, http://localhost:5622/feature-xyz. Choose one that isn't taken
+   (`curl -s http://localhost:5622/api/projects | jq -r '.projects[].slug'` lists them, or look in the projects
+   directory).
+3. **Write `<projects>/<slug>/project.yaml`**: one entry in `repos` per repo, with its `path`, `branch` and `base`.
+   Either run `local-review init <slug>` and edit the commented example it writes, or create the file yourself; never
+   replace or edit an existing project's file to make a new one. Group the commits into `stacks` only if the
+   reviewer asked for stacks or the commits fall into obvious groups; with no `stacks:`, the whole range is one
+   stack, named after the branch. A `title` is enough; leave `description` (the project intro) out unless the
+   reviewer asks for one.
+4. **Create nothing else.** `prs/` and `reviews/` fill in as the review happens: never pre-create them, and never
+   import comments, threads or PR descriptions from GitHub (Local Review's threads are only ever written in Local
+   Review, by the reviewer and you).
+5. **Check it.** `local-review plan <slug>` prints the PRs and any warnings (a missing branch, a bad selector), and
+   works without the server. With the server running, `curl -s http://localhost:5622/api/projects/<slug>` shows the
+   commits, and any `error` or `warnings`, for the project and for each repo. The server picks the new file up
+   live: no restart.
+6. **Tell the reviewer the URL**, http://localhost:5622/<slug>, and how many PRs and stacks it shows.
+
+The full schema is [project.yaml](/reference/project-yaml/); the commented example
+that `init` writes is
+[examples/project.example.yaml](https://github.com/edspencer/local-review/blob/main/examples/project.example.yaml).
+
 ## The data model
 
 **`project.yaml`.** It lists `repos`, each with a `path`, a `branch` (the range end) and a `base` (the range starts

@@ -51,6 +51,8 @@ const posthog = posthogSnippet(import.meta.env.PUBLIC_POSTHOG_KEY);
 		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 		<link rel="icon" href="/favicon.ico" sizes="32x32" />
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+		<!-- for coding agents: what the site is, in Markdown (public/llms.txt, from npm run docs:llms) -->
+		<link rel="describedby" type="text/plain" href="/llms.txt" />
 
 		<meta property="og:type" content="website" />
 		<meta property="og:title" content={title} />

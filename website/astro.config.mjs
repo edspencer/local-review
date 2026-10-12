@@ -46,6 +46,8 @@ export default defineConfig({
 				replacesTitle: true,
 			},
 			favicon: '/favicon.svg',
+			// Each page's <head> links its Markdown copy and /llms.txt, for agents (src/routeData.ts).
+			routeMiddleware: './src/routeData.ts',
 			head: [
 				// .ico fallback for the browsers and crawlers that ignore SVG icons.
 				{ tag: 'link', attrs: { rel: 'icon', href: '/favicon.ico', sizes: '32x32' } },
@@ -115,6 +117,7 @@ export default defineConfig({
 					collapsed: false,
 					items: [
 						{ label: 'Agent guide', slug: 'agents/agent-guide' },
+						{ label: 'llms.txt: setting up a project', slug: 'agents/llms-txt' },
 						{ label: 'Comment files', slug: 'agents/comment-files' },
 						{ label: 'The plan command', slug: 'agents/plan-command' },
 						{ label: 'Publishing as GitHub stacked PRs', slug: 'agents/publishing-stacked-prs' },

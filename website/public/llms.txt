@@ -1,0 +1,110 @@
+# Local Review
+
+> Local Review (npm: `local-review`) is a local, GitHub-PR-style review UI for a stack of git commits, run with `npx local-review` and served at http://localhost:5622. Each commit is a candidate PR, reviewed before anything is pushed. Projects, PR text and review comments are plain YAML files that a coding agent reads and writes. This file tells an agent how to create a Local Review project (a project definition, `project.yaml`) for the user.
+
+**This is the docs site's copy.** If Local Review is running, read http://localhost:5622/llms.txt instead (or the port the user gave):
+the same file for the version they run, plus the actual data directory, the existing projects and URLs for that port.
+`npx local-review` starts it; `npx local-review guide` prints the full agent guide without it.
+By default the data directory is `~/.local-review` (or `$LOCAL_REVIEW_HOME`), and projects are `~/.local-review/projects/<slug>/project.yaml`.
+
+**The rules:**
+
+- **Reviewed repos are read-only.** Local Review never commits to, checks out, rebases, fetches or pushes the repos it shows; setting up a project needs only read-only git (`log`, `merge-base`, `rev-parse`).
+- **Comments are never imported from GitHub.** Local Review's review threads are between the reviewer and the agent, locally. Don't copy GitHub review comments, threads or PR descriptions into it, and don't send its threads to GitHub.
+- **Never delete or replace user data.** Create new files under the projects directory; never overwrite an existing `project.yaml` or remove anything there. `local-review init` only ever creates.
+- **Don't push, open PRs or touch GitHub** while setting up. That comes later, and only when the reviewer says so (the agent guide).
+
+**How to set up a project** (the "Setting up a project" section of the agent guide):
+
+When the reviewer asks you to set up a project for their work (say, "the feature-xyz branch of ~/code/my-service"):
+
+1. **Look at the repo, read-only.** Find the branch and what it's based on, then list the commits in the range,
+   oldest first: `git -C ~/code/my-service log --reverse --format='%h %s' origin/main..feature-xyz`. Each commit
+   will be one PR. Don't commit, rebase, check out or push anything while you set up: Local Review never modifies
+   the repos it shows, and neither should setting it up. Reshaping the commits is a separate job, done only when
+   the reviewer asks (the agent guide's "Building the local representation").
+2. **Pick a slug** for the project: letters, digits, `.`, `_` and `-`, not starting with `.`, e.g. `feature-xyz`.
+   It's the project's directory name and its URL, http://localhost:5622/feature-xyz. Choose one that isn't taken
+   (`curl -s http://localhost:5622/api/projects | jq -r '.projects[].slug'` lists them, or look in the projects
+   directory).
+3. **Write `<projects>/<slug>/project.yaml`**: one entry in `repos` per repo, with its `path`, `branch` and `base`.
+   Either run `local-review init <slug>` and edit the commented example it writes, or create the file yourself; never
+   replace or edit an existing project's file to make a new one. Group the commits into `stacks` only if the
+   reviewer asked for stacks or the commits fall into obvious groups; with no `stacks:`, the whole range is one
+   stack, named after the branch. A `title` is enough; leave `description` (the project intro) out unless the
+   reviewer asks for one.
+4. **Create nothing else.** `prs/` and `reviews/` fill in as the review happens: never pre-create them, and never
+   import comments, threads or PR descriptions from GitHub (Local Review's threads are only ever written in Local
+   Review, by the reviewer and you).
+5. **Check it.** `local-review plan <slug>` prints the PRs and any warnings (a missing branch, a bad selector), and
+   works without the server. With the server running, `curl -s http://localhost:5622/api/projects/<slug>` shows the
+   commits, and any `error` or `warnings`, for the project and for each repo. The server picks the new file up
+   live: no restart.
+6. **Tell the reviewer the URL**, http://localhost:5622/<slug>, and how many PRs and stacks it shows.
+
+The full schema is [project.yaml](https://local-review.edspencer.net/reference/project-yaml.md); the commented example
+that `init` writes is
+[examples/project.example.yaml](https://github.com/edspencer/local-review/blob/main/examples/project.example.yaml).
+
+**The commented example project** (what `npx local-review init <slug>` writes):
+
+```yaml
+# A Local Review project. `npx local-review init my-feature` creates one like this, in
+# ~/.local-review/projects/my-feature/project.yaml (or under $LOCAL_REVIEW_HOME/projects/);
+# it is also a commented reference for writing one by hand.
+#
+# Edit the paths and branches below. The directory name ("my-feature") is the project's slug, used in
+# URLs: http://localhost:5622/my-feature. Edits are picked up live, no restart needed.
+# The full schema and the stack selector rules: https://local-review.edspencer.net/reference/project-yaml/
+title: My feature
+description: |                        # optional: the project intro (Markdown), editable in the UI too.
+  One or two paragraphs of context for the whole effort. "Copy full PR body" puts it at the top of
+  every PR's body, followed by the stack note and then the PR's own description.
+repos:
+  - path: ~/code/my-service           # a local clone; it is only ever read, never modified
+    # name: my-service                # optional, default: the path's basename (used in URLs and dir names)
+    branch: me/my-feature             # range end = this branch's head (or `to: <sha|ref>`, inclusive)
+    base: origin/main                 # range start = merge-base(base, end), exclusive; default origin/HEAD, main, master
+    # from: <sha|ref>                 # alternative start: the first commit included (overrides base)
+    # landed: ["0a1b2c3d"]            # after merges: PRs frozen by the agent, bottom to top (prs file keys; see
+                                      # https://local-review.edspencer.net/concepts/landed-prs/). They come first
+                                      # and keep their numbers.
+    stacks:                           # optional; consecutive groups of commits, in order
+      - title: Groundwork
+        color: blue                   # blue green purple orange pink teal red, or "#hex"; default cycles (yellow is
+                                      # reserved for follow-on stacks)
+        # no starts_at: the first stack starts at the first commit
+      - title: The feature itself
+        color: green
+        starts_at: "Add the feature flag"   # a commit subject (survives rebases) or a quoted sha prefix
+        # optional: a note for this stack (Markdown), how it relates to the others. It comes after the
+        # intro in each of this stack's full PR bodies.
+        description: |
+          Builds on Groundwork.
+      - title: Later
+        starts_at: "Polish the feature"
+        follow_on: true               # optional: parked work, shown yellow and faded, left out of totals and of
+                                      # `local-review plan` by default. Advisory only; keep follow-on stacks at the end.
+                                      # Always yellow: a `color:` here is ignored.
+  # More repos can follow, each with its own range and stacks:
+  # - path: ~/code/my-client
+  #   branch: me/my-feature
+```
+
+## Docs
+
+- [Agent guide](https://local-review.edspencer.net/agents/agent-guide.md): the whole guide for agents (the data model, the HTTP API, review threads, fixups, branches, publishing as GitHub stacked PRs, merges). Also `npx local-review guide`.
+- [project.yaml](https://local-review.edspencer.net/reference/project-yaml.md): the full schema, stack selectors, errors and warnings
+- [Data directory](https://local-review.edspencer.net/reference/data-directory.md): where data lives, `$LOCAL_REVIEW_HOME`, snapshots
+- [prs files](https://local-review.edspencer.net/reference/pr-files.md): PR titles, descriptions, status, branches, GitHub links
+- [Comment files](https://local-review.edspencer.net/reference/comment-files.md): the review threads' schema
+- [HTTP API](https://local-review.edspencer.net/reference/http-api.md): the server's endpoints
+- [CLI](https://local-review.edspencer.net/reference/cli.md): every `local-review` command
+- [llms-full.txt](https://local-review.edspencer.net/llms-full.txt): this file followed by the whole agent guide
+
+## Optional
+
+- [PR stacks](https://local-review.edspencer.net/concepts/pr-stacks.md): how commits group into stacks
+- [Linked projects](https://local-review.edspencer.net/concepts/linked-projects.md): a project that builds on another
+- [Read-only guarantee](https://local-review.edspencer.net/guarantees/read-only.md)
+- [Never-delete guarantee](https://local-review.edspencer.net/guarantees/never-delete.md)
