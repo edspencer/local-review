@@ -357,6 +357,15 @@ export const SHOTS: Shot[] = [
     capture: { selector: '.file-card .thread', pad: { top: 150, right: 12, bottom: 12, left: 12 } },
   },
   {
+    name: 'crop-folded-threads',
+    doc: 'Docs "Comments in the diff": in Files changed, the outdated thread (above the diff) and the resolved one (in it) folded to one row each.',
+    route: `${PROMOTE}?tab=files&file=internal/booking/promote.go`,
+    viewport: { width: 1440, height: 1000 },
+    storage: { 'lr.diffStyle': '"unified"' },
+    actions: [{ waitFor: '.file-card .thread.resolved.is-folded' }],
+    capture: { selector: ['.file-card .thread.outdated.is-folded', '.file-card .thread.resolved.is-folded'], pad: 12 },
+  },
+  {
     name: 'crop-project-context',
     doc: 'Feature: the Project context and Stack context boxes above a PR description (they start every full PR body).',
     route: PROMOTE,

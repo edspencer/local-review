@@ -79,6 +79,11 @@ commit ranges, and the [PR stacks](/concepts/pr-stacks/) they split into ([Proje
   once they've all merged.
 - **Problems:** a missing repo or branch shows an error card, a stack problem a warning.
 
+**Drag the sidebar's right edge** to make it wider or narrower: a small grip halfway down marks it, and it turns blue
+while you hover or drag. It goes from 200px to half the window (600px at most); double-click the edge for the default
+(300px), or Tab to it and use ← / → ([Keyboard shortcuts](/using/keyboard-shortcuts/#the-sidebars-edge)). The width is
+kept in the browser, one for every project and page. Branch names truncate in the middle to fit whatever it is.
+
 ## The PR header
 
 - **Breadcrumbs** above it: `Project › repo · STACK 2 · TITLE › PR #3`. The project and the stack are links to their
