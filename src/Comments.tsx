@@ -7,6 +7,9 @@ import { applyFormat, type Format } from './prText';
 import { MAX_ASSET_BYTES, assetNameOf, assetUrl } from '../shared/assets';
 import { LIGHTBOX_ATTR, opensLightbox } from './lightboxImages';
 import { foldLocation, snippet } from './threadFold';
+import { ChangedElsewhere, DraftNotice, useReconcile } from './DraftNotices';
+import { draftKey, type DraftFacts, type DraftId } from './drafts';
+import { draftStore, useDraft, useDraftHold, useDraftMarkers, useDraftStatus, useScopedId } from './useDrafts';
 
 marked.setOptions({ gfm: true, breaks: false });
 
@@ -82,6 +85,11 @@ export function AuthorLabel({ author }: { author: string }) {
   );
 }
 
+/**
+ * A comment box: Write / Preview, ⌘↵ submits, Esc cancels. With `draftId`, its text is a draft (useDrafts.tsx): kept
+ * as you type, restored after a reload, and cleared once it's submitted or cancelled (never when submitting fails).
+ * `current` (editing a comment): the comment as saved now, so a change made elsewhere meanwhile shows.
+ */
 export function CommentForm({
   placeholder = 'Leave a comment',
   submitLabel = 'Comment',
@@ -92,6 +100,8 @@ export function CommentForm({
   compact,
   publishable,
   notice,
+  draftId = null,
+  current,
 }: {
   placeholder?: string;
   submitLabel?: string;
@@ -104,42 +114,68 @@ export function CommentForm({
   /** a new thread: offer the "For the GitHub PR" box */
   publishable?: boolean;
   notice?: ReactNode;
+  draftId?: (DraftId & DraftFacts) | null;
+  current?: string;
 }) {
-  const [text, setText] = useState(initial);
+  const key = draftId ? draftKey(draftId) : null;
+  const rec = useDraft(key);
+  const st = useDraftStatus(key);
+  const [local, setLocal] = useState(initial);
+  const text = key ? rec?.text ?? initial : local;
+  const base = rec?.base ?? initial;
+  const setText = (t: string, b = base) => (draftId ? draftStore.put(draftId, { text: t, base: b }) : setLocal(t));
   const [publish, setPublish] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [resetKey, setResetKey] = useState(0);
+  const discard = () => (key ? draftStore.remove(key) : setLocal(initial));
+  const { conflict, load, keep } = useReconcile({ base, text }, current ?? base, (d) => { if (rec) setText(d.text, d.base); }, (v) => v.trim(), st.restored && rec ? discard : undefined);
   const submit = async () => {
     if (!text.trim() || busy) return;
     setBusy(true);
     setErr(null);
     try {
       await onSubmit(text, publishable ? publish : false);
-      setText('');
+      if (key) draftStore.remove(key);
+      else setLocal('');
       setPublish(false);
       setResetKey((k) => k + 1); // back to the Write tab
     } catch (e) {
-      setErr((e as Error).message);
+      setErr((e as Error).message); // the draft stays
     } finally {
       setBusy(false);
     }
   };
+  const cancel = onCancel && (() => {
+    if (text.trim() !== base.trim() && !confirm(current === undefined ? 'Discard this comment?' : 'Discard your changes to this comment?')) return;
+    if (key) draftStore.remove(key);
+    onCancel();
+  });
+  const status = rec ? { restored: st.restored ? { at: rec.saved, from: rec.movedFrom } : undefined, unkept: st.unkept } : undefined;
   return (
     <MarkdownEditor
       key={resetKey}
       value={text}
-      onChange={setText}
+      onChange={(t) => setText(t)}
       onSubmit={submit}
-      onCancel={onCancel}
+      onCancel={cancel}
       placeholder={placeholder}
       submitLabel={submitLabel}
-      autoFocus={autoFocus}
+      autoFocus={autoFocus && !st.restored}
       compact={compact}
       busy={busy}
       error={err}
       canSubmit={!!text.trim()}
-      notice={notice}
+      holdKey={key}
+      notice={
+        (notice || status?.restored || status?.unkept || conflict) && (
+          <>
+            {notice}
+            {(status?.restored || status?.unkept || conflict) && <DraftNotice status={status} onDiscard={discard} />}
+            {conflict && <ChangedElsewhere what="comment" onLoad={load} onKeep={keep} />}
+          </>
+        )
+      }
       extra={publishable && <PublishCheckbox checked={publish} onChange={setPublish} disabled={busy} />}
     />
   );
@@ -285,6 +321,7 @@ export function MarkdownEditor({
   notice,
   extra,
   className,
+  holdKey = null,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -304,8 +341,11 @@ export function MarkdownEditor({
   /** beside the buttons (the "For the GitHub PR" box) */
   extra?: ReactNode;
   className?: string;
+  /** the draft this edits: held against other tabs' changes while focus is in here (useDrafts.tsx) */
+  holdKey?: string | null;
 }) {
   const [tab, setTab] = useState<'write' | 'preview'>('write');
+  const hold = useDraftHold(holdKey);
   const ref = useRef<HTMLTextAreaElement>(null);
   const project = useContext(ProjectContext);
   const { upload, uploading, uploadError, dropping, dropProps } = useImageUpload(images ? project : null, value, onChange, ref);
@@ -335,7 +375,7 @@ export function MarkdownEditor({
   ];
   const fileInput = useRef<HTMLInputElement>(null);
   return (
-    <div className={`comment-form ${compact ? 'compact' : ''} ${className ?? ''}`}>
+    <div className={`comment-form ${compact ? 'compact' : ''} ${className ?? ''}`} {...hold}>
       <div className="comment-form-tabs">
         <button type="button" className={tab === 'write' ? 'selected' : ''} onClick={() => setTab('write')}>Write</button>
         <button type="button" className={tab === 'preview' ? 'selected' : ''} onClick={() => setTab('preview')}>Preview</button>
@@ -416,8 +456,12 @@ export function MarkdownEditor({
   );
 }
 
-export function CommentView({ c, onEdit, onDelete, variant = 'inline', badge }: { c: Comment; onEdit?: (body: string) => Promise<unknown>; onDelete?: () => Promise<unknown>; variant?: 'inline' | 'timeline'; badge?: ReactNode }) {
-  const [editing, setEditing] = useState(false);
+export function CommentView({ c, threadId, onEdit, onDelete, variant = 'inline', badge }: { c: Comment; threadId?: string; onEdit?: (body: string) => Promise<unknown>; onDelete?: () => Promise<unknown>; variant?: 'inline' | 'timeline'; badge?: ReactNode }) {
+  // editing is a draft (useDrafts.tsx): open while there is one, so an edit in progress comes back after a reload
+  const id = useScopedId('edit', { thread: threadId, comment: c.id });
+  const key = threadId && id ? draftKey(id) : null;
+  const editing = !!useDraft(key);
+  const startEdit = () => { if (id && key) draftStore.put(id, { text: c.body, base: c.body }); };
   const header = (
     <div className="comment-header">
       {variant === 'inline' && <Avatar author={c.author} size={20} />}
@@ -426,14 +470,14 @@ export function CommentView({ c, onEdit, onDelete, variant = 'inline', badge }: 
       {c.edited && <span className="muted" title={`edited ${c.edited}`}>· edited</span>}
       {badge}
       <span className="spacer" />
-      {isReviewer(c.author) && onEdit && !editing && <button className="btn-octicon" title="Edit" onClick={() => setEditing(true)}>Edit</button>}
+      {isReviewer(c.author) && onEdit && key && !editing && <button className="btn-octicon" title="Edit" onClick={startEdit}>Edit</button>}
       {isReviewer(c.author) && onDelete && !editing && (
         <button className="btn-octicon" title="Delete" onClick={() => { if (confirm('Delete this comment?')) onDelete(); }}>Delete</button>
       )}
     </div>
   );
   const body = editing && onEdit ? (
-    <CommentForm initial={c.body} submitLabel="Update comment" autoFocus compact onCancel={() => setEditing(false)} onSubmit={async (b) => { await onEdit(b); setEditing(false); }} />
+    <CommentForm draftId={key ? id : null} initial={c.body} current={c.body} submitLabel="Update comment" autoFocus compact onCancel={() => {}} onSubmit={onEdit} />
   ) : (
     <Markdown text={c.body} className="comment-body" />
   );
@@ -470,8 +514,17 @@ export interface ThreadFold {
 
 /** `marker` false: the thread's publish marker is shown elsewhere (a general thread's first comment). */
 export function ThreadView({ thread, actions, context, fold, marker = true }: { thread: Thread; actions: ThreadActions; context?: ReactNode; fold?: ThreadFold; marker?: boolean }) {
-  const [replying, setReplying] = useState(false);
-  const [showResolved, setShowResolved] = useState(false);
+  // replying is a draft (useDrafts.tsx): the form is open while there is one
+  const replyId = useScopedId('reply', { thread: thread.id });
+  const replyKey = replyId ? draftKey(replyId) : null;
+  const replying = !!useDraft(replyKey);
+  const startReply = () => { if (replyId) draftStore.put(replyId, { text: '', base: '' }); };
+  // a thread with a draft in it (a reply, an edit) shows it, resolved or not
+  const hasDraft = useThreadHasDraft(thread.id);
+  const [showResolved, setShowResolved] = useState(hasDraft);
+  useEffect(() => {
+    if (hasDraft && fold?.folded) fold.setFolded(false);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- once, as it's shown
   const foldRef = useRef<HTMLButtonElement>(null);
   // with a fold, its header says it's resolved and does the hiding, so there's no "Show resolved" bar as well
   const collapsed = fold ? fold.folded : thread.resolved && !showResolved;
@@ -509,24 +562,25 @@ export function ThreadView({ thread, actions, context, fold, marker = true }: { 
         <>
           <div className="thread-comments">
             {thread.comments.map((c) => (
-              <CommentView key={c.id} c={c} onEdit={(b) => actions.edit(thread.id, c.id, b)} onDelete={() => actions.remove(thread.id, c.id)} />
+              <CommentView key={c.id} c={c} threadId={thread.id} onEdit={(b) => actions.edit(thread.id, c.id, b)} onDelete={() => actions.remove(thread.id, c.id)} />
             ))}
           </div>
           <div className="thread-footer">
             {replying ? (
               <CommentForm
+                draftId={replyId}
                 placeholder="Reply…"
                 submitLabel="Reply"
                 autoFocus
                 compact
                 notice={thread.publish && !thread.published && <div className="publish-notice">This thread is for the GitHub PR, so your reply is posted with it.</div>}
-                onCancel={() => setReplying(false)}
-                onSubmit={async (b) => { await actions.reply(thread.id, b); setReplying(false); }}
+                onCancel={() => {}}
+                onSubmit={(b) => actions.reply(thread.id, b)}
               />
             ) : (
               <div className="thread-footer-row">
                 <Avatar author={reviewer.id} size={24} />
-                <button className="reply-placeholder" onClick={() => setReplying(true)}>Reply…</button>
+                <button className="reply-placeholder" onClick={startReply}>Reply…</button>
               </div>
             )}
             <div className="thread-footer-actions">
@@ -544,6 +598,13 @@ export function ThreadView({ thread, actions, context, fold, marker = true }: { 
       )}
     </div>
   );
+}
+
+/** Whether a draft with changes (a reply, or an edit of one of its comments) is in this thread of the PR on screen. */
+export function useThreadHasDraft(threadId: string): boolean {
+  const scope = useScopedId('reply');
+  const markers = useDraftMarkers();
+  return !!scope && markers.has(`thread:${scope.project}/${scope.repo}/${scope.sha}/${threadId}`);
 }
 
 /**

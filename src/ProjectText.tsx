@@ -2,36 +2,28 @@
 // edited in place on the project and stack pages and in the context boxes above them (stack and PR pages), with the
 // same editor as the PR description. Saved into project.yaml by the server (the rest of the file is kept as it is).
 // Nothing here generates text: it only shows, edits and composes what's in the file.
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import { api, stackColor, type RepoData, type StackGroup } from './api';
 import { aggregate, type Aggregate, type Summary } from '../shared/totals';
 import { Markdown, Octicon } from './Comments';
-import { CopyButton, EditIconButton, MarkdownFieldEditor, type PrDraft } from './PrEdit';
+import { CopyButton, EditIconButton, MarkdownFieldEditor } from './PrEdit';
 import { normBody } from './prText';
 import { linkTo, projectUrl, stackUrl, useLocalStorage, useTilde } from './util';
 import { stackLabel } from './Stacks';
 import { stackRef } from '../shared/stackRef';
+import { draftKey, type DraftId } from './drafts';
+import { useDraft, useTextDraft } from './useDrafts';
 
-/** Drafts of intro / stack-note edits, kept above the pages so they survive switching tabs, commits and pages. */
-interface TextDrafts {
-  drafts: Record<string, PrDraft>;
-  setDraft: (key: string, d: PrDraft | null) => void;
+// Drafts of intro / stack-note edits are in the draft store (useDrafts.tsx), by project (and repo and stack), so a draft
+// is shared by every place the same text is edited, and survives switching pages, and reloads.
+interface TextPages {
   /** reload the project after a save (the SSE echo follows anyway) */
   refresh: () => void;
 }
-const Ctx = createContext<TextDrafts>({ drafts: {}, setDraft: () => {}, refresh: () => {} });
+const Ctx = createContext<TextPages>({ refresh: () => {} });
 
 export function TextDraftsProvider({ refresh, children }: { refresh: () => void; children: ReactNode }) {
-  const [drafts, setDrafts] = useState<Record<string, PrDraft>>({});
-  const setDraft = useCallback((key: string, d: PrDraft | null) => setDrafts((m) => { const n = { ...m }; if (d) n[key] = d; else delete n[key]; return n; }), []);
-  const dirty = Object.values(drafts).some((d) => normBody(d.text) !== normBody(d.base));
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty]);
-  return <Ctx.Provider value={{ drafts, setDraft, refresh }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ refresh }}>{children}</Ctx.Provider>;
 }
 
 /**
@@ -39,8 +31,8 @@ export function TextDraftsProvider({ refresh, children }: { refresh: () => void;
  * saved value (null or blank: not set, `empty` is shown instead). `frame="comment"` draws it as a timeline comment
  * box, like the PR description (the stack and project pages); the default is a plain block (the context boxes).
  */
-export function EditableText({ draftKey, label, text, what, placeholder, empty, file, save, className, frame = 'plain', extraActions }: {
-  draftKey: string;
+export function EditableText({ draftId, label, text, what, placeholder, empty, file, save, className, frame = 'plain', extraActions }: {
+  draftId: DraftId;
   label?: ReactNode;
   text: string | null | undefined;
   what: string;
@@ -53,11 +45,10 @@ export function EditableText({ draftKey, label, text, what, placeholder, empty, 
   /** more buttons beside Copy / Edit (hidden while editing) */
   extraActions?: ReactNode;
 }) {
-  const { drafts, setDraft, refresh } = useContext(Ctx);
+  const { refresh } = useContext(Ctx);
   const tilde = useTilde();
-  const draft = drafts[draftKey];
+  const { key, draft, setDraft: set, status } = useTextDraft(draftId);
   const current = normBody(text ?? '');
-  const set = (d: PrDraft | null) => setDraft(draftKey, d);
   const edit = () => set({ base: current, text: current });
   const onSave = async (t: string) => {
     const b = normBody(t);
@@ -74,7 +65,7 @@ export function EditableText({ draftKey, label, text, what, placeholder, empty, 
   );
   const editor = draft && (
     <>
-      <MarkdownFieldEditor className="ptext-editor" current={current} what={what} placeholder={placeholder} draft={draft} setDraft={set} onSave={onSave} onCancel={() => set(null)} />
+      <MarkdownFieldEditor className="ptext-editor" current={current} what={what} placeholder={placeholder} draft={draft} setDraft={set} onSave={onSave} onCancel={() => set(null)} status={status} draftKey={key} />
       <div className="ptext-hint muted">
         Saved in <code>{tilde(file)}</code> (the rest of the file is kept as it is). ⌘↵ saves, Esc cancels. Empty removes it.
       </div>
@@ -108,12 +99,12 @@ export function EditableText({ draftKey, label, text, what, placeholder, empty, 
 
 type TextProps = { file: string; label?: ReactNode; className?: string; frame?: 'plain' | 'comment'; extraActions?: ReactNode };
 
-export const introDraftKey = (slug: string) => `intro:${slug}`;
+export const introDraftId = (slug: string): DraftId => ({ kind: 'intro', project: slug });
 
 export function IntroText({ slug, text, ...rest }: { slug: string; text: string | null } & TextProps) {
   return (
     <EditableText
-      draftKey={introDraftKey(slug)}
+      draftId={introDraftId(slug)}
       text={text}
       what="project intro"
       placeholder="One or two paragraphs of context for the whole effort. Every full PR body starts with this."
@@ -127,12 +118,13 @@ export function IntroText({ slug, text, ...rest }: { slug: string; text: string 
 /** Only declared stacks have a place in project.yaml for a note (not Unstacked, not the implicit branch stack). */
 export const canHaveNote = (g: StackGroup) => g.number !== null && !g.implicit;
 
-export const stackDraftKey = (slug: string, repo: string, g: StackGroup) => `stack:${slug}:${repo}:${g.number}:${g.title}`;
+/** By the stack's number and title, as saving it is (a renumbered or renamed stack doesn't get another's draft). */
+export const stackDraftId = (slug: string, repo: string, g: StackGroup): DraftId => ({ kind: 'stack', project: slug, repo, stack: { number: g.number ?? 0, title: g.title } });
 
 export function StackNoteText({ slug, repo, group, ...rest }: { slug: string; repo: string; group: StackGroup } & TextProps) {
   return (
     <EditableText
-      draftKey={stackDraftKey(slug, repo, group)}
+      draftId={stackDraftId(slug, repo, group)}
       text={group.description}
       what="stack note"
       placeholder="Context for this stack: how it relates to the other stacks. Comes after the intro in each of its full PR bodies."
@@ -224,8 +216,9 @@ function ContextSection({ kind, title, summary, empty, href, linkLabel, open, se
 export function ContextBoxes({ slug, repo, intro, group, file }: { slug: string; repo?: string; intro: string | null; group?: StackGroup | null; file: string }) {
   const [projectOpen, setProjectOpen] = useLocalStorage('lr.projectContextOpen', true);
   const [stackOpen, setStackOpen] = useLocalStorage('lr.stackContextOpen', true);
-  const { drafts } = useContext(Ctx);
   const note = repo && group && canHaveNote(group) ? group : null;
+  const editingIntro = !!useDraft(draftKey(introDraftId(slug)));
+  const editingNote = !!useDraft(note && repo ? draftKey(stackDraftId(slug, repo, note)) : null);
   return (
     <div className="context-boxes">
       <ContextSection
@@ -237,7 +230,7 @@ export function ContextBoxes({ slug, repo, intro, group, file }: { slug: string;
         linkLabel="Project page"
         open={projectOpen}
         setOpen={setProjectOpen}
-        editing={introDraftKey(slug) in drafts}
+        editing={editingIntro}
       >
         <IntroText slug={slug} text={intro} file={file} className="ptext-inline" />
       </ContextSection>
@@ -251,7 +244,7 @@ export function ContextBoxes({ slug, repo, intro, group, file }: { slug: string;
           linkLabel="Stack page"
           open={stackOpen}
           setOpen={setStackOpen}
-          editing={stackDraftKey(slug, repo, note) in drafts}
+          editing={editingNote}
           style={{ ['--stack' as string]: stackColor(note.color) }}
         >
           <StackNoteText slug={slug} repo={repo} group={note} file={file} className="ptext-inline" />

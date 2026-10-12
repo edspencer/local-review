@@ -6,6 +6,8 @@ import { CommentForm, ThreadView, type ThreadActions } from './Comments';
 import { NO_FOLDS, isFolded, reconcileFolds, setFolded, type FoldState } from './threadFold';
 import { isTyping, useLocalStorage } from './util';
 import { isOpen as isOpenThread } from '../shared/threads';
+import { draftStore, useInlineDrafts, useScopedId, DraftScopeContext } from './useDrafts';
+import { draftKey, hasChanges } from './drafts';
 
 export const LARGE_DIFF_LINES = 800;
 
@@ -74,10 +76,16 @@ export interface Draft {
 type Side = 'left' | 'right';
 const isMixed = (t: { side?: Side; start_line?: number; start_side?: Side }) => !!t.start_line && !!t.start_side && t.start_side !== (t.side ?? 'right');
 
+/** An open inline comment form: its draft's key (useDrafts.tsx) and where it goes. */
+interface OpenDraft {
+  key: string;
+  at: Draft;
+}
+
 interface AnnMeta {
   key: string;
   threads: Thread[];
-  draft: Draft | null;
+  drafts: OpenDraft[];
 }
 
 export interface FilesChangedProps {
@@ -100,7 +108,27 @@ export function FilesChanged({ files: gitOrder, review, actions, newThread, setV
   const viewed = useMemo(() => new Set(review.viewed), [review.viewed]);
   // explicit open/closed state per path; otherwise viewed files start collapsed (huge ones show "Load diff")
   const [openState, setOpenState] = useState<Record<string, boolean>>({});
-  const [draft, setDraft] = useState<Draft | null>(null);
+  // the open inline comment forms are drafts (useDrafts.tsx), oldest first: kept as you type, and reopened on their
+  // line after a reload
+  const scope = useContext(DraftScopeContext);
+  const inline = useInlineDrafts(scope?.project ?? '', scope?.repo ?? '', scope?.sha);
+  const draftsByPath = useMemo(() => {
+    const m = new Map<string, OpenDraft[]>();
+    for (const d of inline) m.set(d.at.path, [...(m.get(d.at.path) ?? []), d]);
+    return m;
+  }, [inline]);
+  /** Open a comment form on these lines (if there isn't one already), closing any other one that's still empty. */
+  const openDraft = useCallback(
+    (at: Draft, lineText: string | undefined) => {
+      if (!scope) return;
+      for (const r of draftStore.all()) {
+        if (r.kind === 'inline' && r.project === scope.project && r.repo === scope.repo && r.sha === scope.sha && !hasChanges(r)) draftStore.remove(draftKey(r));
+      }
+      const id = { kind: 'inline' as const, ...scope, at: cleanAt(at), lineText };
+      if (!draftStore.get(draftKey(id))) draftStore.put(id, { text: '', base: '' });
+    },
+    [scope],
+  );
   // which threads are folded to one row: for this page only (threadFold.ts). Caught up with the threads during
   // render, so a thread that's just been resolved is never drawn open for a frame first.
   const [folds, setFolds] = useState<FoldState>(NO_FOLDS);
@@ -241,8 +269,8 @@ export function FilesChanged({ files: gitOrder, review, actions, newThread, setV
               }}
               threads={threadsByPath.get(f.path) ?? []}
               diffStyle={diffStyle}
-              draft={draft?.path === f.path ? draft : null}
-              setDraft={setDraft}
+              drafts={draftsByPath.get(f.path) ?? NO_DRAFTS}
+              openDraft={openDraft}
               actions={actions}
               newThread={newThread}
             />
@@ -254,6 +282,11 @@ export function FilesChanged({ files: gitOrder, review, actions, newThread, setV
     </FoldContext.Provider>
   );
 }
+
+const NO_DRAFTS: OpenDraft[] = [];
+
+/** A location with no undefined fields, so it keys the same however it was made. */
+const cleanAt = (d: Draft): Draft => ({ path: d.path, side: d.side, line: d.line, ...(d.start_line ? { start_line: d.start_line } : {}), ...(d.start_side ? { start_side: d.start_side } : {}) });
 
 const FoldContext = createContext<{ state: FoldState; set: (id: string, folded: boolean) => void }>({ state: NO_FOLDS, set: () => {} });
 
@@ -561,8 +594,8 @@ interface FileCardProps {
   setViewed: (v: boolean) => Promise<unknown>;
   threads: Thread[];
   diffStyle: 'split' | 'unified';
-  draft: Draft | null;
-  setDraft: (d: Draft | null) => void;
+  drafts: OpenDraft[];
+  openDraft: (at: Draft, lineText: string | undefined) => void;
   actions: ThreadActions;
   newThread: (d: Draft, body: string, publish: boolean) => Promise<unknown>;
 }
@@ -669,7 +702,7 @@ function ThreadLocation({ t }: { t: Thread }) {
   return <div className="thread-location">Comment on {rangeText(t.side, t.line, t.start_line, t.start_side)} ({isMixed(t) ? 'old and new' : t.side === 'left' ? 'old' : 'new'} file), outside the visible diff</div>;
 }
 
-function DiffBody({ file: f, threads, diffStyle, draft, setDraft, actions, newThread }: FileCardProps) {
+function DiffBody({ file: f, threads, diffStyle, drafts, openDraft, actions, newThread }: FileCardProps) {
   const fileDiff = useMemo(
     () =>
       parseDiffFromFile(
@@ -687,8 +720,13 @@ function DiffBody({ file: f, threads, diffStyle, draft, setDraft, actions, newTh
 
   const pathRef = useRef(f.path);
   pathRef.current = f.path;
-  const setDraftRef = useRef(setDraft);
-  setDraftRef.current = setDraft;
+  // the commented line's text goes with the draft, to find the line again after a rebase
+  const open = (d: Omit<Draft, 'path'>) => {
+    const content = d.side === 'left' ? f.oldContent : f.newContent;
+    openDraft({ path: pathRef.current, ...d }, content?.split('\n')[d.line - 1]);
+  };
+  const openRef = useRef(open);
+  openRef.current = open;
   const fileDiffRef = useRef(fileDiff);
   fileDiffRef.current = fileDiff;
   const applyRangeCSSRef = useRef<() => void>(() => {});
@@ -712,7 +750,7 @@ function DiffBody({ file: f, threads, diffStyle, draft, setDraft, actions, newTh
       enableLineSelection: true,
       onGutterUtilityClick: (range: SelectedLineRange) => {
         const d = draftFromRange(fileDiffRef.current, range);
-        if (d) setDraftRef.current({ path: pathRef.current, ...d });
+        if (d) openRef.current(d);
       },
       // selection is controlled (selectedLines), so mirror it into state
       onLineSelected: (range: SelectedLineRange | null) => setSelRef.current(range),
@@ -721,7 +759,7 @@ function DiffBody({ file: f, threads, diffStyle, draft, setDraft, actions, newTh
         // a multi-line selection opens the comment form straight away; a single line just shows the +
         if (!range || (range.start === range.end && (range.endSide ?? range.side) === range.side)) return;
         const d = draftFromRange(fileDiffRef.current, range);
-        if (d) setDraftRef.current({ path: pathRef.current, ...d });
+        if (d) openRef.current(d);
       },
       unsafeCSS: PIERRE_CSS,
       onPostRender: () => applyRangeCSSRef.current(),
@@ -735,6 +773,13 @@ function DiffBody({ file: f, threads, diffStyle, draft, setDraft, actions, newTh
     for (const t of threads) (threadVisible(fileDiff, t) ? visible : outside).push(t);
     return { visible, outside };
   }, [threads, fileDiff]);
+  // a restored draft whose line is no longer in the diff (it moved in a rebase) goes above it, like such threads
+  const { shownDrafts, outsideDrafts } = useMemo(() => {
+    const shownDrafts: OpenDraft[] = [];
+    const outsideDrafts: OpenDraft[] = [];
+    for (const d of drafts) (threadVisible(fileDiff, { ...d.at, id: d.key, resolved: false, comments: [] }) ? shownDrafts : outsideDrafts).push(d);
+    return { shownDrafts, outsideDrafts };
+  }, [drafts, fileDiff]);
 
   const annotations = useMemo<DiffLineAnnotation<AnnMeta>[]>(() => {
     const m = new Map<string, AnnMeta & { side: 'additions' | 'deletions'; lineNumber: number }>();
@@ -742,15 +787,15 @@ function DiffBody({ file: f, threads, diffStyle, draft, setDraft, actions, newTh
       const k = `${side}:${line}`;
       let a = m.get(k);
       if (!a) {
-        a = { key: k, threads: [], draft: null, side: side === 'left' ? 'deletions' : 'additions', lineNumber: line };
+        a = { key: k, threads: [], drafts: [], side: side === 'left' ? 'deletions' : 'additions', lineNumber: line };
         m.set(k, a);
       }
       return a;
     };
     for (const t of visible) get(t.side ?? 'right', t.line!).threads.push(t);
-    if (draft) get(draft.side, draft.line).draft = draft;
-    return [...m.values()].map((a) => ({ side: a.side, lineNumber: a.lineNumber, metadata: { key: a.key, threads: a.threads, draft: a.draft } }));
-  }, [visible, draft]);
+    for (const d of shownDrafts) get(d.at.side, d.at.line).drafts.push(d);
+    return [...m.values()].map((a) => ({ side: a.side, lineNumber: a.lineNumber, metadata: { key: a.key, threads: a.threads, drafts: a.drafts } }));
+  }, [visible, shownDrafts]);
 
   // tint commented ranges (stronger while hovering their thread) via our own <style> in the diff's shadow root
   const [hovered, setHovered] = useState<string | null>(null);
@@ -770,6 +815,8 @@ function DiffBody({ file: f, threads, diffStyle, draft, setDraft, actions, newTh
   useEffect(applyRangeCSS);
   applyRangeCSSRef.current = applyRangeCSS;
 
+  // the lines of the newest open form are the ones selected
+  const draft = shownDrafts.length ? shownDrafts[shownDrafts.length - 1].at : null;
   const selectedLines = useMemo(() => {
     if (!draft) return sel;
     const side = draft.side === 'left' ? 'deletions' : 'additions';
@@ -782,6 +829,11 @@ function DiffBody({ file: f, threads, diffStyle, draft, setDraft, actions, newTh
       {outside.length > 0 && (
         <div className="outside-threads">
           {outside.map((t) => <FoldableThread key={t.id} thread={t} actions={actions} context={<ThreadLocation t={t} />} />)}
+        </div>
+      )}
+      {outsideDrafts.length > 0 && (
+        <div className="outside-threads">
+          {outsideDrafts.map((d) => <InlineDraft key={d.key} d={d} newThread={newThread} outside onDone={() => setSel(null)} />)}
         </div>
       )}
       <FileDiff<AnnMeta, undefined>
@@ -799,26 +851,35 @@ function DiffBody({ file: f, threads, diffStyle, draft, setDraft, actions, newTh
                 <FoldableThread thread={t} actions={actions} context={isMixed(t) ? <div className="thread-location">Comment on {rangeText(t.side, t.line!, t.start_line, t.start_side)}</div> : undefined} />
               </div>
             ))}
-            {a.metadata.draft && (
-              <div className="thread draft">
-                <div className="draft-label">Commenting on {rangeText(a.metadata.draft.side, a.metadata.draft.line, a.metadata.draft.start_line, a.metadata.draft.start_side)}</div>
-                <CommentForm
-                  placeholder="Leave a comment"
-                  submitLabel="Add comment"
-                  autoFocus
-                  compact
-                  publishable
-                  onCancel={() => { setDraft(null); setSel(null); }}
-                  onSubmit={async (body, publish) => {
-                    await newThread(a.metadata.draft!, body, publish);
-                    setDraft(null);
-                    setSel(null);
-                  }}
-                />
-              </div>
-            )}
+            {a.metadata.drafts.map((d) => <InlineDraft key={d.key} d={d} newThread={newThread} onDone={() => setSel(null)} />)}
           </div>
         )}
+      />
+    </div>
+  );
+}
+
+/** An inline comment form: its text is the draft (cleared once the comment is added, or cancelled). */
+function InlineDraft({ d, newThread, outside, onDone }: { d: OpenDraft; newThread: (d: Draft, body: string, publish: boolean) => Promise<unknown>; outside?: boolean; onDone: () => void }) {
+  const id = useScopedId('inline', { at: d.at });
+  return (
+    <div className="thread draft">
+      <div className="draft-label">
+        Commenting on {rangeText(d.at.side, d.at.line, d.at.start_line, d.at.start_side)}
+        {outside && <> ({d.at.side === 'left' ? 'old' : 'new'} file), outside the visible diff</>}
+      </div>
+      <CommentForm
+        draftId={id}
+        placeholder="Leave a comment"
+        submitLabel="Add comment"
+        autoFocus
+        compact
+        publishable
+        onCancel={onDone}
+        onSubmit={async (body, publish) => {
+          await newThread(d.at, body, publish);
+          onDone();
+        }}
       />
     </div>
   );
