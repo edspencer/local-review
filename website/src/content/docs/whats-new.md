@@ -7,7 +7,7 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
-## Coming in 0.9.0: every thread in one place, and comments for GitHub
+## Coming in 0.9.0: every thread in one place, comments for GitHub, and drafts that survive a reload
 
 Not released yet.
 
@@ -23,6 +23,12 @@ Not released yet.
   with file and line (`publish_threads` in JSON). Local Review still never talks to GitHub: the mark is
   `publish: true` in the review file, and the agent records where each one went. See
   [Comments for the GitHub PR](/using/reviewing-and-comments/#comments-for-the-github-pr).
+- **Every text box keeps a draft, like GitHub's.** PR titles and descriptions, the project intro, stack notes, new
+  comments, replies, inline comments and comment edits are kept in the browser as you type, so a reload or a closed tab
+  doesn't lose them: the editor comes back with "Restored an unsaved draft from 10:42" and **Discard**, an inline one on
+  its line. If the saved text changed meanwhile, you choose between theirs and yours. An amber dot marks PRs and stacks
+  with drafts waiting. Drafts never leave the browser until you save them, and there's no "Leave site?" prompt any
+  more unless one couldn't be kept. See [Drafts](/using/editing-pr-text/#drafts).
 
 ## 0.8.0: llms.txt for agents, and a startup banner
 

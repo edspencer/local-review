@@ -78,6 +78,8 @@ commit ranges, and the [PR stacks](/concepts/pr-stacks/) they split into ([Proje
   [readiness badge](/concepts/readiness/), whose tooltip has the details.
 - **A stack's bottom border** counts its ready PRs once there are any (`2/4 READY`), and says `4/4 MERGED` in purple
   once they've all merged.
+- **A small amber dot** after a PR's title, a stack's title or the project's marks an unsaved
+  [draft](/using/editing-pr-text/#drafts) there, kept in this browser.
 - **Problems:** a missing repo or branch shows an error card, a stack problem a warning.
 
 **Drag the sidebar's right edge** to make it wider or narrower: a small grip halfway down marks it, and it turns blue
