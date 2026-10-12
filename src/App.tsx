@@ -174,6 +174,11 @@ export function App() {
   );
 
   const tilde = (s: string) => tildify(s, list?.home);
+  // only the shortcuts this page has: `/` on the root page's filter (Projects.tsx), j/k on a PR page (above), n/p on
+  // its Files changed tab (FilesChanged.tsx); none on the welcome, project and stack pages
+  const shortcuts = onRoot
+    ? list && list.projects.length > 0 ? '/: filter projects' : null
+    : onCommit ? ['j / k: next / prev commit', route.tab === 'files' && 'n / p: next / prev file'].filter(Boolean).join(' · ') : null;
   // linked projects (`after:`): what the breadcrumbs, the project page's bar and the stack pictures need
   const links = useMemo(() => ({ after: project?.after ?? null, next: project?.next ?? [], buildsOn: !!project?.repos.some((r) => r.startsAfter) }), [project]);
   const isExample = !!list?.projects.find((p) => p.slug === activeSlug)?.example;
@@ -206,7 +211,7 @@ export function App() {
         <span className="header-crumbs">{route.repo && route.sha && <>{route.repo} / <code>{route.sha.slice(0, 8)}</code></>}</span>
         <span className="spacer" />
         <span className={`live-dot ${live ? 'on' : ''}`} title={live ? 'Live: watching project files and branches' : 'Disconnected, retrying…'}>{live ? '● live' : '○ offline'}</span>
-        <span className="header-hint" title="Keyboard shortcuts">{onRoot ? '/: filter projects' : 'j / k: next / prev commit · n / p: next / prev file'}</span>
+        {shortcuts && <span className="header-hint" title="Keyboard shortcuts">{shortcuts}</span>}
       </header>
       <div className="app-body">
         {sidebarOpen && !onRoot && (
