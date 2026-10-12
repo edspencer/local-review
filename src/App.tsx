@@ -14,7 +14,7 @@ import { ExamplesMenuItem, ExamplesStrip, Welcome } from './Welcome';
 import { Projects } from './Projects';
 import { tildify } from '../shared/paths';
 import { chainGroups } from '../shared/chains';
-import { LINK_ICON } from './Projects';
+import { ARCHIVED_TITLE, LINK_ICON } from './Projects';
 import { HomeContext, LinksContext, ProjectContext, hashString, isTyping, linkTo, navigate, projectUrl, relativeTime, routeUrl, useLocalStorage, useRoute, useTick, useTilde, type Route } from './util';
 
 // The first screen's data, asked for all at once as the page loads, rather than each request waiting for the one
@@ -385,7 +385,7 @@ function ProjectSwitcher({ list, current, title, onExamplesAdded, onExamplesRemo
           {active.map(item)}
           {archived.length > 0 && (
             <li className="project-menu-section" role="presentation">
-              <button type="button" className="project-menu-section-toggle" aria-expanded={showArchived} onClick={() => setArchivedOpen(!archivedOpen)} title="Projects whose PRs have all merged (every repo has landed PRs and nothing live)">
+              <button type="button" className="project-menu-section-toggle" aria-expanded={showArchived} onClick={() => setArchivedOpen(!archivedOpen)} title={ARCHIVED_TITLE}>
                 <svg className="octicon" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d={showArchived ? CHEV_DOWN : CHEV_RIGHT} /></svg>
                 Archived <span className="Counter">{archived.length}</span>
               </button>

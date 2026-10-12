@@ -144,7 +144,7 @@ export function Projects({ list, onExamplesAdded, onExamplesRemoved }: { list: P
       {archived.length > 0 && (
         <section className="projects-section">
           <h2 className="projects-section-head">
-            <button type="button" className="projects-section-toggle" aria-expanded={showArchived} onClick={() => setArchivedOpen(!archivedOpen)} title="Projects whose PRs have all merged">
+            <button type="button" className="projects-section-toggle" aria-expanded={showArchived} onClick={() => setArchivedOpen(!archivedOpen)} title={ARCHIVED_TITLE}>
               <span aria-hidden="true">{showArchived ? '▾' : '▸'}</span> Archived <span className="Counter">{count(archived)}</span>
             </button>
           </h2>
@@ -195,6 +195,9 @@ function ProjectChain({ chain }: { chain: ProjectSummary[] }) {
     </section>
   );
 }
+
+/** The Archived section's tooltip, here and in the switcher: the rule is isArchived's (server/projects.ts). */
+export const ARCHIVED_TITLE = 'Projects whose PRs have all merged: some repo has landed PRs, and no repo has a live commit';
 
 // octicon link-16
 export const LINK_ICON = 'm7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z';
