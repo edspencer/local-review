@@ -132,30 +132,64 @@ function displayPath(p: string): string {
  * Make (or find, already made) this version's repos; fills in every commit's sha. They're complete once their
  * manifest.json exists. A folder left incomplete by an interrupted attempt is left alone (never cleared): the repos
  * go to the next free name, orchard-<id>-2, … instead.
+ *
+ * Across processes (`local-review examples` while the server's Add runs): a folder is claimed by creating it (mkdir
+ * fails if it exists), and a folder without a manifest that's still fresh is another process building: wait for its
+ * manifest rather than build a second set. No lock file, so a crash leaves nothing that blocks a later attempt.
  */
 async function ensureRepos(repos: Repos): Promise<string> {
   const id = worldId(repos);
   const all = Object.values(repos) as RepoBuilder[];
+  fs.mkdirSync(EXAMPLES_DIR, { recursive: true });
   for (let n = 1; n < 100; n++) {
     const root = path.join(EXAMPLES_DIR, n === 1 ? `orchard-${id}` : `orchard-${id}-${n}`);
-    if (!fs.existsSync(root)) {
-      // fails if the directory exists: never builds over anything
+    if (claim(root)) {
+      // each repo's directory must not exist: never builds over anything
       await Promise.all(all.map((r) => r.buildAsync(path.join(root, r.name), CHECKOUT)));
       const manifest: RepoManifest = { id, repos: Object.fromEntries(all.map((r) => [r.name, Object.fromEntries(r.commits.map((c) => [c.key, c.sha!]))])) };
       atomicWrite(path.join(root, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', { createOnly: true });
       return root;
     }
-    let manifest: RepoManifest | null = null;
-    try {
-      manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
-    } catch {
-      continue; // incomplete: try the next name
-    }
-    if (manifest?.id !== id || all.some((r) => !fs.existsSync(path.join(root, r.name, '.git')))) continue;
+    const manifest = await manifestOf(root);
+    if (!manifest) continue; // incomplete: try the next name
+    if (manifest.id !== id || all.some((r) => !fs.existsSync(path.join(root, r.name, '.git')))) continue;
     for (const r of all) for (const c of r.commits) c.sha = manifest.repos[r.name]?.[c.key];
     if (all.every((r) => r.commits.every((c) => c.sha))) return root;
   }
   throw new ExamplesConflictError(`no usable folder for the example repos in ${EXAMPLES_DIR}`);
+}
+
+/** Create `root` (not its parents): true if this call made it, false if it was there. */
+function claim(root: string): boolean {
+  try {
+    fs.mkdirSync(root);
+    return true;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'EEXIST') return false;
+    throw e;
+  }
+}
+
+/** A folder being built by another process gets this long, since it last changed, to write its manifest. */
+const BUILD_WAIT_MS = 60_000;
+
+/** `root`'s manifest, waiting for it while the folder is fresh (being built elsewhere); null if it's incomplete. */
+async function manifestOf(root: string): Promise<RepoManifest | null> {
+  for (;;) {
+    try {
+      return JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
+    } catch {
+      /* not there (yet) */
+    }
+    let touched: number; // its mtime moves on as the builder adds each repo's folder
+    try {
+      touched = fs.statSync(root).mtimeMs;
+    } catch {
+      return null;
+    }
+    if (Date.now() - touched > BUILD_WAIT_MS) return null;
+    await new Promise((r) => setTimeout(r, 100));
+  }
 }
 
 /** The add in progress, if any: a second add joins it, a remove is refused until it's done. */

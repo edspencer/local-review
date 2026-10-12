@@ -24,7 +24,8 @@ A test fails the build if any code gains a way around that.
   the same name with different bytes (changed by hand) is left alone and reported.
 - **The example projects are created, never cleared.** Adding them only creates files and four new git repos under
   `examples/` (a folder left incomplete by an interrupted attempt is left alone, and the repos go to the next free
-  name). "Remove examples" renames each example's `project.yaml` to a `.bak` (no-clobber), so it drops out of the list
+  name; one that another process is still building, say `local-review examples` while the UI's Add runs, is waited
+  for and shared). "Remove examples" renames each example's `project.yaml` to a `.bak` (no-clobber), so it drops out of the list
   with all its files still there; adding them again renames it back.
 - **Moving review data copies, then renames.** [`local-review move`](/reference/cli/#local-review-move) writes each
   file into the other project create-only (and moves nothing if any is already there), and only then renames the

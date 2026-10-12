@@ -229,6 +229,47 @@ describe('adding the example projects without blocking the server', () => {
   });
 });
 
+describe('two processes adding the examples at once', () => {
+  const s = sandbox();
+  after(() => fs.rmSync(s.home, { recursive: true, force: true }));
+
+  test('they share one set of repos: the second waits for the first, never builds orchard-<id>-2', async () => {
+    const [a, b] = await Promise.all([s.lr(['examples']), s.lr(['examples'])]);
+    assert.equal(a.code, 0, a.stderr);
+    assert.equal(b.code, 0, b.stderr);
+    const roots = fs.readdirSync(path.join(s.lrHome, 'examples'));
+    assert.equal(roots.length, 1, roots.join(', '));
+    for (const slug of SLUGS) assert.match(fs.readFileSync(path.join(s.projects, slug, 'project.yaml'), 'utf8'), new RegExp(`examples/${roots[0]}/`));
+  });
+
+  test('a folder left incomplete long ago is skipped, not waited for', async () => {
+    // the real id's folder name, from a first sandbox
+    const t = sandbox();
+    let root: string;
+    try {
+      assert.equal((await t.lr(['examples'])).code, 0);
+      [root] = fs.readdirSync(path.join(t.lrHome, 'examples'));
+    } finally {
+      fs.rmSync(t.home, { recursive: true, force: true });
+    }
+    // in a second: that folder, interrupted an hour ago (no manifest.json)
+    const t2 = sandbox();
+    try {
+      const interrupted = path.join(t2.lrHome, 'examples', root);
+      fs.mkdirSync(path.join(interrupted, 'orchard-api'), { recursive: true });
+      const old = new Date(Date.now() - 3600_000);
+      fs.utimesSync(interrupted, old, old);
+      const started = Date.now();
+      assert.equal((await t2.lr(['examples'])).code, 0);
+      assert.ok(Date.now() - started < 30_000, 'no long wait');
+      assert.deepEqual(fs.readdirSync(path.join(t2.lrHome, 'examples')).sort(), [root, `${root}-2`]);
+      assert.ok(fs.existsSync(path.join(interrupted, 'orchard-api')), 'the incomplete folder is left alone');
+    } finally {
+      fs.rmSync(t2.home, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('an update that ships a new example project', () => {
   const s = sandbox();
   let server: ChildProcess | undefined;
