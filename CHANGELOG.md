@@ -1,5 +1,33 @@
 # local-review
 
+## 0.6.0
+
+### Minor Changes
+
+- [#33](https://github.com/edspencer/local-review/pull/33) [`9c35c9d`](https://github.com/edspencer/local-review/commit/9c35c9d5017741b183b9fd70c6249ff66625d882) Thanks [@edspencer](https://github.com/edspencer)! - Linked projects: a project can say it builds on another with `after: <slug>` in its `project.yaml`. In a repo both
+  review, its range then starts where the other one's ends (while that's still an ancestor of its branch, and at its
+  `base` again once the first has merged and it's been rebased), and `local-review plan` bases its first PR there on the
+  other project's top PR. Local Review warns when the link doesn't hold, e.g. a squash-merged predecessor whose commits
+  are still in the range. Linked projects are shown together on the root page, linked from each other's project pages,
+  the sidebar, breadcrumbs and the project switcher, and the stack picture can draw the predecessor's stacks too,
+  greyed out (**Show …**, or `?context=1`).
+  
+  New: `local-review move <from> <to> <repo> (<sha>… | --stack <n>)` moves PRs' review data (prs and reviews files)
+  from one project to another, for splitting a project: it copies, never over an existing file, and renames the
+  originals to `.bak`, after a snapshot.
+  
+  The example projects gain **Calendar reminders**, which builds on **Calendar feed**. If you already have the
+  examples, **Add the new example project** (on the root page's Examples heading or in the project switcher, or
+  `local-review examples`) adds just that one.
+
+- [#32](https://github.com/edspencer/local-review/pull/32) [`fce46ae`](https://github.com/edspencer/local-review/commit/fce46ae5a10e980ec784f3c51b381056498692de) Thanks [@edspencer](https://github.com/edspencer)! - A root page at `/`: every project as a card, most recently active first. Each card has a small thumbnail of the
+  project's stacks (a lane per repo, a bar per PR, filled by readiness), its repo / stack / PR counts and +/− lines, a
+  readiness bar with counts, the open threads and when it last saw activity (a comment, a commit, a merge or an edit).
+  Filter by title, repo or branch (press `/`), sort by activity, title, size or open threads; archived projects and the
+  example projects have their own sections. The LOCAL REVIEW wordmark and a new **All projects** item at the top of the
+  project switcher go there. `/` used to open the most recently modified project's first commit; that project is now
+  the first card.
+
 ## 0.5.0
 
 ### Minor Changes
