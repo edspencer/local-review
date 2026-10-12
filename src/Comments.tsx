@@ -1,4 +1,4 @@
-import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { api, type Anchor, type Comment, type Reviewer, type Thread } from './api';
@@ -6,6 +6,7 @@ import { ProjectContext, relativeTime } from './util';
 import { applyFormat, type Format } from './prText';
 import { MAX_ASSET_BYTES, assetNameOf, assetUrl } from '../shared/assets';
 import { LIGHTBOX_ATTR, opensLightbox } from './lightboxImages';
+import { foldLocation, snippet } from './threadFold';
 
 marked.setOptions({ gfm: true, breaks: false });
 
@@ -413,15 +414,28 @@ export interface ThreadActions {
   remove: (tid: string, cid: string) => Promise<unknown>;
 }
 
-export function ThreadView({ thread, actions, context }: { thread: Thread; actions: ThreadActions; context?: ReactNode }) {
+/** A thread that folds to one row (Files changed: threadFold.ts); its state is the page's, not the thread's own. */
+export interface ThreadFold {
+  folded: boolean;
+  setFolded: (folded: boolean) => void;
+}
+
+export function ThreadView({ thread, actions, context, fold }: { thread: Thread; actions: ThreadActions; context?: ReactNode; fold?: ThreadFold }) {
   const [replying, setReplying] = useState(false);
   const [showResolved, setShowResolved] = useState(false);
-  const collapsed = thread.resolved && !showResolved;
+  const foldRef = useRef<HTMLButtonElement>(null);
+  // with a fold, its header says it's resolved and does the hiding, so there's no "Show resolved" bar as well
+  const collapsed = fold ? fold.folded : thread.resolved && !showResolved;
+  const resolve = async () => {
+    await actions.resolve(thread.id, !thread.resolved);
+    foldRef.current?.focus(); // the button just pressed may be gone (resolving folds the thread): keep focus here
+  };
   return (
-    <div className={`thread ${thread.resolved ? 'resolved' : ''} ${thread.outdated ? 'outdated' : ''}`} id={`thread-${thread.id}`}>
-      {context}
-      {thread.outdated && <OutdatedContext thread={thread} />}
-      {thread.resolved && (
+    <div className={`thread ${thread.resolved ? 'resolved' : ''} ${thread.outdated ? 'outdated' : ''} ${fold?.folded ? 'is-folded' : ''}`} id={`thread-${thread.id}`}>
+      {fold && <FoldHeader ref={foldRef} thread={thread} folded={fold.folded} toggle={() => fold.setFolded(!fold.folded)} />}
+      {!(fold?.folded) && context}
+      {!(fold?.folded) && thread.outdated && <OutdatedContext thread={thread} label={!fold} />}
+      {!fold && thread.resolved && (
         <div className="thread-resolved-bar">
           <span>✓ This conversation was marked as resolved</span>
           <button className="btn btn-sm" onClick={() => setShowResolved((v) => !v)}>{showResolved ? 'Hide resolved' : 'Show resolved'}</button>
@@ -444,7 +458,7 @@ export function ThreadView({ thread, actions, context }: { thread: Thread; actio
               </div>
             )}
             <div className="thread-footer-actions">
-              <button className="btn btn-sm" onClick={() => actions.resolve(thread.id, !thread.resolved)}>{thread.resolved ? 'Unresolve conversation' : 'Resolve conversation'}</button>
+              <button className="btn btn-sm" onClick={resolve}>{thread.resolved ? 'Unresolve conversation' : 'Resolve conversation'}</button>
             </div>
           </div>
         </>
@@ -453,16 +467,60 @@ export function ThreadView({ thread, actions, context }: { thread: Thread; actio
   );
 }
 
-/** GitHub-style "Outdated" header plus the code the thread was originally made on (from its stored anchor). */
-export function OutdatedContext({ thread }: { thread: Thread }) {
+/**
+ * A foldable thread's header, one button: the chevron, Resolved / Outdated, `file:line`, how many comments there are
+ * and, folded, who started it and the start of what they said. Click anywhere on it to fold or unfold.
+ */
+function FoldHeader({ ref, thread: t, folded, toggle }: { ref: Ref<HTMLButtonElement>; thread: Thread; folded: boolean; toggle: () => void }) {
+  const first = t.comments[0];
+  const n = t.comments.length;
+  const where = foldLocation(t);
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className="thread-fold"
+      aria-expanded={!folded}
+      onClick={toggle}
+      title={`${folded ? 'Expand' : 'Collapse'} this conversation${t.path ? `\n${t.path}` : ''}`}
+    >
+      <Octicon d={folded ? CHEV_RIGHT : CHEV_DOWN} size={12} className="thread-fold-chev" />
+      {t.resolved && <span className="Label Label--resolved">Resolved</span>}
+      {t.outdated && <span className="Label Label--attention">Outdated</span>}
+      {where && <code className="thread-fold-where">{where}</code>}
+      {folded && first && (
+        <>
+          <Avatar author={first.author} size={16} />
+          <strong className="thread-fold-author">{displayName(first.author)}</strong>
+          <span className="thread-fold-snippet">{snippet(first.body)}</span>
+        </>
+      )}
+      <span className="spacer" />
+      <span className="thread-fold-count" aria-label={`${n} comment${n === 1 ? '' : 's'}`}>
+        <Octicon d={COMMENT_ICON} size={12} /> {n}
+      </span>
+    </button>
+  );
+}
+
+const CHEV_RIGHT = 'M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z';
+const CHEV_DOWN = 'M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z';
+// octicon comment-16
+const COMMENT_ICON = 'M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v7.5A1.75 1.75 0 0 1 13.25 12H9.06l-2.573 2.573A1.458 1.458 0 0 1 4 13.543V12H2.75A1.75 1.75 0 0 1 1 10.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h4.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z';
+
+/**
+ * GitHub-style "Outdated" header plus the code the thread was originally made on (from its stored anchor). `label`
+ * false leaves out the Outdated label, for a thread whose fold header shows it already.
+ */
+export function OutdatedContext({ thread, label = true }: { thread: Thread; label?: boolean }) {
   const a = thread.anchor;
   const mixed = !!a?.start_line && !!a.start_side && a.start_side !== a.side;
   const where = a ? `${a.path}:${mixed ? `${a.start_side === 'left' ? '-' : '+'}${a.start_line} to ${a.side === 'left' ? '-' : '+'}` : a.start_line ? `${a.start_line}-` : ''}${a.line}` : thread.path;
   return (
     <>
       <div className="thread-location" title="The commented code is not in this commit's diff any more">
-        <span className="Label Label--attention Label--outdated">Outdated</span>
-        {a ? <>originally on <code>{where}</code> ({mixed ? 'old and new' : a.side === 'left' ? 'old' : 'new'} file) in <code>{a.commit.slice(0, 8)}</code></> : <>on <code>{where}</code></>}
+        {label && <span className="Label Label--attention Label--outdated">Outdated</span>}
+        {a ? <>{label ? 'originally' : 'Originally'} on <code>{where}</code> ({mixed ? 'old and new' : a.side === 'left' ? 'old' : 'new'} file) in <code>{a.commit.slice(0, 8)}</code></> : <>on <code>{where}</code></>}
       </div>
       {a && <AnchorSnippet anchor={a} />}
     </>

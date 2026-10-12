@@ -30,6 +30,20 @@ instant; see [Moving between PRs](/using/ui-tour/#moving-between-prs).
 | `n` | Next file. |
 | `p` | Previous file. |
 
+A folded thread's row is a button: Tab to it, then Enter or Space opens or folds it.
+
+## The sidebar's edge
+
+Tab to the handle on the sidebar's right edge (it lights up), then:
+
+| Key | |
+| --- | --- |
+| ← / → | Narrower / wider, 16px at a time. |
+| Shift + ← / → | 64px at a time. |
+| Home / End | The narrowest / the widest. |
+
+Double-clicking the handle puts the default width back.
+
 ## Editing
 
 | Key | |

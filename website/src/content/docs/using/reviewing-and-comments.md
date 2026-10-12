@@ -34,9 +34,17 @@ parent.
 - **Across old and new lines:** a range that mixes deleted and added lines in the unified view keeps both ends exactly
   ("Comment on lines -12 to +15", stored with `start_side`). If one end is an unchanged line, it's saved on one side.
 
-Threads render under their (last) line, with **Reply** and **Resolve** / **Unresolve**. Range threads say "Comment on
-lines +40 to +42" and their lines are tinted, more strongly while you hover the thread. Resolved threads collapse. A
-thread whose line isn't in a shown hunk is listed at the top of its file card.
+Threads render under their (last) line, with **Reply** and **Resolve** / **Unresolve**, and their header names the
+file and line (`ClassCard.tsx:44-46` for a range; a range across old and new lines also says "Comment on lines -12 to
++15"). A range's lines are tinted, more strongly while you hover the thread. A thread whose line isn't in a shown hunk
+is listed at the top of its file card.
+
+Every thread here has a chevron in its header, to fold it to one row: **Resolved** or **Outdated**, `file:line`, who
+started it and the start of what they said, and how many comments it has. Click the row to open it again. **Resolved
+and outdated threads start folded**, open ones open. Resolving a thread folds it, and unresolving it (or an agent
+reopening it in the file) opens it. What you fold lasts until you leave the page; nothing is saved.
+
+![Files changed with two folded threads: an Outdated one above the diff and a Resolved one under line 14, each one row with the file and line, the author, the start of the comment and a count of 2](../../../assets/shots/crop-folded-threads.png "Folded: an outdated thread above the diff and a resolved one in it. Click either row to open it.")
 
 When the commit is amended or rebased, threads follow their code; one whose code is gone is marked **Outdated** and
 shows the original lines. See [Following rebases](/concepts/following-rebases/).

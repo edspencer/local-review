@@ -1,8 +1,9 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { FileDiff, type DiffLineAnnotation, type FileDiffOptions } from '@pierre/diffs/react';
 import { DiffHunksRenderer, parseDiffFromFile, type FileDiffMetadata, type SelectedLineRange } from '@pierre/diffs';
 import type { FileData, Review, Thread } from './api';
 import { CommentForm, ThreadView, type ThreadActions } from './Comments';
+import { NO_FOLDS, isFolded, reconcileFolds, setFolded, type FoldState } from './threadFold';
 import { isTyping, useLocalStorage } from './util';
 
 export const LARGE_DIFF_LINES = 800;
@@ -97,6 +98,12 @@ export function FilesChanged({ files: gitOrder, review, actions, newThread, setV
   // explicit open/closed state per path; otherwise viewed files start collapsed (huge ones show "Load diff")
   const [openState, setOpenState] = useState<Record<string, boolean>>({});
   const [draft, setDraft] = useState<Draft | null>(null);
+  // which threads are folded to one row: for this page only (threadFold.ts). Caught up with the threads during
+  // render, so a thread that's just been resolved is never drawn open for a frame first.
+  const [folds, setFolds] = useState<FoldState>(NO_FOLDS);
+  const caughtUp = reconcileFolds(folds, review.threads);
+  if (caughtUp !== folds) setFolds(caughtUp);
+  const foldCtx = useMemo(() => ({ state: caughtUp, set: (id: string, f: boolean) => setFolds((s) => setFolded(s, id, f)) }), [caughtUp]);
 
   const isLarge = (f: FileData) => f.additions + f.deletions > LARGE_DIFF_LINES;
   const isOpen = (f: FileData) => openState[f.path] ?? !viewed.has(f.path);
@@ -181,6 +188,7 @@ export function FilesChanged({ files: gitOrder, review, actions, newThread, setV
   const viewedCount = files.filter((f) => viewed.has(f.path)).length;
 
   return (
+    <FoldContext.Provider value={foldCtx}>
     <div className="files-changed">
       <div className="files-toolbar">
         <button className="btn btn-sm btn-octicon-only" title={treeOpen ? 'Hide file tree' : 'Show file tree'} onClick={() => setTreeOpen(!treeOpen)}>
@@ -234,7 +242,17 @@ export function FilesChanged({ files: gitOrder, review, actions, newThread, setV
         </div>
       </div>
     </div>
+    </FoldContext.Provider>
   );
+}
+
+const FoldContext = createContext<{ state: FoldState; set: (id: string, folded: boolean) => void }>({ state: NO_FOLDS, set: () => {} });
+
+/** A thread in Files changed: folds to one row (resolved and outdated ones start folded). */
+function FoldableThread({ thread, actions, context }: { thread: Thread; actions: ThreadActions; context?: ReactNode }) {
+  const { state, set } = useContext(FoldContext);
+  const folded = isFolded(state, thread);
+  return <ThreadView thread={thread} actions={actions} context={context} fold={{ folded, setFolded: (f) => set(thread.id, f) }} />;
 }
 
 export const fileAnchor = (path: string) => `file-${path.replace(/[^A-Za-z0-9]/g, '-')}`;
@@ -604,7 +622,7 @@ const FileCard = memo(function FileCard(p: FileCardProps) {
       {open && <div className="file-body">{content}</div>}
       {open && !renderable && p.threads.length > 0 && (
         <div className="outside-threads">
-          {p.threads.map((t) => <ThreadView key={t.id} thread={t} actions={p.actions} context={<ThreadLocation t={t} />} />)}
+          {p.threads.map((t) => <FoldableThread key={t.id} thread={t} actions={p.actions} context={<ThreadLocation t={t} />} />)}
         </div>
       )}
     </section>
@@ -754,7 +772,7 @@ function DiffBody({ file: f, threads, diffStyle, draft, setDraft, actions, newTh
     <div ref={wrapRef}>
       {outside.length > 0 && (
         <div className="outside-threads">
-          {outside.map((t) => <ThreadView key={t.id} thread={t} actions={actions} context={<ThreadLocation t={t} />} />)}
+          {outside.map((t) => <FoldableThread key={t.id} thread={t} actions={actions} context={<ThreadLocation t={t} />} />)}
         </div>
       )}
       <FileDiff<AnnMeta, undefined>
@@ -768,7 +786,8 @@ function DiffBody({ file: f, threads, diffStyle, draft, setDraft, actions, newTh
           <div className="inline-annotation">
             {a.metadata.threads.map((t) => (
               <div key={t.id} className="thread-hover-wrap" onMouseEnter={() => setHovered(t.id)} onMouseLeave={() => setHovered((h) => (h === t.id ? null : h))}>
-                <ThreadView thread={t} actions={actions} context={t.start_line ? <div className="thread-location">Comment on {rangeText(t.side, t.line!, t.start_line, t.start_side)}</div> : undefined} />
+                {/* the header says file:line; a range across old and new lines also says which side each end is on */}
+                <FoldableThread thread={t} actions={actions} context={isMixed(t) ? <div className="thread-location">Comment on {rangeText(t.side, t.line!, t.start_line, t.start_side)}</div> : undefined} />
               </div>
             ))}
             {a.metadata.draft && (

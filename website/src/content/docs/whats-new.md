@@ -7,10 +7,16 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
-## Coming in 0.6.1
+## Coming in 0.7.0
 
 Not released yet.
 
+- **A resizable sidebar.** Drag its right edge (from 200px to half the window, 600px at most); double-click it for
+  the default, or Tab to it and use ← / →. The width is remembered, one for every project and page. See
+  [the sidebar](/using/ui-tour/#the-sidebar).
+- **Folding threads in Files changed.** Every thread there has a chevron to fold it to one row; resolved and outdated
+  threads start folded, so they no longer take up the diff. Resolving a thread folds it, unresolving opens it. See
+  [Inline comments](/using/reviewing-and-comments/#inline-comments).
 - **The stack picture's SVG names generic fallback fonts** (`Inter, sans-serif` and `'JetBrains Mono', monospace`), so
   `stack.svg` opened in a browser without Inter no longer falls back to a serif font. The PNG is unchanged.
 

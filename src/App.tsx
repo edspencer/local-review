@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { api, stackColor, type CommitSummary, type ProjectData, type ProjectSummary, type ProjectsResponse, type RepoData, type ServerEvent } from './api';
 import { BranchStatusMarker, MiddleTruncate, PrBadge, branchNote } from './Branch';
 import { CommitPage } from './CommitPage';
@@ -15,6 +15,7 @@ import { Projects } from './Projects';
 import { tildify } from '../shared/paths';
 import { chainGroups } from '../shared/chains';
 import { ARCHIVED_TITLE, LINK_ICON } from './Projects';
+import { SIDEBAR_DEFAULT, SIDEBAR_KEY, SIDEBAR_MIN, clampSidebar, keyResize, readSidebarWidth, sidebarMax } from './sidebarWidth';
 import { HomeContext, LinksContext, ProjectContext, hashString, isTyping, linkTo, navigate, projectUrl, relativeTime, routeUrl, useLocalStorage, useRoute, useTick, useTilde, type Route } from './util';
 
 // The first screen's data, asked for all at once as the page loads, rather than each request waiting for the one
@@ -35,6 +36,8 @@ export function App() {
   const [project, setProject] = useState<ProjectData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useLocalStorage('lr.sidebarOpen', true);
+  const sidebar = useSidebarWidth();
+  const sidebarRef = useRef<HTMLElement>(null);
   const [live, setLive] = useState(false);
   const [closedRepos, setClosedRepos] = useLocalStorage<string[]>('lr.closedRepos', []);
   const [notice, setNotice] = useState<string | null>(null);
@@ -215,7 +218,8 @@ export function App() {
       </header>
       <div className="app-body">
         {sidebarOpen && !onRoot && (
-          <aside className="sidebar">
+          <>
+          <aside className="sidebar" id="sidebar" ref={sidebarRef} style={{ width: sidebar.width }}>
             {isExample && <ExamplesStrip count={exampleCount} onRemoved={examplesRemoved} />}
             {loadError && <div className="flash flash-error">{tilde(loadError)}</div>}
             {project?.error && <div className="flash flash-error">{tilde(project.error)}</div>}
@@ -268,6 +272,8 @@ export function App() {
               />
             ))}
           </aside>
+          <SidebarResizer {...sidebar} target={sidebarRef} />
+          </>
         )}
         <main className="main">
           <ProjectContext.Provider value={project?.slug ?? null}>
@@ -315,6 +321,99 @@ export function App() {
       </div>
     </div>
     </HomeContext.Provider>
+  );
+}
+
+/**
+ * The sidebar's width: the one saved (for every project and page alike), within the limits for the window as it is
+ * now. Read as the first render happens, so the sidebar comes up at its width with no jump.
+ */
+function useSidebarWidth() {
+  const [viewport, setViewport] = useState(() => window.innerWidth);
+  const [saved, setSaved] = useState(() => {
+    try {
+      return readSidebarWidth(localStorage.getItem(SIDEBAR_KEY), Infinity);
+    } catch {
+      return SIDEBAR_DEFAULT;
+    }
+  });
+  useEffect(() => {
+    const onResize = () => setViewport(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const setWidth = useCallback((w: number) => {
+    // what was asked for is kept, so a narrow window doesn't shrink it for good; it's clamped as it's drawn
+    setSaved(w);
+    try {
+      localStorage.setItem(SIDEBAR_KEY, JSON.stringify(w));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  return { width: clampSidebar(saved, viewport), viewport, setWidth };
+}
+
+/**
+ * The handle on the sidebar's right edge: drag it (or ← / →, Shift for bigger steps, Home / End) to resize the
+ * sidebar, double-click it for the default width. While dragging, the width is set on the sidebar directly (no
+ * re-render of the page per mouse move) and saved when you let go.
+ */
+function SidebarResizer({ width, viewport, setWidth, target }: { width: number; viewport: number; setWidth: (w: number) => void; target: RefObject<HTMLElement | null> }) {
+  const [dragging, setDragging] = useState(false);
+  const drag = useRef<{ x: number; from: number; now: number } | null>(null);
+  const handle = useRef<HTMLDivElement>(null);
+  useEffect(() => () => document.body.classList.remove('is-resizing-sidebar'), []);
+  const end = () => {
+    const d = drag.current;
+    if (!d) return;
+    drag.current = null;
+    setDragging(false);
+    document.body.classList.remove('is-resizing-sidebar');
+    if (d.now !== width) setWidth(d.now);
+  };
+  return (
+    <div className={`sidebar-resizer ${dragging ? 'is-dragging' : ''}`}>
+      <div
+        ref={handle}
+        className="sidebar-resizer-hit"
+        role="separator"
+        aria-orientation="vertical"
+        aria-controls="sidebar"
+        aria-label="Resize sidebar"
+        aria-valuenow={width}
+        aria-valuemin={SIDEBAR_MIN}
+        aria-valuemax={sidebarMax(viewport)}
+        tabIndex={0}
+        title="Drag to resize the sidebar · double-click for the default width"
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          e.preventDefault(); // no text selection starting here, and keep focus where it was
+          e.currentTarget.setPointerCapture(e.pointerId);
+          drag.current = { x: e.clientX, from: width, now: width };
+          setDragging(true);
+          document.body.classList.add('is-resizing-sidebar');
+        }}
+        onPointerMove={(e) => {
+          const d = drag.current;
+          if (!d) return;
+          d.now = clampSidebar(d.from + e.clientX - d.x, window.innerWidth);
+          if (target.current) target.current.style.width = `${d.now}px`;
+          handle.current?.setAttribute('aria-valuenow', String(d.now));
+        }}
+        onPointerUp={end}
+        onPointerCancel={end}
+        onLostPointerCapture={end}
+        onDoubleClick={() => setWidth(SIDEBAR_DEFAULT)}
+        onKeyDown={(e) => {
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+          const w = keyResize(width, e.key, e.shiftKey, viewport);
+          if (w === null) return;
+          e.preventDefault();
+          setWidth(w);
+        }}
+      />
+    </div>
   );
 }
 
