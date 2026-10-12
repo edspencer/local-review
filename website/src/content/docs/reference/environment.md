@@ -11,6 +11,7 @@ thinks you are.
 | `LOCAL_REVIEW_HOME` | `~/.local-review` | The [data directory](/reference/data-directory/): `projects/`, `backups/` and `examples/` all move. `~` is expanded. |
 | `PORT` | `5622` | The port `local-review` serves on. `--port` wins over it. Also used in the URL `init` prints. |
 | `LOCAL_REVIEW_USER` | `git config user.name`, else `$USER` | Who you are: your comments are stored under this name's id. See [The reviewer](#local_review_user-the-reviewer). |
+| `NO_COLOR`, `FORCE_COLOR` | colour on a terminal | The startup banner's colours. See [Colour](#colour-no_color-and-force_color). |
 | `LOCAL_REVIEW_PROJECTS_DIR` | `$LOCAL_REVIEW_HOME/projects` | Moves only `projects/`. For the tests; it turns automatic snapshots off unless `LOCAL_REVIEW_HOME` is set too. |
 
 ## `LOCAL_REVIEW_HOME`: a scratch instance
@@ -60,3 +61,17 @@ These only matter when you run Local Review from a checkout with `npm run dev` (
 | `LOCAL_REVIEW_DEV` | unset | Set by `npm run dev` for the API server: it doesn't serve the built UI (Vite does), and its default port is `5623`. |
 
 Change both to run a dev instance next to a live one.
+
+## Colour: `NO_COLOR` and `FORCE_COLOR`
+
+Only `local-review`'s startup banner is coloured, and it follows Node's own rules
+([`getColorDepth`](https://nodejs.org/api/tty.html#writestreamgetcolordepthenv)):
+
+- `NO_COLOR` (any non-empty value, [no-color.org](https://no-color.org/)): the banner without colour.
+- `FORCE_COLOR`: colour, and the banner, even when the output isn't a terminal. `FORCE_COLOR=1`, `2` and `3` pick
+  16, 256 or 16 million colours; `FORCE_COLOR=0` turns colour off. If both are set, `FORCE_COLOR` wins, as in Node
+  and at [force-color.org](https://force-color.org/).
+- Otherwise: colour on a terminal that has it (`COLORTERM`, `TERM`; Windows 10 and later), none on `TERM=dumb`, and
+  no banner at all when the output isn't a terminal.
+
+`--quiet` leaves the banner out whatever these say.

@@ -73,6 +73,16 @@ Then open **http://localhost:5622**. Edits are picked up live. The full walk-thr
 
 ## For agents
 
+To have your coding agent set up a project, point it at the running server's `llms.txt`:
+
+```text
+Read http://localhost:5622/llms.txt and create a local-review project for my feature-xyz branch on ~/code/my-git-project
+```
+
+It has the rules, the recipe, the commented `project.yaml` example and this machine's data directory and projects
+([llms.txt](https://local-review.edspencer.net/agents/llms-txt/); the docs site has a copy at
+https://local-review.edspencer.net/llms.txt). Then
+
 ```sh
 npx local-review guide
 ```

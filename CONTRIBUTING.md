@@ -104,6 +104,10 @@ the old behaviour). Before 1.0, a breaking change is a minor bump. Changes nobod
 (tests, CI, refactors, contributor docs) don't need one. `npx changeset status --verbose` shows what the next
 release would be.
 
+Big enough to be a highlight? Add a bullet to the docs site's [What's new](website/src/content/docs/whats-new.md)
+page too, under its `## Coming in <next version>: <title>` section (start one, with a "Not released yet." line, if
+there isn't one). The release gives it its heading ([RELEASING.md](RELEASING.md)).
+
 You don't bump `version` or edit `CHANGELOG.md` yourself: the release workflow does both. How changesets become a
 release on npm: [RELEASING.md](RELEASING.md).
 

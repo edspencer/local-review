@@ -14,7 +14,8 @@ flag** and no other way to expose it, on purpose.
 | Writes must be JSON (`Content-Type: application/json`, else 415), which forces a CORS preflight it never grants. The one exception, an image upload, must be an image type (`image/png` and so on), and those force the preflight too. A `DELETE` has no body, and is a preflighted method anyway. | **Cross-site requests**: a page POSTing a form or a "simple" request. |
 | If the browser sends an `Origin` on a write, it must be localhost (else 403). | Cross-site requests from browsers that do send it. |
 
-These live in `server/security.ts`.
+These live in `server/security.ts`. They cover every route, including the [llms.txt](/agents/llms-txt/) files for
+coding agents, which are read-only and show nothing the UI doesn't already show to localhost.
 
 ## Images
 

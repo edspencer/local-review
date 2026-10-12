@@ -57,12 +57,13 @@
     "prepack": "npm run build",
     "smoke:pack": "node scripts/smoke-pack.mjs",
     "changeset": "changeset",
-    "changeset:version": "changeset version && npm install --package-lock-only --ignore-scripts",
+    "changeset:version": "changeset version && node scripts/whats-new-release.mjs && npm install --package-lock-only --ignore-scripts",
     "demo:seed": "tsx demo/seed.ts",
     "demo:check": "tsx demo/seed.ts check",
     "docs:media": "tsx tools/docs-media/capture.ts",
     "docs:media:gif": "tsx tools/docs-media/gif.ts",
-    "docs:media:sync": "tsx tools/docs-media/sync.ts"
+    "docs:media:sync": "tsx tools/docs-media/sync.ts",
+    "docs:llms": "tsx scripts/sync-llms.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.4",
