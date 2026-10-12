@@ -46,6 +46,11 @@ describe('project.yaml', () => {
       }),
     );
     assert.equal(p.error, undefined);
+    // the skipped entries are said so, not silently dropped
+    assert.deepEqual(p.warnings, [
+      'repo 4 in `repos` ({"branch":"no path"}) has no `path`, so it\'s skipped. Give it the path of a git checkout.',
+      'repo 5 in `repos` ("junk") isn\'t a mapping (path:, branch: …), so it\'s skipped.',
+    ]);
     assert.deepEqual([p.title, p.description], ['Demo', 'About *this*']);
     assert.deepEqual(p.repos.map((r) => r.name), ['my-service', 'second', 'my-service-2']);
     const [r0, r1] = p.repos;

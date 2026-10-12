@@ -67,6 +67,7 @@ export async function buildPlan(project: LoadedProject, opts: PlanOpts = {}): Pr
   const includeFollowOn = !!opts.includeFollowOn;
   const plan: Plan = { project: project.cfg.slug, title: project.cfg.title, scope: { repo: opts.repo ?? null, stack: opts.stack ?? null, include_follow_on: includeFollowOn }, prs: [], excluded_follow_on: [], excluded_landed: [], notes: [], warnings: [] };
   if (project.cfg.error) plan.warnings.push(`project: ${project.cfg.error}`);
+  for (const w of project.warnings) plan.warnings.push(`project: ${w}`);
   for (const r of repos) {
     // an explicitly named stack is always planned; otherwise follow-on stacks only with --include-follow-on
     const skip = new Set<number>();
