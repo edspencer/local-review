@@ -194,11 +194,14 @@ const FONT_FILES = {
   mono: 'JetBrainsMono_400Regular.ttf',
 } as const;
 type Face = keyof typeof FONT_FILES;
+// A generic fallback after each family: resvg (the PNG) only has the bundled fonts, so it always picks the named
+// one, but a browser showing the SVG itself without Inter installed would otherwise fall back to its default serif.
+const SANS = `font-family="Inter, sans-serif"`;
 const FACE_ATTRS: Record<Face, string> = {
-  regular: `font-family="Inter" font-weight="400"`,
-  semibold: `font-family="Inter" font-weight="600"`,
-  bold: `font-family="Inter" font-weight="700"`,
-  mono: `font-family="JetBrains Mono" font-weight="400"`,
+  regular: `${SANS} font-weight="400"`,
+  semibold: `${SANS} font-weight="600"`,
+  bold: `${SANS} font-weight="700"`,
+  mono: `font-family="'JetBrains Mono', monospace" font-weight="400"`,
 };
 
 let loaded: Record<Face, opentype.Font> | null = null;
