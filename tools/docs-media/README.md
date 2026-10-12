@@ -49,6 +49,19 @@ The browser's clock is pinned to the demo's "now", as for the stills, but the se
 real time, which would read as weeks old. So the script re-dates that one comment to the demo's "now" in the YAML
 before the next frame. That is the only thing in it that is staged.
 
+## Other rigs
+
+Most shots are of the demo seed itself, but a few states aren't in it: a brand-new install, the example projects, an
+image in a description. A shot with `rig:` (`RIGS` in `shots.ts`) is taken on a rig of its own: a throwaway copy of
+the seed, or an empty data home, in the system temp dir (never `demo/out`), prepared by the rig's `prepare` step with
+the real CLI, served on its own port, and deleted afterwards.
+
+| Rig | What | Staged? |
+| --- | --- | --- |
+| `empty` | no projects: `/` is the welcome page | no |
+| `examples` | an empty home after `local-review examples` | no |
+| `image` | the seed, plus a diagram added with `local-review asset add` and put in a stack note, for the lightbox | **yes**: say so in the caption |
+
 ## Composed shots
 
 Two of the landing page's pictures put a crop beside something that isn't a page of the app: the project.yaml that

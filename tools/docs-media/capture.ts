@@ -12,12 +12,13 @@ import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, type Browser, type Page } from 'playwright';
 import { DEFAULT_PORT } from '../../server/port.ts';
 import { seed, type Manifest } from '../../demo/seed.ts';
-import { DEFAULT_VIEWPORT, SHOTS, type ComposeContext, type Crop, type Shot } from './shots.ts';
+import { DEFAULT_VIEWPORT, SHOTS, type ComposeContext, type Crop, type Rig, type Shot } from './shots.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../..');
@@ -54,9 +55,9 @@ const freePort = () =>
     });
   });
 
-async function bootRig(): Promise<{ base: string; proc: ChildProcess }> {
+async function bootRig(seedDir = SEED): Promise<{ base: string; proc: ChildProcess }> {
   const port = await freePort();
-  const proc = spawn(path.join(HERE, 'serve.sh'), [SEED, '--port', String(port)], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const proc = spawn(path.join(HERE, 'serve.sh'), [seedDir, '--port', String(port)], { stdio: ['ignore', 'pipe', 'pipe'] });
   let log = '';
   proc.stdout!.on('data', (d) => (log += d));
   proc.stderr!.on('data', (d) => (log += d));
@@ -112,6 +113,36 @@ const STILL_CSS = `
 
 // ------------------------------------------------------------------------------------------------ shooting
 
+/** `local-review <args>` from source against a data home, with the same scrubbed environment as serve.sh. */
+function runCli(home: string, args: string[]): string {
+  return execFileSync(process.execPath, ['--import', 'tsx', path.join(ROOT, 'server/cli.ts'), ...args], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'], // stderr is in the error if it fails; otherwise only chatter (`Added …`)
+    env: { PATH: process.env.PATH, HOME: home, LOCAL_REVIEW_HOME: path.join(home, '.local-review'), LOCAL_REVIEW_USER: 'maya', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', TZ: 'UTC', LANG: 'C.UTF-8' },
+  });
+}
+
+/**
+ * A rig other than the demo seed (shots.ts `rig:`): a throwaway copy of the seed, or an empty data home, in the
+ * system temp dir, prepared by the rig's own steps and served on a port of its own. Never demo/out itself.
+ */
+async function bootExtraRig(rig: Rig): Promise<{ base: string; proc: ChildProcess; dir: string }> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `lr-docs-media-${rig.name}-`));
+  if (rig.from === 'demo') fs.cpSync(SEED, dir, { recursive: true });
+  else {
+    fs.mkdirSync(path.join(dir, 'home'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({ generator: 'local-review docs-media', rig: rig.name }) + '\n');
+  }
+  const home = path.join(dir, 'home');
+  rig.prepare?.({
+    file: (rel) => path.join(home, rel),
+    cli: (args) => runCli(home, args),
+  });
+  const r = await bootRig(dir);
+  return { ...r, dir };
+}
+
 /** For composed shots: earlier shots, seed files, and the CLI run against the seed (from source, scrubbed env). */
 function composeContext(m: Manifest): ComposeContext {
   return {
@@ -121,12 +152,7 @@ function composeContext(m: Manifest): ComposeContext {
       return `data:image/png;base64,${fs.readFileSync(f).toString('base64')}`;
     },
     seedFile: (rel) => fs.readFileSync(path.join(m.home, rel), 'utf8'),
-    cli: (args) =>
-      execFileSync(process.execPath, ['--import', 'tsx', path.join(ROOT, 'server/cli.ts'), ...args], {
-        cwd: ROOT,
-        encoding: 'utf8',
-        env: { PATH: process.env.PATH, HOME: m.home, LOCAL_REVIEW_HOME: m.localReviewHome, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', TZ: 'UTC', LANG: 'C.UTF-8' },
-      }),
+    cli: (args) => runCli(m.home, args),
   };
 }
 
@@ -275,6 +301,15 @@ async function main() {
     BASE = r.base;
     rig = r.proc;
   }
+  const extra = new Map<string, Awaited<ReturnType<typeof bootExtraRig>>>();
+  const baseFor = async (shot: Shot) => {
+    if (!shot.rig) return BASE!;
+    if (!extra.has(shot.rig.name)) {
+      console.log(`Booting the "${shot.rig.name}" rig…`);
+      extra.set(shot.rig.name, await bootExtraRig(shot.rig));
+    }
+    return extra.get(shot.rig.name)!.base;
+  };
   const browser = await chromium.launch();
   const provenance: Record<string, unknown> = {};
   const seedHash = crypto.createHash('sha256').update(JSON.stringify(m.lock)).digest('hex').slice(0, 12);
@@ -283,9 +318,9 @@ async function main() {
   try {
     for (const shot of shots) {
       try {
-        const r = await takeShot(browser, shot, m, BASE);
+        const r = await takeShot(browser, shot, m, await baseFor(shot));
         console.log(`  ✓ ${path.relative(process.cwd(), r.file)}`);
-        provenance[`${shot.name}.png`] = { doc: shot.doc, route: r.route, viewport: r.viewport, scale: r.scale, ...(r.clip ? { clip: r.clip } : {}), page_title: r.title, now: m.now };
+        provenance[`${shot.name}.png`] = { doc: shot.doc, ...(shot.rig ? { rig: shot.rig.name } : {}), route: r.route, viewport: r.viewport, scale: r.scale, ...(r.clip ? { clip: r.clip } : {}), page_title: r.title, now: m.now };
       } catch (e) {
         failures.push(`${shot.name}: ${(e as Error).message.split('\n')[0]}`);
         console.error(`  ✗ ${shot.name}: ${(e as Error).message}`);
@@ -296,6 +331,10 @@ async function main() {
   } finally {
     await browser.close();
     rig?.kill();
+    for (const r of extra.values()) {
+      r.proc.kill();
+      fs.rmSync(r.dir, { recursive: true, force: true });
+    }
   }
   const provFile = path.join(OUT, 'provenance.json');
   const prev = fs.existsSync(provFile) && ONLY ? JSON.parse(fs.readFileSync(provFile, 'utf8')).shots : {};

@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 // The shots the docs site, README and launch posts are made from, all of the demo test bed (npm run demo:seed).
 // capture.ts runs them; each one says what it's for, so a stale image can be traced back to the page using it.
 //
@@ -8,6 +9,8 @@
 // storage:   localStorage entries set before the app loads (UI preferences, e.g. the diff style)
 // compose:   instead of a route, a page built from earlier shots and the seed's own files or CLI output (see
 //            ComposeContext), for the landing page's two-part pictures; capture crops it like any other page
+// rig:       serve something other than the demo seed (RIGS below): an empty data home, the example projects, or a
+//            copy of the seed with a staged change. Each is a throwaway copy in the temp dir, never demo/out
 
 export type Action =
   | { click: string }
@@ -30,9 +33,23 @@ export interface ComposeContext {
   cli(args: string[]): string; // what `local-review <args>` prints against the seed
 }
 
+/** What a rig's `prepare` can do to its throwaway data home before the server starts. */
+export interface RigContext {
+  file(rel: string): string; // the absolute path of a file under the rig's home (e.g. '.local-review/projects/…')
+  cli(args: string[]): string; // run `local-review <args>` against the rig's home; returns stdout
+}
+
+export interface Rig {
+  name: string;
+  doc: string; // what it is, and what in it (if anything) is staged
+  from: 'demo' | 'empty'; // a copy of the demo seed, or a data home with nothing in it
+  prepare?: (ctx: RigContext) => void;
+}
+
 export interface Shot {
   name: string; // the file: out/<name>.png
   doc: string;
+  rig?: Rig; // default: the demo seed itself
   route?: string; // required unless compose is set
   compose?: (ctx: ComposeContext) => string; // the page's HTML
   viewport?: { width: number; height: number };
@@ -44,6 +61,67 @@ export interface Shot {
 export const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
 
 const PROMOTE = '/waitlists/orchard-api/{orchard-api:f6}';
+
+/** A small diagram for the lightbox shot: what happens to an offered spot (the "Automatic promotion" stack's story). */
+const OFFER_FLOW_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="400" viewBox="0 0 960 400" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <rect width="960" height="400" fill="#ffffff"/>
+  <text x="40" y="52" font-size="22" font-weight="700" fill="#1f2328">What happens to an offered spot</text>
+  <text x="40" y="80" font-size="14" fill="#59636e">One class, one spot: a member cancels and the first person on the waitlist gets two hours to take it.</text>
+  <g font-size="15" fill="#1f2328">
+    <rect x="40" y="150" width="170" height="64" rx="10" fill="#f6f8fa" stroke="#d1d9e0"/>
+    <text x="125" y="178" text-anchor="middle" font-weight="600">Booking cancelled</text>
+    <text x="125" y="199" text-anchor="middle" font-size="13" fill="#59636e">a spot opens</text>
+    <rect x="290" y="150" width="190" height="64" rx="10" fill="#fbefff" stroke="#8250df"/>
+    <text x="385" y="178" text-anchor="middle" font-weight="600">Offer to #1 in line</text>
+    <text x="385" y="199" text-anchor="middle" font-size="13" fill="#59636e">held for 2 hours, by email</text>
+    <rect x="590" y="100" width="170" height="64" rx="10" fill="#dafbe1" stroke="#1a7f37"/>
+    <text x="675" y="128" text-anchor="middle" font-weight="600">Accepted</text>
+    <text x="675" y="149" text-anchor="middle" font-size="13" fill="#59636e">booked; leaves the list</text>
+    <rect x="590" y="220" width="170" height="64" rx="10" fill="#fff8c5" stroke="#9a6700"/>
+    <text x="675" y="248" text-anchor="middle" font-weight="600">Expired</text>
+    <text x="675" y="269" text-anchor="middle" font-size="13" fill="#59636e">the sweep, every minute</text>
+  </g>
+  <g stroke="#59636e" stroke-width="2" fill="none">
+    <path d="M210 182 H282"/><path d="M276 176 L284 182 L276 188"/>
+    <path d="M480 172 C530 172 540 132 582 132"/><path d="M575 126 L584 132 L576 139"/>
+    <path d="M480 192 C530 192 540 252 582 252"/><path d="M575 246 L584 252 L576 259"/>
+    <path d="M675 284 V340 H385 V222" stroke-dasharray="6 5"/><path d="M379 230 L385 220 L391 230"/>
+  </g>
+  <text x="530" y="362" text-anchor="middle" font-size="13" fill="#59636e">the next person in line gets the offer</text>
+</svg>
+`;
+
+/** The rigs besides the demo seed. */
+export const RIGS = {
+  empty: {
+    name: 'empty',
+    doc: 'A brand-new install: a data home with no projects, so / is the first-run welcome page. Nothing staged.',
+    from: 'empty',
+  },
+  examples: {
+    name: 'examples',
+    doc: 'A new user who ran `local-review examples` and nothing else: only the example projects. Nothing staged.',
+    from: 'empty',
+    prepare: (ctx) => {
+      ctx.cli(['examples']);
+    },
+  },
+  image: {
+    name: 'image',
+    doc: 'STAGED: the demo seed with a diagram (OFFER_FLOW_SVG) added by `local-review asset add` and put in the "Automatic promotion" stack note, which in the seed has no image.',
+    from: 'demo',
+    prepare: (ctx) => {
+      const svg = ctx.file('offer-flow.svg');
+      fs.writeFileSync(svg, OFFER_FLOW_SVG);
+      const snippet = ctx.cli(['asset', 'add', 'waitlists', svg, '--alt', 'What happens to an offered spot']).trim();
+      const yamlFile = ctx.file('.local-review/projects/waitlists/project.yaml');
+      const yaml = fs.readFileSync(yamlFile, 'utf8');
+      const anchor = 'expires offers nobody took and passes the spot on; the offer goes out by email.\n';
+      if (!yaml.includes(anchor)) throw new Error('rig image: the "Automatic promotion" stack note changed; update the anchor');
+      fs.writeFileSync(yamlFile, yaml.replace(anchor, `${anchor}\n          ${snippet}\n`));
+    },
+  },
+} satisfies Record<string, Rig>;
 
 export const SHOTS: Shot[] = [
   // ------------------------------------------------------------------------------------------- full pages
@@ -83,6 +161,61 @@ export const SHOTS: Shot[] = [
     name: 'stack-page',
     doc: 'Docs "Using the UI", the stack page: a stack\'s header, the project context and the stack note.',
     route: '/waitlists/orchard-api/stacks/3-automatic-promotion',
+  },
+  {
+    name: 'welcome',
+    doc: 'Docs "Quickstart" / "Using the UI": the first-run welcome page (no projects yet), with Add the example projects.',
+    rig: RIGS.empty,
+    route: '/',
+    viewport: { width: 1440, height: 740 }, // the page ends at its footer links
+  },
+  {
+    name: 'root-examples',
+    doc: 'Docs "Quickstart": the root page right after adding the example projects (and nothing else).',
+    rig: RIGS.examples,
+    route: '/',
+    viewport: { width: 1440, height: 1100 },
+  },
+  {
+    name: 'crop-examples-strip',
+    doc: 'Docs "Using the UI": an example project\'s sidebar, with the Example strip and its remove link.',
+    rig: RIGS.examples,
+    route: '/example-waitlists',
+    capture: { selector: ['.sidebar .examples-strip', '.sidebar .sidebar-project'], pad: 8, zoom: 1.25 },
+  },
+  {
+    name: 'lightbox',
+    doc: 'Docs "Editing PR text", images: an image in a stack note, open in the lightbox (the image is staged, see RIGS.image).',
+    rig: RIGS.image,
+    route: '/waitlists/orchard-api/stacks/3-automatic-promotion',
+    actions: [{ waitFor: '.markdown-body img' }, { click: '.markdown-body img' }, { waitFor: '.lightbox img' }, { wait: 300 }],
+  },
+  {
+    name: 'crop-project-tabs',
+    doc: 'Docs "Using the UI", the project page: its header and the Conversation | Stack tabs.',
+    route: '/waitlists',
+    viewport: { width: 1100, height: 900 }, // the crop spans the main column: narrow enough to sit at ~1:1 on a docs page
+    capture: { selector: ['.project-home .pr-header', '.project-home .tabnav'], pad: 12 },
+  },
+  {
+    name: 'crop-linked-bar',
+    doc: 'Docs "Linked projects": a successor\'s project page, with the bar linking it to the project it builds on.',
+    route: '/calendar-reminders',
+    viewport: { width: 1100, height: 900 }, // the crop spans the main column: narrow enough to sit at ~1:1 on a docs page
+    capture: { selector: ['.project-home .linked-bar', '.project-home .tabnav'], pad: 12 },
+  },
+  {
+    name: 'crop-sidebar-links',
+    doc: 'Docs "Linked projects": the sidebar of a linked project: Project page, then Builds on <predecessor>.',
+    route: '/calendar-reminders',
+    capture: { selector: ['.sidebar .sidebar-project', '.sidebar .repo:nth-of-type(1) .repo-heading'], pad: 8, zoom: 1.25 },
+  },
+  {
+    name: 'crop-breadcrumbs',
+    doc: 'Docs "Commits as PRs": a linked project\'s PR: the breadcrumbs (predecessor → project › repo · stack) above its header.',
+    route: '/calendar-reminders/orchard-api/{orchard-api:Remind members an hour before each class}',
+    viewport: { width: 1100, height: 900 }, // the crop spans the main column: narrow enough to sit at ~1:1 on a docs page
+    capture: { selector: ['.crumbs', '.pr-header .pr-title-row'], pad: { top: 12, right: 12, bottom: 0, left: 12 } },
   },
   {
     name: 'pr-conversation',
@@ -133,27 +266,27 @@ export const SHOTS: Shot[] = [
     doc: 'Feature: stacks per repo, colour-coded, with readiness badges, branches and the merged / ready tallies.',
     route: PROMOTE,
     viewport: { width: 1440, height: 1100 },
-    capture: { selector: ['.sidebar .repo:first-child .pr-stack:nth-of-type(1)', '.sidebar .follow-on-divider'], pad: 10 },
+    capture: { selector: ['.sidebar .repo:nth-of-type(1) .pr-stack:nth-of-type(1)', '.sidebar .follow-on-divider'], pad: 10 },
   },
   {
     name: 'crop-sidebar-repos',
     doc: 'Docs "Projects and repos": the sidebar\'s sections for three repos, each with its branch and its own stacks.',
     route: PROMOTE,
     viewport: { width: 1440, height: 1800 },
-    capture: { selector: ['.sidebar .repo:nth-child(2)', '.sidebar .repo:nth-child(4)'], pad: { top: 10, right: 4, bottom: 10, left: 10 } },
+    capture: { selector: ['.sidebar .repo:nth-of-type(2)', '.sidebar .repo:nth-of-type(4)'], pad: { top: 10, right: 4, bottom: 10, left: 10 } },
   },
   {
     name: 'crop-sidebar-two-stacks',
     doc: 'Landing "Describe the work" (composed into landing-project-yaml): a repo\'s heading and its first two stacks.',
     route: PROMOTE,
-    capture: { selector: ['.sidebar .repo:first-child .repo-heading', '.sidebar .repo:first-child .pr-stack >> nth=1'], pad: { top: 8, right: 0, bottom: 10, left: 10 } },
+    capture: { selector: ['.sidebar .repo:nth-of-type(1) .repo-heading', '.sidebar .repo:nth-of-type(1) .pr-stack >> nth=1'], pad: { top: 8, right: 0, bottom: 10, left: 10 } },
   },
   {
     name: 'crop-sidebar-lifecycle',
     doc: 'Docs "Readiness": one repo\'s three stacks, with every badge: merged, published, ready and draft.',
     route: PROMOTE,
     viewport: { width: 1440, height: 1100 },
-    capture: { selector: ['.sidebar .repo:first-child .pr-stack:nth-of-type(1)', '.sidebar .repo:first-child .pr-stack >> nth=2'], pad: { top: 10, right: 4, bottom: 10, left: 10 } },
+    capture: { selector: ['.sidebar .repo:nth-of-type(1) .pr-stack:nth-of-type(1)', '.sidebar .repo:nth-of-type(1) .pr-stack >> nth=2'], pad: { top: 10, right: 4, bottom: 10, left: 10 } },
   },
   {
     name: 'crop-follow-on',
@@ -253,6 +386,13 @@ export const SHOTS: Shot[] = [
   },
   // ------------------------------------------------------------------------------------------- landing page
   // The media column there is ~700 CSS px wide, so these are framed to sit at about 1:1 in it.
+  {
+    name: 'landing-root',
+    doc: 'Landing "Keep every effort in view": two linked projects\' cards on the root page, framed for the ~700px media column.',
+    route: '/',
+    viewport: { width: 780, height: 1500 },
+    capture: { selector: '.project-chain', pad: 12 },
+  },
   {
     name: 'landing-project-yaml',
     doc: 'Landing "Describe the work": a repo and its first two stacks in project.yaml (from the seed), beside the sidebar they make.',
