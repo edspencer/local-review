@@ -254,6 +254,25 @@ describe('loading a project', () => {
   });
 });
 
+describe('refs outside the safe character set', () => {
+  test('are reported as unsafe, naming the field, not as "not found"', async () => {
+    const repo = newRepo();
+    repo.commit('Initial', { 'a.txt': 'a\n' });
+    repo.git('checkout', '-q', '-b', 'feature');
+    repo.commit('Add b', { 'b.txt': 'b\n' });
+    const cfg = { name: 'r', path: repo.dir, branch: 'feature', base: 'main' };
+    const err = async (o: object) => (await S.loadRepo({ ...cfg, ...o })).error;
+    assert.equal(await err({}), undefined);
+    assert.match((await err({ branch: 'me/my feature' }))!, /^branch 'me\/my feature' has characters Local Review won't pass to git/);
+    assert.match((await err({ to: '--output=x' }))!, /^'to' ref '--output=x' has characters/);
+    assert.match((await err({ from: 'main..feature' }))!, /^'from' commit 'main\.\.feature' has characters/);
+    assert.match((await err({ base: 'main;rm' }))!, /^base ref 'main;rm' has characters/);
+    // a repo with landed PRs: a warning, not silently no range
+    const opt = await S.loadRepo({ ...cfg, branch: 'gone:branch' }, { optional: true });
+    assert.match(opt.warning!, /live range: branch 'gone:branch' has characters/);
+  });
+});
+
 // ---------------------------------------------------------------- PR overrides
 describe('PR title / description overrides', () => {
   async function ctxs(repo: Repo, dir: string) {

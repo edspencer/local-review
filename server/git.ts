@@ -102,11 +102,17 @@ export function gitBufferWithInput(repo: string, args: string[], input: string):
   });
 }
 
-/** A ref name we are willing to pass to git: no leading dash, no odd characters. */
+/** Is this a ref name we are willing to pass to git: no leading dash, no `..`, no odd characters. */
+export function isSafeRef(ref: string): boolean {
+  return /^[A-Za-z0-9._\/@{}^~+-]+$/.test(ref) && !ref.startsWith('-') && !ref.includes('..');
+}
+
+/** What a ref may be, for messages (keep in step with isSafeRef). */
+export const SAFE_REF_RULE = "letters, digits and . _ / @ { } ^ ~ + -, not starting with - and without '..'";
+
+/** A ref name we are willing to pass to git (isSafeRef), or a GitError. */
 export function safeRef(ref: string): string {
-  if (!/^[A-Za-z0-9._\/@{}^~+-]+$/.test(ref) || ref.startsWith('-') || ref.includes('..')) {
-    throw new GitError(`unsafe ref: ${ref}`);
-  }
+  if (!isSafeRef(ref)) throw new GitError(`unsafe ref: ${ref}`);
   return ref;
 }
 

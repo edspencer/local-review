@@ -99,7 +99,8 @@ Problems show on the repo in the sidebar:
 - **Project errors** (the project can't be read; ⚠ on its card): invalid YAML, a top level that isn't a mapping, or
   `repos:` that isn't a list.
 - **Errors** (an error card): a missing repo, a missing branch, or a range that can't be worked out (no `branch` or
-  `to`, a `to`, `from` or `base` that doesn't exist, a `from` that isn't an ancestor of the end, no common ancestor). A missing branch isn't an error in a repo with
+  `to`, a `to`, `from` or `base` that doesn't exist, a `from` that isn't an ancestor of the end, no common ancestor), or a `branch`, `to`, `from` or `base` with characters
+  Local Review won't pass to git (it allows letters, digits and `. _ / @ { } ^ ~ + -`, not a leading `-` or `..`). A missing branch isn't an error in a repo with
   landed PRs; there, other range problems are only warnings.
 - **Project warnings** (on the project page, at the top of the sidebar and in `local-review plan`): a bad `after:`
   (not a slug, no such project, the project itself, a cycle), and an entry in `repos:` that's skipped because it has
