@@ -220,6 +220,9 @@ Then: check both project.yaml files: each repo's range (…) and its stacks' sta
 - **Which PRs:** commit shas or unique prefixes (7+ hex), from `<from>`'s range or with a file there (a commit that
   already left the range), or `--stack <n>`, every commit of declared stack `n` of `<repo>` in `<from>`.
   `--to-repo <name>` if the repo is named differently in `<to>`.
+- **After a rebase.** A commit whose data is still in its old sha's file (re-matched, but nothing written under the new
+  sha yet: [Following rebases](/concepts/following-rebases/)) gets that file moved, under its old name, so `<to>`
+  re-matches it in the same way. The report says `(carried over from <old sha>)` for it.
 - **Never deletes or replaces.** Each file is written into `<to>` create-only. If any of them is already there, it
   stops before writing anything. Only then is each original renamed to `<sha>.moved-to-<to>.yaml.bak`, so it drops out
   of `<from>` with its contents still there. A [snapshot](/reference/data-directory/#snapshots) of `projects/` is taken

@@ -116,6 +116,30 @@ describe('move', () => {
     assert.deepEqual(res.steps.map((x) => x.sha), [gone]);
   });
 
+  test('after a rebase, the data still in the old sha\'s files moves too (by --stack or by the new sha), under its own name', async () => {
+    for (const how of ['stack', 'sha'] as const) {
+      const s = setup(`m7${how}`);
+      // a rebase onto a newer main: every sha changes, the patches don't, and nothing has been written since
+      s.r.git('checkout', '-q', 'main');
+      s.r.commit('Newer main', { 'y.txt': 'y\n' });
+      s.r.git('checkout', '-q', 'me/feature');
+      s.r.git('rebase', '-q', 'main');
+      const newC = s.r.git('rev-parse', 'HEAD').trim();
+      assert.notEqual(newC, s.C);
+      const before = files(s.whole);
+      const res = await M.movePrs({ from: s.from, to: s.to, repo: 'svc', ...(how === 'stack' ? { stack: 2 } : { shas: [newC.slice(0, 8)] }) });
+      assert.deepEqual(res.missing, [], how);
+      assert.deepEqual(res.steps.map((x) => [x.sha, x.kind, x.matchedFrom]), [[newC, 'prs', s.C], [newC, 'reviews', s.C]], how);
+      for (const kind of ['prs', 'reviews']) {
+        // the old file as it was, under its own name: the other project re-matches it, as this one did
+        assert.equal(fs.readFileSync(path.join(s.part2, kind, 'svc', `${s.C}.yaml`), 'utf8'), before.get(`${kind}/svc/${s.C}.yaml`));
+        assert.ok(fs.existsSync(path.join(s.whole, kind, 'svc', `${s.C}.moved-to-${s.to}.yaml.bak`)));
+      }
+      assert.deepEqual(contents(files(s.whole)), contents(before), `${how}: nothing lost from the old project`);
+      assert.match(M.moveReport(res, { from: s.from, to: s.to, repo: 'svc' }), new RegExp(`${newC.slice(0, 8)} reviews \\(carried over from ${s.C.slice(0, 8)}\\)`));
+    }
+  });
+
   test('refuses: unknown or ambiguous shas, missing projects and repos, the same project, nothing to say what', async () => {
     const s = setup('m5');
     const o = { from: s.from, to: s.to, repo: 'svc' };
