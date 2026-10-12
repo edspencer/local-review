@@ -57,7 +57,7 @@
     "prepack": "npm run build",
     "smoke:pack": "node scripts/smoke-pack.mjs",
     "changeset": "changeset",
-    "changeset:version": "changeset version && npm install --package-lock-only --ignore-scripts",
+    "changeset:version": "changeset version && node scripts/whats-new-release.mjs && npm install --package-lock-only --ignore-scripts",
     "demo:seed": "tsx demo/seed.ts",
     "demo:check": "tsx demo/seed.ts check",
     "docs:media": "tsx tools/docs-media/capture.ts",

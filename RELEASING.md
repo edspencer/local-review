@@ -11,7 +11,9 @@ attestation. Nobody publishes from a laptop, and no npm token exists.
 2. **The Release workflow keeps a version PR open.** On every push to `main` that leaves changesets pending, the
    `release` job runs `npm run changeset:version` and opens or updates a PR titled **"chore: version packages"**
    (branch `changeset-release/main`). That PR consumes the changesets into `CHANGELOG.md`, bumps `version` in
-   `package.json` and refreshes `package-lock.json`. More changesets merged meanwhile get folded into the same PR.
+   `package.json`, refreshes `package-lock.json` and gives the docs site's
+   [What's new](website/src/content/docs/whats-new.md) section its release heading (below). More changesets merged
+   meanwhile get folded into the same PR.
 3. **Merging the version PR releases.** That push leaves no changesets and a version with no `v<version>` tag, so
    the same workflow run goes on to:
    - `verify-ci`: wait for the CI run on the merge commit and require it to have passed (see below);
@@ -19,6 +21,22 @@ attestation. Nobody publishes from a laptop, and no npm token exists.
      on the registry;
    - `github-release`: create the tag `v<version>` at the merge commit, and a GitHub Release whose notes are that
      version's `CHANGELOG.md` section.
+
+**What's new** (the docs site's release highlights) is written by hand, in the PRs, under one section at the top:
+
+```md
+## Coming in 0.8.0: a short title
+
+Not released yet.
+
+- **The feature.** What a user sees …
+```
+
+You don't rename it at release: `changeset:version` runs `scripts/whats-new-release.mjs`, which turns it into
+`## <the version released>: a short title` and drops "Not released yet." (whatever version the heading guessed), so
+the version PR carries it and the docs say so once that PR merges. `npm test` fails if the page calls a version
+that's already out "coming" (`test/release.test.ts`). The next PR with user-facing news starts a new "Coming in"
+section.
 
 So you decide *when* to release by merging the version PR, and *what* the version is by the changesets. Nobody edits
 `version` by hand. `workflow_dispatch` (Actions → Release → Run workflow) re-runs the pipeline for the current

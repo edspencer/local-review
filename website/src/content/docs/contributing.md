@@ -78,7 +78,8 @@ These are what make Local Review safe to point at your work. A PR that weakens o
 - Say what changed and how you checked it. CI has to be green.
 - **UI changes need screenshots:** before and after, plus a nearby view that *shouldn't* have changed.
 - **User-facing changes need a changeset:** `npm run changeset`. Releases are cut from them; see
-  [RELEASING.md](https://github.com/edspencer/local-review/blob/main/RELEASING.md).
+  [RELEASING.md](https://github.com/edspencer/local-review/blob/main/RELEASING.md). A highlight also gets a bullet
+  in [What's new](/whats-new/), under its "Coming in" section; the release gives that section its heading.
 
 Security issues: please report them privately, as described in
 [SECURITY.md](https://github.com/edspencer/local-review/blob/main/SECURITY.md).

@@ -7,7 +7,7 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
-## Coming in 0.8.0
+## Coming in 0.8.0: llms.txt for agents, and a startup banner
 
 Not released yet.
 
@@ -19,9 +19,7 @@ Not released yet.
   hint above with the port it's on. Only on a terminal; `NO_COLOR` and `FORCE_COLOR` are honoured, and `--quiet`
   leaves out everything but the URL line. See [`local-review serve`](/reference/cli/#local-review-serve).
 
-## Coming in 0.7.0
-
-Not released yet.
+## 0.7.0: a resizable sidebar, and folding threads
 
 - **A resizable sidebar.** Drag its right edge (from 200px to half the window, 600px at most); double-click it for
   the default, or Tab to it and use ← / →. The width is remembered, one for every project and page. See
@@ -31,6 +29,10 @@ Not released yet.
   [Inline comments](/using/reviewing-and-comments/#inline-comments).
 - **The stack picture's SVG names generic fallback fonts** (`Inter, sans-serif` and `'JetBrains Mono', monospace`), so
   `stack.svg` opened in a browser without Inter no longer falls back to a serif font. The PNG is unchanged.
+- **Fixes from the docs audit.** A PR whose review came over from an earlier commit after a rebase says so on its
+  Conversation tab; `local-review move` after a rebase moves the data still in the old sha's file; a `repos:` entry
+  without a `path` is a project warning instead of being dropped silently, and `plan` prints project warnings; a ref
+  Local Review won't pass to git is reported as such, not as "not found". The full list is in the changelog.
 
 ## 0.6.0: the root page and linked projects
 
