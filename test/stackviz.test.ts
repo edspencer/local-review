@@ -157,6 +157,13 @@ describe('SVG', () => {
     assert.ok(svg.includes('+1,906</tspan>'));
   });
 
+  test('every font-family names a generic fallback, so the SVG reads right in a browser without Inter', () => {
+    const svg = V.renderStackSvg(model);
+    const families = [...svg.matchAll(/font-family="([^"]*)"/g)].map((m) => m[1]);
+    assert.ok(families.length > 0);
+    for (const f of families) assert.match(f, /,\s*(?:sans-serif|monospace)$/, f);
+  });
+
   test('highlights the current PR (marker, tint) and its stack; no highlight without one', () => {
     const svg = V.renderStackSvg(model);
     assert.equal(svg.split('◀ this PR').length - 1, 1);
