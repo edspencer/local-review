@@ -1298,8 +1298,9 @@ a.header-project:hover { color: #f6d29b; }
 .project-card { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--bg); color: var(--fg); text-decoration: none; transition: border-color 0.12s, box-shadow 0.12s; }
 .project-card:hover { border-color: var(--plum-2); box-shadow: 0 3px 12px rgba(74, 25, 66, 0.14); }
 .project-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.project-card-thumb { display: block; aspect-ratio: 280 / 150; background: var(--bg-subtle); border-bottom: 1px solid var(--border-muted); }
-.project-card-thumb img { display: block; width: 100%; height: 100%; }
+/* the picture is drawn at the card's width and 150 high (Projects.tsx), so it isn't scaled */
+.project-card-thumb { display: block; height: 150px; overflow: hidden; background: var(--bg-subtle); border-bottom: 1px solid var(--border-muted); }
+.project-card-thumb img { display: block; width: 100%; height: 150px; }
 .project-card.is-archived .project-card-thumb img { opacity: 0.85; }
 .project-card-body { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px 12px; min-width: 0; }
 .project-card-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -1316,10 +1317,12 @@ a.header-project:hover { color: #f6d29b; }
 .readiness-bar-seg.is-published { background: var(--published); }
 .readiness-bar-seg.is-ready { background: var(--ready); }
 .readiness-bar-seg.is-draft { background: var(--stack-gray); opacity: 0.55; }
-.project-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--fg-muted); white-space: nowrap; }
-.project-card-tally { display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; }
+/* when the tally and the activity don't fit on one line, the activity wraps under it (right-aligned), and a tally too
+   wide for the card wraps itself: never clipped */
+.project-card-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; font-size: 12px; color: var(--fg-muted); white-space: nowrap; }
+.project-card-tally { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
 .project-card-tally-item { display: inline-flex; align-items: center; gap: 3px; font-variant-numeric: tabular-nums; }
-.project-card-activity { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+.project-card-activity { display: inline-flex; align-items: center; gap: 8px; flex: none; margin-left: auto; }
 .project-card-activity .Counter { line-height: 16px; font-size: 11px; }
 .projects-examples-hint { margin: 28px 0 0; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--fg-muted); }
 .projects-examples-hint .example-tag { margin-left: 0; }

@@ -5,9 +5,12 @@ repos reviewed should read [AGENT-GUIDE.md](AGENT-GUIDE.md) instead (`npx local-
 The human-facing version, with setup, CI and pull request expectations, is [CONTRIBUTING.md](CONTRIBUTING.md).
 
 - **Reviewed repos are read-only.** Local Review reads other repos (for example `~/code/my-service`) and must never
-  commit to, rebase, push, check out or otherwise modify them or their branches. All git access goes through
-  `server/git.ts` and its read-only allow-list (docs: `website/src/content/docs/guarantees/read-only.md`); keep it
-  that way.
+  commit to, rebase, push, check out or otherwise modify them or their branches. All git access to a reviewed repo
+  goes through `server/git.ts` and its read-only allow-list (docs: `website/src/content/docs/guarantees/read-only.md`);
+  keep it that way. The only other git calls are `server/reviewer.ts`'s `git config --get user.name` (it only reads)
+  and the example projects' `git init` / `fast-import` / checkout into the new repos they create under
+  `~/.local-review/examples/` (`demo/lib/gitworld.ts`), which are then only read through `git.ts` too. Don't add
+  more.
 - **It must look clearly *not GitHub* at a glance**, through at least one deliberate visual difference (docs: "The
   header: deliberately not GitHub" in `website/src/content/docs/using/ui-tour.md`), even though it otherwise mirrors
   GitHub's PR view.

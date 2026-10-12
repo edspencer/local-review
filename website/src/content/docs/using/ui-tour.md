@@ -15,7 +15,8 @@ and an amber **"not on GitHub"** pill, and selected tabs get an amber top edge. 
 which matters when the rest of the page looks just like a PR you could merge.
 
 On the right: **● live** (or **○ offline** while it reconnects to the server) and a reminder of the keyboard shortcuts
-([Keyboard shortcuts](/using/keyboard-shortcuts/)). On a project, stack or PR page, the header's **☰** button
+the page you're on has ([Keyboard shortcuts](/using/keyboard-shortcuts/)): `/` on the root page, `j` / `k` on a PR
+page, and `n` / `p` too on its Files changed tab. The project and stack pages have none, so they show no reminder. On a project, stack or PR page, the header's **☰** button
 shows or hides the sidebar.
 
 The **LOCAL REVIEW** wordmark goes to the [root page](#the-root-page), every project at once. Next to it is the

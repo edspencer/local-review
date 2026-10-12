@@ -54,7 +54,7 @@ These are what make Local Review safe to point at your work. A PR that weakens o
 the rest of it is.
 
 - **Reviewed repos are read-only.** Local Review never commits to, checks out, rebases, fetches or otherwise
-  modifies a repo it reviews. All git access goes through `server/git.ts` and its read-only allow-list (the
+  modifies a repo it reviews. All git access to a reviewed repo goes through `server/git.ts` and its read-only allow-list (the
   ["Read-only guarantee"](https://local-review.edspencer.net/guarantees/read-only/)). New git calls go through it too, using only subcommands
   on the list.
 - **User data is never deleted.** Writes under `~/.local-review` are atomic and never clobber; nothing is unlinked

@@ -9,12 +9,17 @@
 // project (and out of rebase re-matching) with its contents still there. The images the moved PR descriptions show
 // are copied too (content-named, so a copy is the same image); the originals stay, since other text may use them.
 // project.yaml is never edited: what's left to do there (ranges, stacks, `landed:` lists) is printed instead.
+// After a rebase, a commit's data may still be in its old sha's file (re-matched, not yet written under the new sha:
+// concepts/following-rebases.md): that file is the one moved, under its own name, so the other project re-matches it
+// the same way.
 // A snapshot of projects/ is taken first, when snapshots are on.
 import fs from 'node:fs';
 import path from 'node:path';
 import { BACKUPS_DIR, PROJECTS_DIR, SAFE_NAME } from './config.js';
 import { atomicWrite, renameToBak } from './safefs.js';
-import { loadProject, loadProjectConfig, repoDirs } from './projects.js';
+import { loadProject, loadProjectConfig, repoDirs, type LoadedRepo } from './projects.js';
+import { liveCommits, inspectOrphan } from './context.js';
+import { matchOrphans } from './reviews.js';
 import { assetFile, assetRecordPath, assetsDir } from './assets.js';
 import { takeSnapshot } from './backups.js';
 
@@ -36,6 +41,7 @@ export interface MoveStep {
   from: string; // the file moved
   to: string; // its copy in the other project
   bak: string; // where the original goes (planned name; the real one if taken: .2, .3, …)
+  matchedFrom?: string; // set when `from` is an earlier commit's file, re-matched after a rebase
 }
 
 export interface MoveResult {
@@ -77,16 +83,18 @@ export async function movePrs(o: MoveOpts): Promise<MoveResult> {
   // which commits: a stack of the loaded range, or shas / prefixes among the range and the files on disk (after a
   // split the commits may already be in the other project's range, and only the files are left here)
   let shas: string[];
+  let r: LoadedRepo | undefined;
   if (o.stack !== undefined) {
     const p = await loadProject(o.from);
-    const r = p?.repos.find((x) => x.cfg.name === o.repo);
+    r = p?.repos.find((x) => x.cfg.name === o.repo);
     const g = r?.stacks.find((s) => s.number === o.stack);
     if (!g) throw new MoveError(`no stack ${o.stack} in ${o.from}/${o.repo}`);
     if (!g.shas.length) throw new MoveError(`stack ${o.stack} "${g.title}" in ${o.from}/${o.repo} has no commits`);
     shas = g.shas;
   } else {
     const p = await loadProject(o.from).catch(() => null);
-    const known = new Set([...(p?.repos.find((x) => x.cfg.name === o.repo)?.info.commits.map((c) => c.sha) ?? []), ...shaFiles(src.prsDir), ...shaFiles(src.reviewsDir)]);
+    r = p?.repos.find((x) => x.cfg.name === o.repo);
+    const known = new Set([...(r?.info.commits.map((c) => c.sha) ?? []), ...shaFiles(src.prsDir), ...shaFiles(src.reviewsDir)]);
     shas = o.shas!.map((q) => {
       const s = q.toLowerCase();
       if (!/^[0-9a-f]{7,40}$/.test(s)) throw new MoveError(`'${q}' isn't a commit sha (7 to 40 hex digits)`);
@@ -98,16 +106,30 @@ export async function movePrs(o: MoveOpts): Promise<MoveResult> {
   }
   shas = [...new Set(shas)];
 
+  // a range commit without its own file: the earlier commit's file it re-matches, as the server would show it
+  const kinds = [['prs', src.prsDir, dst.prsDir], ['reviews', src.reviewsDir, dst.reviewsDir]] as const;
+  const rematched = new Map<string, Map<string, string>>(); // kind -> new sha -> old sha
+  if (r && shas.some((sha) => r.info.commits.some((c) => c.sha === sha) && kinds.some(([, from]) => !fs.existsSync(path.join(from, `${sha}.yaml`))))) {
+    const live = liveCommits(r.cfg, r.info);
+    for (const [kind, from] of kinds) {
+      const m = await matchOrphans(from, live, { inspect: inspectOrphan(r.cfg, r.info), ...(kind === 'reviews' ? { repoPath: r.cfg.path } : {}) });
+      rematched.set(kind, new Map([...m].map(([sha, x]) => [sha, x.orphan.sha])));
+    }
+  }
+
   const res: MoveResult = { steps: [], assets: [], missing: [], notes: [], snapshot: null, dryRun: !!o.dryRun };
   for (const sha of shas) {
     let any = false;
-    for (const [kind, from, to] of [['prs', src.prsDir, dst.prsDir], ['reviews', src.reviewsDir, dst.reviewsDir]] as const) {
-      const f = path.join(from, `${sha}.yaml`);
+    for (const [kind, from, to] of kinds) {
+      const old = fs.existsSync(path.join(from, `${sha}.yaml`)) ? undefined : rematched.get(kind)?.get(sha);
+      const name = old ?? sha;
+      const f = path.join(from, `${name}.yaml`);
       if (!fs.existsSync(f)) continue;
       any = true;
-      const t = path.join(to, `${sha}.yaml`);
-      if (fs.existsSync(t)) throw new MoveError(`${t} already exists; not replacing it (nothing was moved). Compare the two and merge them by hand, or rename one to .bak`);
-      res.steps.push({ sha, kind, from: f, to: t, bak: f.replace(/\.yaml$/, `.moved-to-${o.to}.yaml.bak`) });
+      // the copy keeps the file's own name; an old one is refused, too, if the other project has the new sha's file
+      for (const t of new Set([path.join(to, `${name}.yaml`), path.join(to, `${sha}.yaml`)]))
+        if (fs.existsSync(t)) throw new MoveError(`${t} already exists; not replacing it (nothing was moved). Compare the two and merge them by hand, or rename one to .bak`);
+      res.steps.push({ sha, kind, from: f, to: path.join(to, `${name}.yaml`), bak: f.replace(/\.yaml$/, `.moved-to-${o.to}.yaml.bak`), ...(old ? { matchedFrom: old } : {}) });
     }
     if (!any) res.missing.push(sha);
   }
@@ -145,7 +167,7 @@ export function moveReport(r: MoveResult, o: MoveOpts): string {
   const rel = (p: string) => path.relative(PROJECTS_DIR, p);
   out.push(r.dryRun ? `Dry run: nothing written. Moving from ${o.from} to ${o.to} would:` : `Moved from ${o.from} to ${o.to}:`);
   if (r.snapshot) out.push(`  (snapshot first: backups/${r.snapshot})`);
-  for (const s of r.steps) out.push(`  ${s.sha.slice(0, 8)} ${s.kind}: ${rel(s.from)} → ${rel(s.to)}; the original renamed to ${path.basename(s.bak)}`);
+  for (const s of r.steps) out.push(`  ${s.sha.slice(0, 8)} ${s.kind}${s.matchedFrom ? ` (carried over from ${s.matchedFrom.slice(0, 8)})` : ''}: ${rel(s.from)} → ${rel(s.to)}; the original renamed to ${path.basename(s.bak)}`);
   for (const a of r.assets) out.push(`  image ${path.basename(a)} copied to ${rel(a)}`);
   if (!r.steps.length) out.push('  (no prs or reviews files to move)');
   if (r.missing.length) out.push(`Nothing recorded yet for ${r.missing.map((s) => s.slice(0, 8)).join(', ')} (no prs or reviews file): nothing to move.`);
