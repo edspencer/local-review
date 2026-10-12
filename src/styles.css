@@ -1316,10 +1316,12 @@ a.header-project:hover { color: #f6d29b; }
 .readiness-bar-seg.is-published { background: var(--published); }
 .readiness-bar-seg.is-ready { background: var(--ready); }
 .readiness-bar-seg.is-draft { background: var(--stack-gray); opacity: 0.55; }
-.project-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--fg-muted); white-space: nowrap; }
-.project-card-tally { display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; }
+/* when the tally and the activity don't fit on one line, the activity wraps under it (right-aligned), and a tally too
+   wide for the card wraps itself: never clipped */
+.project-card-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; font-size: 12px; color: var(--fg-muted); white-space: nowrap; }
+.project-card-tally { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
 .project-card-tally-item { display: inline-flex; align-items: center; gap: 3px; font-variant-numeric: tabular-nums; }
-.project-card-activity { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+.project-card-activity { display: inline-flex; align-items: center; gap: 8px; flex: none; margin-left: auto; }
 .project-card-activity .Counter { line-height: 16px; font-size: 11px; }
 .projects-examples-hint { margin: 28px 0 0; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--fg-muted); }
 .projects-examples-hint .example-tag { margin-left: 0; }
