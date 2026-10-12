@@ -24,7 +24,7 @@ Local Review runs on your machine, reads git repos you point it at and keeps you
   whose `Host` is `localhost`, `127.0.0.1` or `[::1]`, which stops DNS-rebinding attacks from a web page you visit.
   It accepts writes only as JSON and, when the browser sends an `Origin`, only from localhost, which stops
   cross-site request forgery. (`server/security.ts`; [Localhost security](https://local-review.edspencer.net/guarantees/localhost-security/).)
-- **Reviewed repos are never modified.** All git access goes through one module with a read-only allow-list of
+- **Reviewed repos are never modified.** All git access to them goes through one module with a read-only allow-list of
   subcommands, no shell, no options that write files or run programs, and only refs from your `project.yaml` or shas
   git itself returned. (`server/git.ts`; [Read-only guarantee](https://local-review.edspencer.net/guarantees/read-only/).)
 - **Your data is never irreparably deleted.** Writes are atomic and never clobber, nothing is unlinked or truncated

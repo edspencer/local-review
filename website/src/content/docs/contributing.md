@@ -56,7 +56,7 @@ reads at run time (`server/config.ts` paths).
 
 These are what make Local Review safe to point at your work. A PR that weakens one won't be merged.
 
-- **Reviewed repos are read-only.** All git access goes through `server/git.ts` and its allow-list. See the
+- **Reviewed repos are read-only.** All git access to a reviewed repo goes through `server/git.ts` and its allow-list. See the
   [read-only guarantee](/guarantees/read-only/).
 - **User data is never deleted.** Writes go through `server/safefs.ts`, and `test/fsguard.test.ts` enforces it. See
   the [never-delete guarantee](/guarantees/never-delete/).
