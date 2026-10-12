@@ -1,7 +1,7 @@
 // `/`: the root page, every project as a card (a thumbnail of its stacks, its totals, readiness and last activity),
 // most recently active first, in Active / Examples / Archived sections. With no projects at all, App shows the
 // first-run page (Welcome.tsx) instead.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, type ProjectSummary, type ProjectsResponse } from './api';
 import { ReadinessBadge } from './Readiness';
 import { CopyLine } from './Welcome';
@@ -202,15 +202,33 @@ export const ARCHIVED_TITLE = 'Projects whose PRs have all merged: some repo has
 // octicon link-16
 export const LINK_ICON = 'm7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z';
 
+/** An element's width in CSS px, rounded to 4 (so a resize doesn't ask for a picture per pixel); 0 until measured. */
+function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
+  const ref = useRef<T>(null);
+  const [w, setW] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => setW(Math.max(200, Math.min(800, Math.round(el.clientWidth / 4) * 4)));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, w];
+}
+
 export function ProjectCard({ p }: { p: ProjectSummary }) {
   const s = summary(p.totals, p.repoCount);
   const url = projectUrl(p.slug);
-  const thumb = `/api/projects/${encodeURIComponent(p.slug)}/thumb.svg?v=${p.thumb}`;
+  const [thumbRef, thumbW] = useWidth<HTMLSpanElement>();
+  // drawn at the card's width (server/stackviz.ts), so it's never stretched: the same text size on every card
+  const thumb = thumbW ? `/api/projects/${encodeURIComponent(p.slug)}/thumb.svg?v=${p.thumb}&w=${thumbW}` : null;
   const act = p.activity;
   return (
     <a className={`project-card ${p.archived ? 'is-archived' : ''}`} href={url} onClick={linkTo(url)} title={p.description?.trim() || p.title}>
-      <span className="project-card-thumb">
-        <img src={thumb} loading="lazy" decoding="async" width={280} height={150} alt={`The stacks of ${p.title}`} />
+      <span className="project-card-thumb" ref={thumbRef}>
+        {thumb && <img src={thumb} loading="lazy" decoding="async" width={thumbW} height={150} alt={`The stacks of ${p.title}`} />}
       </span>
       <span className="project-card-body">
         <span className="project-card-title">

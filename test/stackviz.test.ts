@@ -477,6 +477,11 @@ describe('endpoints', () => {
     const again = await fetch(url('/thumb.svg'), { headers: { 'if-none-match': `"${v}"` } });
     assert.equal(again.status, 304);
     assert.equal((await fetch(url('/thumb.svg'), { headers: { 'if-none-match': '"stale"' } })).status, 200);
+    // ?w=: drawn at a card's width, the same 150 high and the same 9px labels (never scaled); out of range: the default
+    const wide = await (await fetch(url('/thumb.svg?w=380'))).text();
+    assert.match(wide, /<svg [^>]*width="380" height="150" viewBox="0 0 380 150"/);
+    assert.deepEqual(wide.match(/font-size="\d+"/g), svg.match(/font-size="\d+"/g));
+    for (const w of ['5000', '12', 'abc', '300.5']) assert.match(await (await fetch(url(`/thumb.svg?w=${w}`))).text(), /<svg [^>]*width="280" height="150"/, w);
     assert.equal((await fetch(`http://127.0.0.1:${port}/api/projects/nope/thumb.svg`)).status, 404);
     const status = await new Promise<number>((res, rej) =>
       http.get(url('/thumb.svg'), { headers: { host: 'evil.example' } }, (r) => { r.resume(); res(r.statusCode!); }).on('error', rej),

@@ -1298,8 +1298,9 @@ a.header-project:hover { color: #f6d29b; }
 .project-card { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--bg); color: var(--fg); text-decoration: none; transition: border-color 0.12s, box-shadow 0.12s; }
 .project-card:hover { border-color: var(--plum-2); box-shadow: 0 3px 12px rgba(74, 25, 66, 0.14); }
 .project-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.project-card-thumb { display: block; aspect-ratio: 280 / 150; background: var(--bg-subtle); border-bottom: 1px solid var(--border-muted); }
-.project-card-thumb img { display: block; width: 100%; height: 100%; }
+/* the picture is drawn at the card's width and 150 high (Projects.tsx), so it isn't scaled */
+.project-card-thumb { display: block; height: 150px; overflow: hidden; background: var(--bg-subtle); border-bottom: 1px solid var(--border-muted); }
+.project-card-thumb img { display: block; width: 100%; height: 150px; }
 .project-card.is-archived .project-card-thumb img { opacity: 0.85; }
 .project-card-body { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px 12px; min-width: 0; }
 .project-card-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
