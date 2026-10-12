@@ -22,7 +22,7 @@ npx local-review guide                    # print the guide for agents
 ## `local-review --help`
 
 ```text
-Usage: local-review [serve] [--port <n>]
+Usage: local-review [serve] [--port <n>] [--quiet]
        local-review plan <project> [--repo <name>] [--stack <n>] [--include-follow-on] [--format md|json|yaml]
        local-review init <project>
        local-review asset add <project> <file> [--alt <text>]
@@ -34,6 +34,8 @@ Usage: local-review [serve] [--port <n>]
 
   serve   (the default) Serve the review UI and API on http://localhost:<port> (127.0.0.1 only).
           --port <n>       the port (default 5622, or $PORT)
+          --quiet, -q      print just the "Local Review on <url>" line: no banner, no hint for agents
+                           (the banner is only shown on a terminal anyway)
   plan    For each PR in scope, in order: commit, status (draft / ready / published), branch (with its
           status), base, title and the exact full body (project intro, stack note, ---, PR description), plus
           any recorded github: info. Warns about stacks with draft PRs, GitHub bases that differ from the
@@ -79,15 +81,36 @@ Data: $LOCAL_REVIEW_HOME/projects (default ~/.local-review/projects). Agents: ru
 
 Serves the review UI and its [HTTP API](/reference/http-api/) on `http://localhost:5622`, bound to 127.0.0.1 only
 (see [Localhost security](/guarantees/localhost-security/)). `serve` is the default, so `local-review` on its own
-does the same. On start it prints the URL and the projects directory it reads:
+does the same. On start, in a terminal, it prints a LOCAL REVIEW banner, then the URL and the projects directory it
+reads, then how to get a coding agent to set up a project (from [its llms.txt](/agents/llms-txt/)):
 
 ```text
+ ██     ▄████▄ ▄█████ ▄████▄ ██         █████▄ ██████ ██  ██ ██ ██████ ██    ██
+ ██     ██  ██ ██     ██  ██ ██         ██  ██ ██     ██  ██ ██ ██     ██    ██
+ ██     ██  ██ ██     ██  ██ ██         ██▄▄██ ██▄▄▄  ██  ██ ██ ██▄▄▄  ██    ██
+ ██     ██  ██ ██     ██████ ██         ██▀██  ██▀▀▀  ██  ██ ██ ██▀▀▀  ██ ██ ██
+ ██     ██  ██ ██     ██  ██ ██         ██  ██ ██      ████  ██ ██     ██ ██ ██
+ ██████ ▀████▀ ▀█████ ██  ██ ██████     ██  ██ ██████   ██   ██ ██████ ▀██▀▀██▀
+
 Local Review on http://localhost:5622  (projects: /home/you/.local-review/projects)
+
+
+Point Claude Code/Codex/pi/whatever at http://localhost:5622/llms.txt then ask it to generate a project definition for you. Example:
+
+  Read http://localhost:5622/llms.txt and create a local-review project for my feature-xyz branch on ~/code/my-git-project
 ```
+
+The URLs are the ones it's actually on, so `--port` or `PORT` changes them. The banner is in the header's plum and
+amber, in full colour where the terminal has it, else the nearest of 256 or 16 colours, else none (`NO_COLOR`; see
+[Environment variables](/reference/environment/#colour-no_color-and-force_color)). It's left out when the output
+isn't a terminal (piped, written to a log file, in CI) unless `FORCE_COLOR` is set, and a terminal narrower than 80
+columns gets a one-line title instead. The `Local Review on …` line is always printed, first thing after the banner,
+so a script can wait for it.
 
 | Option | |
 | --- | --- |
 | `--port <n>` | The port, 0–65535 (`0` picks any free port). Wins over `PORT`. Also written `--port=<n>`. |
+| `--quiet`, `-q` | Print only the `Local Review on …` line: no banner, no hint for agents. |
 
 If the port is taken, it says so and exits (`port 5622 is already in use; pick another with --port <n>`). It never
 falls back to another port by itself: pick one with `--port <n>` or `PORT=<n>`.

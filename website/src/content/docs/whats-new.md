@@ -7,6 +7,18 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
+## Coming in 0.8.0
+
+Not released yet.
+
+- **`/llms.txt`, for coding agents.** Tell your agent "Read http://localhost:5622/llms.txt and create a local-review
+  project for my feature-xyz branch on ~/code/my-git-project" and it has what it needs: the rules, the recipe, the
+  commented example and this machine's data directory and existing projects. The docs site has a copy, and every
+  docs page is also served as Markdown (`/reference/project-yaml.md`). See [llms.txt](/agents/llms-txt/).
+- **A banner on start.** `npx local-review` prints LOCAL REVIEW in the header's plum and amber, then the URL, then the
+  hint above with the port it's on. Only on a terminal; `NO_COLOR` and `FORCE_COLOR` are honoured, and `--quiet`
+  leaves out everything but the URL line. See [`local-review serve`](/reference/cli/#local-review-serve).
+
 ## Coming in 0.7.0
 
 Not released yet.

@@ -1,8 +1,8 @@
 // `npm run smoke:pack`: check the npm package as a user gets it. Packs it (prepack builds it), installs the tarball
 // globally into a temp prefix, then runs the installed `local-review` from a temp directory with a throwaway HOME and
-// LOCAL_REVIEW_HOME: --version, --help, guide, init, asset add, and the server (on a free port: /api/me, /, a UI
-// asset, the favicons, the project list, a stack PNG drawn with the bundled fonts, the added image, adding and
-// removing the example projects). Cleans up after itself. Linux and macOS.
+// LOCAL_REVIEW_HOME: --version, --help, guide, init, asset add, and the server (on a free port: the startup text,
+// /llms.txt and its siblings, /api/me, /, a UI asset, the favicons, the project list, a stack PNG drawn with the
+// bundled fonts, the added image, adding and removing the example projects). Cleans up after itself. Linux and macOS.
 import { execFileSync, spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -80,11 +80,13 @@ try {
 
   step('serve');
   server = spawn(bin, ['--port', '0'], { cwd: work, env, stdio: ['ignore', 'pipe', 'inherit'] });
+  let printed = '';
   const base = await new Promise((resolve, reject) => {
     let buf = '';
     const timer = setTimeout(() => reject(new Error(`the server didn't start: ${buf}`)), 30000);
     server.stdout.on('data', (d) => {
       buf += d;
+      printed += d;
       const m = buf.match(/Local Review on (http:\/\/localhost:\d+)/);
       if (m) {
         clearTimeout(timer);
@@ -94,6 +96,19 @@ try {
     server.on('exit', (code) => reject(new Error(`the server exited (${code}): ${buf}`)));
   });
   step(`serving on ${base}`);
+  // piped, so no banner: the line (after any [backups] note), then the hint for agents (server/banner.ts)
+  await new Promise((r) => setTimeout(r, 200));
+  assert.ok(/^Local Review on /m.test(printed) && !printed.includes('█'), `no banner when piped: ${printed}`);
+  assert.ok(printed.includes(`Point Claude Code/Codex/pi/whatever at ${base}/llms.txt then ask it`), `the hint for agents: ${printed}`);
+
+  step('llms.txt, llms-full.txt, agent-guide.md');
+  const llms = await (await get(base, '/llms.txt', /^text\/plain/)).text();
+  assert.match(llms, /^# Local Review\n\n> /);
+  assert.ok(llms.includes(`Projects directory: \`${path.join(data, 'projects')}\``), 'the live projects directory');
+  assert.ok(llms.includes(`\`demo\`: demo, ${base}/demo`), 'the existing project');
+  assert.ok(llms.includes(`version ${pkg.version}`) && llms.includes(fs.readFileSync(path.join(root, 'examples', 'project.example.yaml'), 'utf8').split('\n')[0]));
+  assert.ok((await (await get(base, '/llms-full.txt', /^text\/plain/)).text()).includes('## Handling review threads'));
+  await get(base, '/agent-guide.md', /^text\/markdown/); // (a foreign Host gets a 403: hardening.test.ts; fetch can't set Host)
   const me = await (await get(base, '/api/me', /json/)).json();
   assert.equal(typeof me.id, 'string');
   const html = await (await get(base, '/', /html/)).text();
