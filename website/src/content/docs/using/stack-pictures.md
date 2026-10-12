@@ -19,7 +19,7 @@ Open it with the **Stack** tab on any PR (`?tab=stack`). It's like the sidebar, 
 - **This stack / This repo / Whole project** (default: This stack) picks what's in the picture.
 - **Show title** turns the project heading and summary line on or off.
 - Both choices are remembered (in localStorage, for every PR and project).
-- **Copy image** puts the PNG on the clipboard; **Download PNG** saves it.
+- **Copy image** puts the PNG on the clipboard; **Download PNG** saves it; **SVG** opens the SVG it's drawn from.
 
 [Follow-on stacks](/concepts/follow-on-stacks/) are drawn faded, with a yellow `follow-on` tag, and the summary line
 leaves them and merged PRs out of the totals and mentions them beside it
@@ -30,7 +30,8 @@ leaves them and merged PRs out of the totals and mentions them beside it
 
 The [project page](/using/ui-tour/#the-project-page)'s **Stack** tab (`/<project>?tab=stack`) shows the picture for
 the whole project, and a [stack page](/using/ui-tour/#the-stack-page)'s (`…/stacks/<ref>?tab=stack`) just that stack.
-Nothing is highlighted on either; both have **Show title** and the same **Copy** / **Download**. A
+Nothing is highlighted on either; both have **Show title** and the same **Copy image** / **Download PNG**, and an
+**SVG** link to the picture as drawn. A
 [linked project](/concepts/linked-projects/)'s project page and PR Stack tabs also have **Show *&lt;predecessor&gt;***:
 the stacks it builds on, drawn first in each shared repo, greyed out, unnumbered and left out of the totals.
 
@@ -63,3 +64,7 @@ measured and truncated with the glyph advances of the bundled fonts, read with `
 bundled in `server/fonts/` ([Inter](https://github.com/rsms/inter) and
 [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), both SIL OFL 1.1), and resvg is given only those, so the
 output is identical on every machine. Characters they lack (emoji, CJK) draw as boxes.
+
+The SVG names the same fonts, but a browser opening it uses whatever it has installed. From 0.6.1 it names generic
+fallbacks after them (`Inter, sans-serif` and `'JetBrains Mono', monospace`), so without Inter it uses the system's
+sans-serif font rather than a serif one.

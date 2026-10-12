@@ -62,12 +62,20 @@ predecessor has merged and the successor is rebased, the first PR goes onto the 
 
 ## In the UI
 
-- **The root page** shows linked projects as one card spanning the row, in order, with arrows. A chain is in the
+- **The root page** shows linked projects together in one box spanning the row ("*Calendar feed* · 2 linked
+  projects, each building on the one before"), their cards in order (`1 · FIRST`, `2 · BUILDS ON …`) with arrows. A chain is in the
   Archived section only once all of it has merged. The successor's thumbnail starts each shared repo's lane with the
   predecessor's stacks, in grey.
 - **The project page** has a bar above the title: "← Builds on *Calendar feed*" with that project's readiness, and
   "Next: …" on the predecessor.
-- **The sidebar** links both ways under the project link, and shows link warnings.
+
+  ![A successor's project page: a bar reading "← Builds on Calendar feed" with its readiness and "The last of its linked projects", above the PROJECT label, the title and the tabs](../../../assets/shots/crop-linked-bar.png)
+
+- **The sidebar** links both ways under the project link (**Builds on *…***, **Next *…* →**), and shows link
+  warnings.
+
+  ![The sidebar of a linked project: the Calendar reminders project link, then "Builds on Calendar feed", then its repo](../../../assets/shots/crop-sidebar-links.png)
+
 - **Breadcrumbs** on PR and stack pages start with the predecessor.
 - **The project switcher** lists a successor right under its predecessor, indented.
 - **PR and stack headers** show the predecessor's end as the base of the first PR.

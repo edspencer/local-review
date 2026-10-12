@@ -30,6 +30,11 @@ npm run lr -- <cmd>   # any `local-review` command, from source (e.g. `npm run l
 
 If your shell exports `NODE_ENV=production`, `npm ci` skips the dev dependencies (TypeScript, Vite, tsx): unset it.
 
+**To try a change by hand, use the demo test bed** rather than real data: `npm run demo:seed` makes a made-up world
+(four repos with histories and a data home) in `demo/out`, and `tools/docs-media/serve.sh` runs Local Review on it,
+isolated from your machine. If you change what the demo shows, update its lock with `npm run demo:check -- --update`.
+The screenshots on this site are taken from it (`npm run docs:media`; see `tools/docs-media/README.md`).
+
 ## Checks
 
 CI runs all of these on Node 22 and 24, on Linux and macOS:
@@ -40,6 +45,9 @@ npm test              # node:test, from source via tsx; builds throwaway git rep
 npm run build         # dist/web (Vite) + dist/server, dist/shared (tsc)
 npm run smoke:pack    # npm pack, install the tarball into a temp prefix, run it as a user would
 ```
+
+When `website/` changes, CI also builds this site and checks every link in it (`node scripts/check-links.mjs` in
+`website/`).
 
 `smoke:pack` matters whenever you touch the build, `package.json` (`files`, `bin`, dependencies) or anything the CLI
 reads at run time (`server/config.ts` paths).
@@ -80,23 +88,33 @@ Security issues: please report them privately, as described in
 ```text
 server/   git.ts (read-only git), config.ts (data home, package paths), port.ts (the default port),
           safefs.ts (atomic writes, no-clobber renames), backups.ts (snapshots + pruning),
-          commits.ts (ranges/diffs/patch-id), projects.ts (project.yaml, stack partitioning),
-          reviews.ts (YAML store, rebase re-matching), prs.ts (PR title/description/branch/github/landed),
-          landed.ts (landed PRs from project.yaml `landed:`), branches.ts (branch discovery + reconciliation),
-          plan.ts, cli.ts (the `local-review` CLI: serve, plan, init, guide), anchors.ts (line anchors +
-          relocation), context.ts, events.ts (watch + SSE), index.ts (Hono), security.ts (localhost Host/Origin
-          guard), stackviz.ts (stack picture: SVG + PNG), fonts/ (bundled OFL fonts for it)
+          commits.ts (ranges/diffs/patch-id), projects.ts (project.yaml, stack partitioning, `after:` links),
+          projectEdit.ts (writing the intro and stack notes into project.yaml), reviews.ts (YAML store, rebase
+          re-matching), prs.ts (PR title/description/branch/github/landed), landed.ts (landed PRs from
+          project.yaml `landed:`), branches.ts (branch discovery + reconciliation), stamps.ts (the cache of
+          derived data, keyed on file and ref stamps), plan.ts, cli.ts (the `local-review` CLI: serve, plan, init,
+          asset, move, examples, guide), assets.ts (images), move.ts (`local-review move`), examples.ts (the
+          example projects), reviewer.ts (who you are), anchors.ts (line anchors + relocation), context.ts,
+          events.ts (watch + SSE), index.ts (Hono), security.ts (localhost Host/Origin guard), stackviz.ts (stack
+          picture and root-page thumbnails: SVG + PNG), fonts/ (bundled OFL fonts for it)
 test/     npm test: projects/stacks/PR overrides, review store, anchors, git wrapper and HTTP API tests against
           throwaway git repos, plus the PR editors' text helpers, the stack picture (aggregation, SVG, PNG
           endpoints), snapshots/pruning (backups.test.ts), branch tagging + the plan command (branches.test.ts),
-          the CLI's other commands (cli.test.ts), landed PRs (landed.test.ts), the static never-delete guard
-          (fsguard.test.ts) and the docs site's sync checks (docs.test.ts)
-src/      React UI: App (header, sidebar, SSE, j/k), CommitPage (PR header, Conversation), FilesChanged (tree,
-          cards, @pierre/diffs), Comments (threads, Markdown editor), PrEdit (PR title/description editing + copy),
-          prText (their pure text helpers), StackTab (the Stack tab, copy/download), ProjectHome (/<project>)
+          the CLI's other commands (cli.test.ts), landed PRs (landed.test.ts), linked projects (linked.test.ts),
+          move, examples, assets, the server's cache (caching.test.ts), the static never-delete guard
+          (fsguard.test.ts), the demo's lock (demo.test.ts) and the docs site's sync checks (docs.test.ts)
+src/      React UI: App (header, sidebar, SSE, j/k), Projects (the root page), Welcome (the first-run page),
+          ProjectHome (/<project>), StackPage (a stack's page), CommitPage (PR header, Conversation),
+          FilesChanged (tree, cards, @pierre/diffs), Comments (threads, Markdown editor), PrEdit (PR
+          title/description editing + copy), ProjectText (the intro and stack note boxes), prText (their pure text
+          helpers), StackTab (the Stack tab, copy/download), Stacks (breadcrumbs, stack links), Lightbox (the
+          image viewer), commitCache + TopProgress (loading PRs ahead, the amber progress bar)
 shared/   prText.ts: the full PR body composition, used by both the UI and the plan; totals.ts: aggregate stats
           over stacks (follow-on stacks and merged PRs left out), used by the stack picture and the UI;
-          readiness.ts: draft / ready / published / merged
+          readiness.ts: draft / ready / published / merged; chains.ts: linked-project chains; stackRef.ts:
+          stack page refs; assets.ts, paths.ts, repoLabel.ts
+demo/     the demo test bed: a made-up world (lib/, world/), also the example projects; seed.ts, shas.json (its lock)
+tools/    docs-media/: the screenshot and GIF rig for this site and the README
 scripts/  start.mjs (npm start: build what's stale, run the compiled CLI), smoke-pack.mjs (npm run smoke:pack)
 website/  this docs site (Astro + Starlight), a separate package; see website/CLAUDE.md
 dist/     npm run build: web/ (the UI), server/ + shared/ (compiled); what the npm package runs
@@ -110,8 +128,10 @@ examples/        project.example.yaml, the commented starting point `init` copie
 - **`@pierre/diffs` is pinned to an exact version.** The unified view's second line-number column patches one of its
   private methods (see the comment at the top of `src/FilesChanged.tsx`). If that method changes, the patch falls back
   to the stock single column and warns once in the browser console. Check it when upgrading.
-- **The packaged files.** The npm package is the compiled CLI (`dist/server`), the built UI (`dist/web`), the stack
-  picture's fonts (`server/fonts/`), `examples/project.example.yaml` (for `init`) and `AGENT-GUIDE.md` (for `guide`).
+- **The packaged files.** The npm package is the compiled CLI (`dist/server`, `dist/shared`), the built UI
+  (`dist/web`), the example projects' history (`dist/demo`, compiled from `demo/lib` and `demo/world`), the stack
+  picture's fonts (`server/fonts/`), `examples/project.example.yaml` (for `init`), `AGENT-GUIDE.md` (for `guide`) and
+  `CHANGELOG.md`.
 - **The agent guide pages on this site are generated** from `AGENT-GUIDE.md`. Edit that file, then run
   `node scripts/sync-agent-guide.mjs` in `website/` and commit the result; `npm test` fails if you forget.
 

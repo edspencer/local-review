@@ -22,6 +22,11 @@ goes up as a GitHub stacked PR: one PR per commit, each on the branch of the one
 
 Overrides never touch the commit: they live in Local Review's files, so the reviewed repo stays exactly as it was.
 
+Around it, a PR page shows where it belongs: **breadcrumbs** above the header (`Project › repo · STACK n · TITLE ›
+PR #m`, the project and stack linking to their pages), and on the Conversation tab, above the description, the
+collapsible [Project context and Stack context](/using/editing-pr-text/#project-and-stack-context) boxes that start
+its full PR body.
+
 ## Why one commit per PR
 
 - **It's how stacks are built.** Every stacking tool, GitHub's own included, works from a series of local commits;

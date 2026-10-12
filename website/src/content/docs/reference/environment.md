@@ -8,7 +8,7 @@ thinks you are.
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `LOCAL_REVIEW_HOME` | `~/.local-review` | The [data directory](/reference/data-directory/): `projects/` and `backups/` both move. `~` is expanded. |
+| `LOCAL_REVIEW_HOME` | `~/.local-review` | The [data directory](/reference/data-directory/): `projects/`, `backups/` and `examples/` all move. `~` is expanded. |
 | `PORT` | `5622` | The port `local-review` serves on. `--port` wins over it. Also used in the URL `init` prints. |
 | `LOCAL_REVIEW_USER` | `git config user.name`, else `$USER` | Who you are: your comments are stored under this name's id. See [The reviewer](#local_review_user-the-reviewer). |
 | `LOCAL_REVIEW_PROJECTS_DIR` | `$LOCAL_REVIEW_HOME/projects` | Moves only `projects/`. For the tests; it turns automatic snapshots off unless `LOCAL_REVIEW_HOME` is set too. |
@@ -33,7 +33,8 @@ rejects a value that isn't an integer from 0 to 65535 rather than silently using
 
 Your comments are stored as `author: <id>`, and only yours can be edited or deleted in the UI (an agent's, `author:
 claude`, never are). The name comes from `LOCAL_REVIEW_USER`, else `git config user.name`, else `$USER`. The id is its
-first word, lowercased and reduced to `[a-z0-9_-]`: "Ada Lovelace" becomes `ada`. `GET /api/me` returns both.
+first word, lowercased and reduced to `[a-z0-9_-]`, at most 32 characters: "Ada Lovelace" becomes `ada`. `claude` is
+the agent's id, so a reviewer who would get it (or an empty id) is `reviewer` instead. `GET /api/me` returns both.
 
 If your comment files were written under some id, set `LOCAL_REVIEW_USER` to that id to keep them yours:
 
@@ -56,5 +57,6 @@ These only matter when you run Local Review from a checkout with `npm run dev` (
 | --- | --- | --- |
 | `LOCAL_REVIEW_WEB_PORT` | `5622` | The port Vite serves the UI on. |
 | `LOCAL_REVIEW_API_PORT` | `5623` | The port of the API server Vite proxies `/api` to. |
+| `LOCAL_REVIEW_DEV` | unset | Set by `npm run dev` for the API server: it doesn't serve the built UI (Vite does), and its default port is `5623`. |
 
 Change both to run a dev instance next to a live one.

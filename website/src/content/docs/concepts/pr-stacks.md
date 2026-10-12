@@ -83,13 +83,21 @@ Every aggregate counts **regular stacks' unmerged PRs only**, and mentions follo
 2 repos · 4 stacks · 12 PRs · +3,300 −150 · +1 follow-on stack (2 PRs) · +9 merged
 ```
 
-That applies to the stack picture's summary line and repo headings, the project page's totals, the sidebar's viewed count
-and the project switcher's commit count. A stack whose PRs have all merged isn't counted among the stacks. A stack's
+That applies to the stack picture's summary line and repo headings, the project page's totals, the root page's cards
+(and their readiness bars), the sidebar's viewed count and the project switcher's commit count. A stack whose PRs have all merged isn't counted among the stacks. A stack's
 own heading and its PRs still show their real numbers.
 
 When only follow-on work is in view (the picture of just a follow-on stack), its numbers are shown, labelled
 `1 follow-on stack · 2 PRs`. Likewise when only merged work is (an archived project): `1 repo · 1 stack · 9 merged PRs`.
 The arithmetic lives in `shared/totals.ts`, used by both the server and the UI, so they agree.
+
+## Stack pages
+
+Each stack has a page of its own, `/<project>/<repo>/stacks/<n>-<title>` (for example `…/stacks/2-joining-and-leaving`),
+opened from its title in the sidebar, its name in a PR's stepper, or the breadcrumbs. It has the stack's readiness,
+branches and size, its [note](#stack-notes) (editable there) and a picture of just that stack; **← Prev stack** and
+**Next stack →** walk the project's stacks, across repos. Unstacked commits and a repo without `stacks:` have one too
+(`…/stacks/unstacked`, `…/stacks/branch`). See [the stack page](/using/ui-tour/#the-stack-page).
 
 ## Stacks and GitHub
 

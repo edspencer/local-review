@@ -46,7 +46,8 @@ shows the original lines. See [Following rebases](/concepts/following-rebases/).
 ## General comments
 
 The Conversation tab holds the PR's general threads (those without a file and line), with the same Reply and Resolve.
-Outdated threads show there too, with an "Outdated" label and their original code.
+Outdated threads show there too, with an "Outdated" label and their original code. Resolved threads fold, as on
+GitHub: each run of them becomes one **N resolved conversations** row that opens them again.
 
 ## Who you are
 

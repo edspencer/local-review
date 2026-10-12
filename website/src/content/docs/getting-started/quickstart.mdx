@@ -16,12 +16,17 @@ You need **Node.js 22 or newer** and **git**. Local Review runs on macOS and Lin
    npx local-review
    ```
 
-   <p>It serves the UI on <a href={LOCAL_URL}>{LOCAL_URL}</a>. With no projects yet, the page tells you how to
-   create one, which is the next step. Leave it running.</p>
+   <p>It serves the UI on <a href={LOCAL_URL}>{LOCAL_URL}</a>. With no projects yet, that's a welcome page that
+   tells you how to create one, which is the next step. Leave it running.</p>
 
-   Want to look around first? **Add the example projects** on that page (or run `npx local-review examples`)
-   for a made-up app reviewed across four repos (it's also at the bottom of the project switcher, later). **Remove examples** in the sidebar hides them again; nothing is
-   deleted ([details](/reference/cli/#local-review-examples-remove)).
+   ![The first-run welcome page: "Look around an example" with Add the example projects, and "Review your own work" with the init command and a prompt for your coding agent](../../../assets/shots/welcome.png "What a brand-new install shows at /.")
+
+   Want to look around first? **Add the example projects** on that page (or run `npx local-review examples`). They're
+   "Orchard", a made-up booking app, as four projects across four repos: stacked PRs, review threads with an agent's
+   replies, two [linked projects](/concepts/linked-projects/) and an archived one whose PRs have all merged. Later the
+   same button is at the bottom of the root page and the project switcher. **Remove examples** (in an example's sidebar,
+   or **Remove example projects** on the root page) hides them again; nothing is deleted
+   ([details](/reference/cli/#local-review-examples-remove)).
 
 2. **Create a project.** In another terminal, pick a short name (a *slug*) for the piece of work you want
    reviewed:
@@ -30,7 +35,9 @@ You need **Node.js 22 or newer** and **git**. Local Review runs on macOS and Lin
    npx local-review init my-feature
    ```
 
-   This creates `~/.local-review/projects/my-feature/project.yaml`, a commented starting point.
+   This creates `~/.local-review/projects/my-feature/project.yaml`, a commented starting point. The page at `/`
+   becomes the [root page](/using/ui-tour/#the-root-page), with your project as a card (with no PRs yet: the example
+   repo path in it doesn't exist).
 
 3. **Point it at your branch.** Edit `project.yaml` and list the repo, the branch to review and the base it
    branched from. Then split the commits into stacks by the subject of the commit each stack starts at:
@@ -51,8 +58,8 @@ You need **Node.js 22 or newer** and **git**. Local Review runs on macOS and Lin
    Leave `stacks:` out and the whole branch is one stack. A project can list several repos. Every field is on
    [project.yaml](/reference/project-yaml/).
 
-4. **Review.** Save the file and the browser picks it up; no restart is needed. Each commit is now a PR in the
-   sidebar, in its stack. Read the diffs, leave comments, tick files as **Viewed**, and mark each PR **Ready**
+4. **Review.** Save the file and the browser picks it up; no restart is needed. Open the project's card: each commit
+   is now a PR in the sidebar, in its stack, and **Start with #1 …** opens the first. Read the diffs, leave comments, tick files as **Viewed**, and mark each PR **Ready**
    when you're happy with it.
 
    ![Local Review showing a one-repo project with no stacks configured: its commits form a single stack in the sidebar, and the first PR is open](../../../assets/shots/single-repo-project.png "A project with one repo and no `stacks:` yet: the whole range is one stack, named after the branch.")
@@ -97,4 +104,5 @@ LOCAL_REVIEW_HOME=/tmp/lr-demo npx local-review
 - [Works with your stacking tool](/concepts/stacking-tools/): where Local Review fits next to `gh stack`, Graphite,
   ghstack and the rest.
 - [A tour of the UI](/using/ui-tour/): what everything on the screen means.
+- [Linked projects](/concepts/linked-projects/): when one piece of work builds on another.
 - [Read-only guarantee](/guarantees/read-only/): why Local Review can't damage your repos.

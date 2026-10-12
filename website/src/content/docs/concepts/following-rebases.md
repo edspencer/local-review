@@ -44,8 +44,9 @@ The assignment is computed for the whole range, deterministically, in this order
 Each level is tried for every commit (oldest first) before the next level. Each orphan goes to at most one commit. If
 several orphans qualify, the most recently modified file wins, then the lowest sha.
 
-Until the next write, the comments are shown from the old file, and the Conversation tab says "Comments carried over
-from &lt;sha&gt; (rebased; same …)". On the next write the server saves them under the new sha, adds the old sha to
+Until the next write, the comments are shown from the old file, as if they were the new commit's (the
+[HTTP API](/reference/http-api/) reports it as `carried_over`, with `matched_from` and `matched_by`; the UI doesn't
+say so). On the next write the server saves them under the new sha, adds the old sha to
 `previous_commits`, sets `matched_by`, and renames the old file to `*.superseded-by-<sha8>.yaml.bak`, so it isn't
 matched again. Nothing is deleted.
 

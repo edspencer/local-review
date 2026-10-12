@@ -9,7 +9,7 @@ and nothing about the repo, its index or its branches changes.
 
 ## How it's enforced
 
-All git access goes through one module, `server/git.ts`, which:
+All git access to the repos you review goes through one module, `server/git.ts`, which:
 
 - runs `git -C <repo> …` via `execFile` with **no shell**, so paths and refs can't inject commands;
 - refuses any subcommand outside a **read-only allow-list**: `log`, `show`, `diff`, `diff-tree`, `rev-list`,
@@ -21,9 +21,18 @@ All git access goes through one module, `server/git.ts`, which:
 - passes `--no-optional-locks` and sets `GIT_OPTIONAL_LOCKS=0`, so git never takes index locks or refreshes the index;
   drops any inherited `GIT_*` environment (e.g. `GIT_DIR`); and disables textconv, external diff drivers and signature
   checking;
-- only passes refs from `project.yaml` (checked: no leading `-`, no `..`, and after `--end-of-options`, or one per line
-  on the stdin of `git cat-file --batch-check`) and full 40-hex shas that git itself returned. A landed PR's shas from
+- only passes refs from `project.yaml` (checked: letters, digits and `. _ / @ { } ^ ~ + -` only, no leading `-`, no
+  `..`; after `--end-of-options`, or one per line on the stdin of `git cat-file --batch-check`) and full 40-hex shas that git itself returned. A landed PR's shas from
   its prs file are used only after git has resolved them as commits (`<sha>^{commit}`).
+
+Two other git calls exist, and neither touches a repo you review:
+
+- **Who you are.** To name the reviewer, the server runs `git config --get user.name` once at start (see
+  [`LOCAL_REVIEW_USER`](/reference/environment/#local_review_user-the-reviewer)). It only reads.
+- **The example projects.** [`local-review examples`](/reference/cli/#local-review-examples-remove) *creates* four new
+  repos under `~/.local-review/examples/` (`git init`, `fast-import`, a checkout of the new repo), and nothing else.
+  They're Local Review's own data, never anyone's work, and once made they're only read, through `server/git.ts`
+  like any other.
 
 ## Paths and names
 

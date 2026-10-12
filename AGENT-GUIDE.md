@@ -13,7 +13,8 @@ https://local-review.edspencer.net; this guide links the pages it relies on.
 ## What Local Review is
 
 A local, GitHub-PR-style review UI for stacks of commits. Each commit is one candidate PR. The reviewer (the human you're working for) reviews them at
-**http://localhost:5622/&lt;project&gt;/&lt;repo&gt;/&lt;sha&gt;** (short or full sha; `/<project>` is the project page, `/<project>/<repo>/stacks/<n>` a stack page).
+**http://localhost:5622/&lt;project&gt;/&lt;repo&gt;/&lt;sha&gt;** (short or full sha; `/` lists every project, `/<project>` is the project page, `/<project>/<repo>/stacks/<n>` a stack
+page).
 Local Review never talks to GitHub and never modifies the repos it shows. You do the git and GitHub work, and record
 the results in its files.
 
@@ -27,7 +28,8 @@ assets/<hash>.<ext>             images shown in descriptions, stack notes and th
 ```
 
 `local-review init <slug>` creates a new project's `project.yaml` from a commented example (it never replaces one).
-The server re-reads these files on every request and pushes changes to the browser, so edits show up live. When the
+The server watches these files (re-reading them whenever they change) and pushes changes to the browser, so edits show
+up live. When the
 server is running, prefer its API (below): its writes are atomic and are merged with concurrent edits.
 
 ## The data model

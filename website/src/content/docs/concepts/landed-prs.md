@@ -55,7 +55,9 @@ landed:
   stack's PRs have merged, its footer says `4/4 MERGED` in purple, and a repo with nothing live shows a purple `merged`
   pill instead of its branch.
 - **Archived projects.** A project in which some repo has landed PRs and no repo has a live commit is archived
-  automatically: the project switcher lists it in a separate, collapsed **Archived** section.
+  automatically: the [root page](/using/ui-tour/#the-root-page) and the project switcher list it in a separate,
+  collapsed **Archived** section, and its card is labelled **Archived**. [Linked projects](/concepts/linked-projects/)
+  move there together, once all of them are archived.
 - **Re-matching.** Landed prs files are never orphans for [rebase re-matching](/concepts/following-rebases/), so a
   live commit with the same subject can't take them, and a landed PR never takes another commit's file.
 - **Reviews** work as normal on landed PRs (threads, Viewed).
@@ -63,7 +65,7 @@ landed:
   PRs whose recorded `github.base` differs from the plan's base, and about prs files with a `github:` record but no
   `landed:` whose commit is now in the repo base ("landed upstream but not frozen").
 
-![The project page of an archived project: every PR has a purple merged badge, and the repo is labelled merged](../../../assets/shots/archived-project.png "An archived project: everything in it has landed, so it moves to the Archived section of the project switcher.")
+![The project page of an archived project: every PR has a purple merged badge, and the repo is labelled merged](../../../assets/shots/archived-project.png "An archived project: everything in it has landed, so it moves to the Archived section of the root page and the project switcher.")
 
 :::note[Local Review comments and GitHub comments are entirely separate]
 Local Review never imports GitHub review threads, and never sends its own to GitHub, for landed PRs as for any other.
