@@ -24,8 +24,8 @@ import { aggregate, mergeAggregates } from '../shared/totals.js';
 import { REVIEWER } from './reviewer.js';
 import { AssetError, addAsset, assetFile } from './assets.js';
 import { ASSET_MIME, MAX_ASSET_BYTES, typeOfMime, typeOfName } from '../shared/assets.js';
-import { ExamplesConflictError, addExamples, examplesState, newExamples, removeExamples } from './examples.js';
-import { renderStackSvg, renderThumbSvg, scopeModel, stackOnlyModel, stackWeights, svgToPng, vizModel, withPredecessor, type VizModel, type VizScale, type VizScope } from './stackviz.js';
+import { EXAMPLE_SLUGS, ExamplesConflictError, addExamples, examplesState, newExamples, removeExamples } from './examples.js';
+import { THUMB_MAX_W, THUMB_MIN_W, renderStackSvg, renderThumbSvg, scopeModel, stackOnlyModel, stackWeights, svgToPng, vizModel, withPredecessor, type VizModel, type VizScale, type VizScope } from './stackviz.js';
 import type { PrStatus } from '../shared/readiness.js';
 import { parseStackRef, resolveStackRef } from '../shared/stackRef.js';
 
@@ -239,7 +239,7 @@ const thumbOf = (svg: string) => crypto.createHash('sha1').update(svg).digest('h
  * The project's thumbnail SVG. Linked projects: a repo whose range starts where the predecessor's ends shows the
  * predecessor's stacks first, greyed out (as the stack picture does with ?context=1), so the card shows where it sits.
  */
-async function thumbSvg(p: LoadedProject, repos: RepoPayload[]): Promise<string> {
+async function thumbSvg(p: LoadedProject, repos: RepoPayload[], width?: number): Promise<string> {
   const m = thumbModel(p.cfg.title, repos);
   const pred = p.after && p.repos.some((r) => r.info.startsAfter) ? await loadProject(p.after.slug).catch(() => null) : null;
   if (pred) {
@@ -252,7 +252,7 @@ async function thumbSvg(p: LoadedProject, repos: RepoPayload[]): Promise<string>
       return { ...vr, stacks: [...theirs.map((s) => ({ ...s, context: true })), ...vr.stacks] };
     });
   }
-  return renderThumbSvg(m);
+  return renderThumbSvg(m, { width });
 }
 
 type ActivityKind = 'comment' | 'commit' | 'merged' | 'edit';
@@ -331,13 +331,16 @@ async function projectSummary(slug: string) {
 app.get('/api/projects', async (c) => {
   const projects = (await Promise.all(listProjectSlugs().map(projectSummary))).filter((p) => !!p);
   for (const p of projects) if (p.after) projects.find((x) => x.slug === p.after)?.next.push(p.slug);
-  return c.json({ projectsDir: PROJECTS_DIR, home: os.homedir(), examples: examplesState(), newExamples: newExamples(), projects });
+  return c.json({ projectsDir: PROJECTS_DIR, home: os.homedir(), examples: examplesState(), newExamples: newExamples(), exampleCount: EXAMPLE_SLUGS.length, projects });
 });
 
-// the root page's card picture: built from the cached sidebar payloads, so it's cheap; revalidated by its hash
+// the root page's card picture: built from the cached sidebar payloads, so it's cheap; revalidated by its hash.
+// `w`: drawn at the card's width (CSS px), so it's never scaled and its text is the same size on every card
 app.get('/api/projects/:project/thumb.svg', async (c) => {
   const p = await getProject(c.req.param('project'));
-  const svg = await thumbSvg(p, await Promise.all(p.repos.map((r) => repoPayload(r))));
+  const w = Number(c.req.query('w'));
+  const width = Number.isInteger(w) && w >= THUMB_MIN_W && w <= THUMB_MAX_W ? w : undefined;
+  const svg = await thumbSvg(p, await Promise.all(p.repos.map((r) => repoPayload(r))), width);
   const etag = `"${thumbOf(svg)}"`;
   const headers = { 'Cache-Control': 'no-cache', ETag: etag, 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': VIZ_CSP };
   if (c.req.header('if-none-match') === etag) return c.body(null, 304, headers);

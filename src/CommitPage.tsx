@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { api, stackColor, type CommitResponse, type CommitSummary, type FileData, type GithubInfo, type LandedInfo, type Loc, type PrInfo, type RepoData, type Review, type StackGroup, type Thread } from './api';
+import { api, stackColor, type CarriedOver, type CommitResponse, type CommitSummary, type FileData, type GithubInfo, type LandedInfo, type Loc, type PrInfo, type RepoData, type Review, type StackGroup, type Thread } from './api';
 import { BranchStatusMarker, PrBadge, branchNote } from './Branch';
 import { ensure, hoverPrefetch, patch, peek, prefetch, setActive, useCommitEntry } from './commitCache';
 import { Avatar, AuthorLabel, CommentForm, CommentView, Markdown, Octicon, ThreadView, reviewer, type ThreadActions } from './Comments';
@@ -512,6 +512,8 @@ function Conversation({ data, loc, review, actions, onNew, desc, context }: { da
           </span>
         </div>
 
+        {review.carried_over && <CarriedOverEvent co={review.carried_over} file={tilde(review.file)} target={tilde(review.target_file)} />}
+
         {timeline.map((x) =>
           x.kind === 'fold' ? (
             <ResolvedFold key={`fold-${x.threads[0].id}`} threads={x.threads} onExpand={() => expand(x.threads)} />
@@ -564,6 +566,25 @@ function Conversation({ data, loc, review, actions, onNew, desc, context }: { da
           </div>
         )}
       </aside>
+    </div>
+  );
+}
+
+const MATCHED_BY: Record<NonNullable<CarriedOver['by']>, string> = { 'patch-id': 'patch-id', 'change-id': 'Change-Id', subject: 'subject' };
+
+/**
+ * The review came from an earlier commit after a rebase (concepts/following-rebases.md): a timeline event, like
+ * GitHub's "force-pushed". Pending (`saved: false`) until the next write moves the comments into this commit's file.
+ */
+function CarriedOverEvent({ co, file, target }: { co: CarriedOver; file: string; target: string }) {
+  return (
+    <div className="timeline-event carried-over" role="note" title={co.saved ? `Saved under this commit: ${target}` : `Shown from ${file}; the next write saves it as ${target}`}>
+      <span className="timeline-badge" aria-hidden="true">⟲</span>
+      <span>
+        Review carried over from <code className="sha">{co.from.slice(0, 8)}</code> after a rebase
+        {co.by && <> (matched by {MATCHED_BY[co.by]})</>}
+        {!co.saved && <span className="muted">. It moves to this commit's file on the next write.</span>}
+      </span>
     </div>
   );
 }

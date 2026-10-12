@@ -54,7 +54,7 @@ The project's **slug** is its directory name (not a field): it's used in URLs, `
 
 | Field | | |
 | --- | --- | --- |
-| `path` | path | A local clone. `~` is expanded. It is only ever read, never modified ([read-only guarantee](/guarantees/read-only/)). |
+| `path` | path | A local clone, required: an entry without one is skipped, with a project warning. `~` is expanded. It is only ever read, never modified ([read-only guarantee](/guarantees/read-only/)). |
 | `name` | optional | Used in URLs and as the directory name under `prs/` and `reviews/`. Default: the path's basename. Two repos with the same name get `-2`, `-3`, … by position, with a warning: name them. Letters, digits, `.`, `_`, `-`: any other character becomes `-`, and a leading dot `_`. |
 | `branch` | ref | The range **end**: this branch's head. Optional once the repo has `landed:`. |
 | `to` | sha or ref | Instead of `branch`: the range end, inclusive. |
@@ -99,10 +99,12 @@ Problems show on the repo in the sidebar:
 - **Project errors** (the project can't be read; ⚠ on its card): invalid YAML, a top level that isn't a mapping, or
   `repos:` that isn't a list.
 - **Errors** (an error card): a missing repo, a missing branch, or a range that can't be worked out (no `branch` or
-  `to`, a `to`, `from` or `base` that doesn't exist, a `from` that isn't an ancestor of the end, no common ancestor). A missing branch isn't an error in a repo with
+  `to`, a `to`, `from` or `base` that doesn't exist, a `from` that isn't an ancestor of the end, no common ancestor), or a `branch`, `to`, `from` or `base` with characters
+  Local Review won't pass to git (it allows letters, digits and `. _ / @ { } ^ ~ + -`, not a leading `-` or `..`). A missing branch isn't an error in a repo with
   landed PRs; there, other range problems are only warnings.
-- **Project warnings** (on the project page and at the top of the sidebar): a bad `after:` (not a slug, no such
-  project, the project itself, a cycle).
+- **Project warnings** (on the project page, at the top of the sidebar and in `local-review plan`): a bad `after:`
+  (not a slug, no such project, the project itself, a cycle), and an entry in `repos:` that's skipped because it has
+  no `path` or isn't a mapping.
 - **Warnings**: a range that includes the commits of the project it builds on, or whose predecessor's branch is gone
   ([when the link doesn't hold](/concepts/linked-projects/#when-the-link-doesnt-hold)); a `starts_at` that matches nothing, or matches only commits at or before the previous stack's start
   (that stack is then empty); a later stack with no `starts_at` (also empty); an unknown colour; `color: yellow` on a regular stack; a regular stack after a follow-on one; an invalid

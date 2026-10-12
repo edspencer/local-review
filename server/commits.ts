@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { EMPTY_TREE, git, gitBufferWithInput, gitWithInput, isSha, safeRef, sha40 } from './git.js';
+import { EMPTY_TREE, git, gitBufferWithInput, gitWithInput, isSafeRef, isSha, SAFE_REF_RULE, safeRef, sha40 } from './git.js';
 
 export interface CommitSummary {
   sha: string;
@@ -206,6 +206,9 @@ export async function loadRepo(cfg: RepoRange, opts: { optional?: boolean; refs?
       if (opts.optional) return info;
       throw new Error('no `branch` or `to` given');
     }
+    // a ref we won't pass to git would only read as "not found" below: say what's wrong with it instead
+    for (const [what, ref] of [[cfg.to ? "'to' ref" : 'branch', end], ["'from' commit", cfg.from], ['base ref', cfg.base]] as const)
+      if (ref && !isSafeRef(ref)) throw new Error(`${what} '${ref}' has characters Local Review won't pass to git (it allows ${SAFE_REF_RULE})`);
     // what the refs point at (given: already read by the caller, see stamps.ts); the rest follows from these shas
     const refs = opts.refs ?? (await resolveRange(cfg));
     info.head = refs.head;

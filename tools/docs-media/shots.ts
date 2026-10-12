@@ -341,6 +341,13 @@ export const SHOTS: Shot[] = [
     capture: { selector: '.timeline-item:has(.thread.outdated) .thread', pad: 12 },
   },
   {
+    name: 'crop-carried-over',
+    doc: 'Docs "Following rebases": the timeline note that a review was carried over from an earlier commit after a rebase.',
+    route: PROMOTE,
+    actions: [{ scrollTo: '.carried-over', block: 'center' }],
+    capture: { selector: ['.timeline-event:has(.sha)', '.carried-over'], pad: { top: 10, bottom: 10, left: 12, right: 24 }, zoom: 1.25 },
+  },
+  {
     name: 'crop-agent-reply',
     doc: 'Feature: the agent replies in the YAML file; it shows up in the thread live.',
     route: PROMOTE,

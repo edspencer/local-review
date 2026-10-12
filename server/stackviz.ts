@@ -576,8 +576,10 @@ export function renderStackSvg(m: VizModel, opts: RenderOpts = {}): string {
 // the same in every lane, so a 1-PR repo is visibly short beside an 11-PR one; its height is the PR's lines changed
 // on a log scale (√ let one huge PR flatten the rest); its fill is the PR's readiness. No titles: the card has them.
 // Drawn for an <img>, so it follows the page's light or dark mode through its own <style>.
-export const THUMB_W = 280;
+export const THUMB_W = 280; // the default; the root page asks for its card's width (`?w=`), the height stays
 export const THUMB_H = 150;
+export const THUMB_MIN_W = 200;
+export const THUMB_MAX_W = 800;
 const THUMB_PAD_X = 12;
 const THUMB_PAD_Y = 10;
 const THUMB_LANES = 4; // more repos than this: the first three, then "+N more repos"

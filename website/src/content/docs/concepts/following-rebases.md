@@ -44,11 +44,17 @@ The assignment is computed for the whole range, deterministically, in this order
 Each level is tried for every commit (oldest first) before the next level. Each orphan goes to at most one commit. If
 several orphans qualify, the most recently modified file wins, then the lowest sha.
 
-Until the next write, the comments are shown from the old file, as if they were the new commit's (the
-[HTTP API](/reference/http-api/) reports it as `carried_over`, with `matched_from` and `matched_by`; the UI doesn't
-say so). On the next write the server saves them under the new sha, adds the old sha to
-`previous_commits`, sets `matched_by`, and renames the old file to `*.superseded-by-<sha8>.yaml.bak`, so it isn't
-matched again. Nothing is deleted.
+Until the next write, the comments are shown from the old file, as if they were the new commit's. On the next write
+the server saves them under the new sha, adds the old sha to `previous_commits`, sets `matched_by`, and renames the
+old file to `*.superseded-by-<sha8>.yaml.bak`, so it isn't matched again. Nothing is deleted.
+
+The PR's Conversation tab says so, in a note under the "changes N files" line: **Review carried over from
+&lt;sha&gt; after a rebase (matched by patch-id, Change-Id or subject)**. Until the next write it adds "It moves to
+this commit's file on the next write"; after it, the note stays, naming the last of `previous_commits`. The
+[HTTP API](/reference/http-api/) reports the same as `carried_over` (`from`, `by`, and `saved`: whether it's in the new
+sha's file yet), with `matched_from` and `matched_by` for one still in the old file.
+
+![A note in a PR's timeline: Review carried over from 9b662133 after a rebase (matched by subject)](../../../assets/shots/crop-carried-over.png "This PR's commit was amended after the review, so its review came over from the earlier commit by its subject.")
 
 :::tip[Keep subjects stable]
 A fixup or amend changes the patch, so the subject is what carries the review across. Don't reword a reviewed

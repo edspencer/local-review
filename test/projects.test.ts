@@ -46,6 +46,11 @@ describe('project.yaml', () => {
       }),
     );
     assert.equal(p.error, undefined);
+    // the skipped entries are said so, not silently dropped
+    assert.deepEqual(p.warnings, [
+      'repo 4 in `repos` ({"branch":"no path"}) has no `path`, so it\'s skipped. Give it the path of a git checkout.',
+      'repo 5 in `repos` ("junk") isn\'t a mapping (path:, branch: …), so it\'s skipped.',
+    ]);
     assert.deepEqual([p.title, p.description], ['Demo', 'About *this*']);
     assert.deepEqual(p.repos.map((r) => r.name), ['my-service', 'second', 'my-service-2']);
     const [r0, r1] = p.repos;
@@ -246,6 +251,25 @@ describe('loading a project', () => {
     assert.deepEqual(ft.info.commits.map((c) => c.sha), [c2]);
     assert.match(bad.info.error!, /not an ancestor/);
     assert.equal(await P.loadProject('no-such-project'), null);
+  });
+});
+
+describe('refs outside the safe character set', () => {
+  test('are reported as unsafe, naming the field, not as "not found"', async () => {
+    const repo = newRepo();
+    repo.commit('Initial', { 'a.txt': 'a\n' });
+    repo.git('checkout', '-q', '-b', 'feature');
+    repo.commit('Add b', { 'b.txt': 'b\n' });
+    const cfg = { name: 'r', path: repo.dir, branch: 'feature', base: 'main' };
+    const err = async (o: object) => (await S.loadRepo({ ...cfg, ...o })).error;
+    assert.equal(await err({}), undefined);
+    assert.match((await err({ branch: 'me/my feature' }))!, /^branch 'me\/my feature' has characters Local Review won't pass to git/);
+    assert.match((await err({ to: '--output=x' }))!, /^'to' ref '--output=x' has characters/);
+    assert.match((await err({ from: 'main..feature' }))!, /^'from' commit 'main\.\.feature' has characters/);
+    assert.match((await err({ base: 'main;rm' }))!, /^base ref 'main;rm' has characters/);
+    // a repo with landed PRs: a warning, not silently no range
+    const opt = await S.loadRepo({ ...cfg, branch: 'gone:branch' }, { optional: true });
+    assert.match(opt.warning!, /live range: branch 'gone:branch' has characters/);
   });
 });
 

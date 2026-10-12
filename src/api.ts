@@ -166,6 +166,8 @@ export interface ProjectsResponse {
   examples: 'none' | 'present' | 'removed';
   /** example projects new in this version, not added yet (the others are there): "Add" creates just these */
   newExamples?: string[];
+  /** how many example projects "Add" creates (server/examples.ts) */
+  exampleCount: number;
   projects: ProjectSummary[];
 }
 

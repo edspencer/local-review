@@ -119,7 +119,16 @@ export function parseProject(slug: string, dir: string, raw: string): ProjectCon
   if (doc.repos != null && !Array.isArray(doc.repos)) out.error = `${file}: \`repos\` must be a list`;
   const used = new Set<string>();
   for (const [index, r] of list.entries()) {
-    if (!r || typeof r !== 'object' || typeof r.path !== 'string') continue;
+    // a config mistake, said so (the sidebar, the project page and `plan` show project warnings), never dropped silently
+    const preview = () => { const j = JSON.stringify(r) ?? String(r); return j.length > 60 ? `${j.slice(0, 57)}…` : j; };
+    if (!r || typeof r !== 'object' || Array.isArray(r)) {
+      out.warnings.push(`repo ${index + 1} in \`repos\` (${preview()}) isn't a mapping (path:, branch: …), so it's skipped.`);
+      continue;
+    }
+    if (typeof r.path !== 'string' || !r.path.trim()) {
+      out.warnings.push(`repo ${index + 1} in \`repos\` (${preview()}) has no \`path\`, so it's skipped. Give it the path of a git checkout.`);
+      continue;
+    }
     const repoPath = path.resolve(expandHome(r.path));
     const wanted = safeName(text(r.name) ?? path.basename(repoPath), 'repo');
     let name = wanted;
