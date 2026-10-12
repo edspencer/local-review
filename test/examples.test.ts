@@ -247,6 +247,7 @@ describe('an update that ships a new example project', () => {
     const list = await (await fetch(url('/projects'))).json();
     assert.equal(list.examples, 'present');
     assert.deepEqual(list.newExamples, ['example-calendar-reminders']);
+    assert.equal(list.exampleCount, 4); // the welcome page's "Its four example projects"
     const add = await (await fetch(url('/examples'), JSON_POST)).json();
     assert.deepEqual([add.created, add.restored], [['example-calendar-reminders'], []]);
     assert.deepEqual(add.existing.sort(), ['example-calendar-feed', 'example-waitlists', 'example-webhook-retries']);

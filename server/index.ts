@@ -24,7 +24,7 @@ import { aggregate, mergeAggregates } from '../shared/totals.js';
 import { REVIEWER } from './reviewer.js';
 import { AssetError, addAsset, assetFile } from './assets.js';
 import { ASSET_MIME, MAX_ASSET_BYTES, typeOfMime, typeOfName } from '../shared/assets.js';
-import { ExamplesConflictError, addExamples, examplesState, newExamples, removeExamples } from './examples.js';
+import { EXAMPLE_SLUGS, ExamplesConflictError, addExamples, examplesState, newExamples, removeExamples } from './examples.js';
 import { renderStackSvg, renderThumbSvg, scopeModel, stackOnlyModel, stackWeights, svgToPng, vizModel, withPredecessor, type VizModel, type VizScale, type VizScope } from './stackviz.js';
 import type { PrStatus } from '../shared/readiness.js';
 import { parseStackRef, resolveStackRef } from '../shared/stackRef.js';
@@ -331,7 +331,7 @@ async function projectSummary(slug: string) {
 app.get('/api/projects', async (c) => {
   const projects = (await Promise.all(listProjectSlugs().map(projectSummary))).filter((p) => !!p);
   for (const p of projects) if (p.after) projects.find((x) => x.slug === p.after)?.next.push(p.slug);
-  return c.json({ projectsDir: PROJECTS_DIR, home: os.homedir(), examples: examplesState(), newExamples: newExamples(), projects });
+  return c.json({ projectsDir: PROJECTS_DIR, home: os.homedir(), examples: examplesState(), newExamples: newExamples(), exampleCount: EXAMPLE_SLUGS.length, projects });
 });
 
 // the root page's card picture: built from the cached sidebar payloads, so it's cheap; revalidated by its hash

@@ -40,6 +40,10 @@ const EXAMPLE_REPOS: [string, string][] = [
   ['orchard-infra', 'Terraform'],
 ];
 
+const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+/** A small count as a word ("four"), a bigger one as digits. */
+const inWords = (n: number) => WORDS[n] ?? String(n);
+
 /** The add-the-examples button and its result or error. `onAdded` gets the slug to open. */
 function AddExamples({ removed, onAdded }: { removed: boolean; onAdded: (slug: string) => void }) {
   const [busy, setBusy] = useState(false);
@@ -91,8 +95,8 @@ export function Welcome({ list, notice, onChanged }: { list: ProjectsResponse; n
             <Icon d={TELESCOPE} /> Look around an example
           </h2>
           <p>
-            <strong>Orchard</strong> is a made-up booking app for fitness studios. Its three example projects have stacked PRs
-            across four repos, review threads, an agent's replies and a fully merged stack.
+            <strong>Orchard</strong> is a made-up booking app for fitness studios. Its {inWords(list.exampleCount)} example projects
+            have stacked PRs across {inWords(EXAMPLE_REPOS.length)} repos, review threads, an agent's replies and a fully merged stack.
           </p>
           <ul className="welcome-repos" aria-label="The example repos">
             {EXAMPLE_REPOS.map(([name, lang]) => (
@@ -105,7 +109,7 @@ export function Welcome({ list, notice, onChanged }: { list: ProjectsResponse; n
           <p className="welcome-fine">
             {removed
               ? "You removed them earlier. They come back as you left them, with any comments you wrote."
-              : <>Takes about a second, with no network: it writes four small git repos and the projects into <code>{tilde(list.projectsDir.replace(/[\\/]projects$/, ''))}</code>.</>}{' '}
+              : <>Takes about a second, with no network: it writes {inWords(EXAMPLE_REPOS.length)} small git repos and the projects into <code>{tilde(list.projectsDir.replace(/[\\/]projects$/, ''))}</code>.</>}{' '}
             Remove them again any time: they're hidden, never deleted.
           </p>
         </section>
