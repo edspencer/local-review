@@ -786,8 +786,7 @@ export function startServer(port: number): Promise<number> {
     const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, (i) => {
       server.off('error', reject);
       startWatchers();
-      console.log(`Local Review on http://localhost:${i.port}  (projects: ${PROJECTS_DIR})`);
-      resolve(i.port);
+      resolve(i.port); // the CLI prints "Local Review on …" (server/banner.ts)
     });
     server.once('error', reject);
   });

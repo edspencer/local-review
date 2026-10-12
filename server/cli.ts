@@ -14,7 +14,7 @@ import { ExistsError, atomicWrite } from './safefs.js';
 import { AssetError, addAsset, setPublishedUrl } from './assets.js';
 import { MAX_ASSET_BYTES, typeOfName } from '../shared/assets.js';
 
-const USAGE = `Usage: local-review [serve] [--port <n>]
+const USAGE = `Usage: local-review [serve] [--port <n>] [--quiet]
        local-review plan <project> [--repo <name>] [--stack <n>] [--include-follow-on] [--format md|json|yaml]
        local-review init <project>
        local-review asset add <project> <file> [--alt <text>]
@@ -26,6 +26,8 @@ const USAGE = `Usage: local-review [serve] [--port <n>]
 
   serve   (the default) Serve the review UI and API on http://localhost:<port> (127.0.0.1 only).
           --port <n>       the port (default ${DEFAULT_PORT}, or $PORT)
+          --quiet, -q      print just the "Local Review on <url>" line: no banner, no hint for agents
+                           (the banner is only shown on a terminal anyway)
   plan    For each PR in scope, in order: commit, status (draft / ready / published), branch (with its
           status), base, title and the exact full body (project intro, stack note, ---, PR description), plus
           any recorded github: info. Warns about stacks with draft PRs, GitHub bases that differ from the
@@ -80,6 +82,7 @@ function parseArgs(argv: string[]) {
     else if (a === '-v' || a === '--version') flags.version = '1';
     else if (a === '--include-follow-on') flags['include-follow-on'] = '1';
     else if (a === '--dry-run') flags['dry-run'] = '1';
+    else if (a === '-q' || a === '--quiet') flags.quiet = '1';
     else if (a.startsWith('--')) {
       const eq = a.indexOf('=');
       const [k, v] = eq > 0 ? [a.slice(2, eq), a.slice(eq + 1)] : [a.slice(2), argv[++i]];
@@ -230,7 +233,14 @@ async function serve(flags: Record<string, string>) {
   if (port === null) throw new UsageError(`${flags.port !== undefined ? '--port' : 'PORT'} must be a port number (0-65535), not '${given}'`);
   const { startServer } = await import('./index.js');
   try {
-    await startServer(port);
+    const bound = await startServer(port);
+    const { startupMessage } = await import('./banner.js');
+    process.stdout.write(
+      startupMessage(
+        { url: `http://localhost:${bound}`, projectsDir: PROJECTS_DIR, quiet: !!flags.quiet, dev: !!process.env.LOCAL_REVIEW_DEV },
+        { isTTY: process.stdout.isTTY, columns: process.stdout.columns, env: process.env },
+      ),
+    );
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
     if (code === 'EADDRINUSE') throw new Error(`port ${port} is already in use; pick another with --port <n>`);
@@ -253,7 +263,7 @@ async function main(argv: string[]): Promise<number | undefined> {
   const [cmd = 'serve', ...args] = pos;
   switch (cmd) {
     case 'serve':
-      check(cmd, flags, ['port'], args, 0);
+      check(cmd, flags, ['port', 'quiet'], args, 0);
       await serve(flags);
       return undefined;
     case 'plan':
