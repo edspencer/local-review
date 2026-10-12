@@ -14,20 +14,26 @@ The top bar is **deep plum (`#4a1942`) with an amber underline**. It carries a l
 and an amber **"not on GitHub"** pill, and selected tabs get an amber top edge. You can't mistake it for github.com,
 which matters when the rest of the page looks just like a PR you could merge.
 
+On the right: **● live** (or **○ offline** while it reconnects to the server) and a reminder of the keyboard shortcuts
+([Keyboard shortcuts](/using/keyboard-shortcuts/)). On a project, stack or PR page, the header's **☰** button
+shows or hides the sidebar.
+
 The **LOCAL REVIEW** wordmark goes to the [root page](#the-root-page), every project at once. Next to it is the
 project you're in, with a **project switcher**: its first item, **All projects**, is the root page too, then the
-projects themselves, most recently active first. Archived projects (everything [landed](/concepts/landed-prs/)) are in
-a collapsed **Archived** section at the bottom of the switcher. Click the project title to go to the
+projects themselves, most recently active first, a [linked project](/concepts/linked-projects/) indented (`↳`) under
+the one it builds on. Archived projects (everything [landed](/concepts/landed-prs/)) are in
+a collapsed **Archived** section at the bottom of the switcher, and under that **Add example projects** (or **Remove
+example projects** while they're there). Click the project title to go to the
 [project page](#the-project-page).
 
-![The project switcher open: two projects with their repo and commit counts, and an Archived section holding a third](../../../assets/shots/crop-project-switcher.png)
+![The project switcher open: All projects, then Class waitlists, Calendar feed and, indented under it, Calendar reminders, each with its repo and PR counts; an Archived section holding Payment webhook retries; and Add example projects at the bottom](../../../assets/shots/crop-project-switcher.png)
 
 ## The root page
 
 `/` lists every project as a card, most recently active first. A **project** is one piece of work: its repos, their
 commit ranges, and the [PR stacks](/concepts/pr-stacks/) they split into ([Projects & repos](/concepts/projects-and-repos/)).
 
-![The root page: a card per project, each with a thumbnail of its stacks, its totals, a readiness bar and when it last saw activity](../../../assets/shots/root-page.png "The root page of the demo: two active projects and, below them, an archived one whose PRs have all merged.")
+![The root page: a card per project, each with a thumbnail of its stacks, its totals, a readiness bar and when it last saw activity](../../../assets/shots/root-page.png "The root page of the demo: three active projects, two of them linked, and below them an archived one whose PRs have all merged.")
 
 - **The thumbnail** is the project's shape, the same size however big it is: a lane per repo (the first three, then
   `+N more repos`), a box per stack in its colour, left to right, and a bar per PR. Every bar is the same width, so a
@@ -39,17 +45,26 @@ commit ranges, and the [PR stacks](/concepts/pr-stacks/) they split into ([Proje
   follow-on and merged PRs beside them ([Totals](/concepts/pr-stacks/#totals)), a bar of the PRs by readiness (merged,
   published, ready, draft), the same as readiness badges with counts, the open threads, and the **last activity**: the
   newest comment, commit, merge or edit to any of the project's files (a Viewed mark, a title, an agent's YAML).
-- **Linked projects** ([`after:`](/concepts/linked-projects/)) are one card spanning the row, in order, with arrows;
-  the successor's thumbnail starts with the predecessor's stacks in grey.
-- **Sections:** Active; **Examples**, once you have projects of your own besides the [example projects](/reference/cli/#local-review-examples-remove)
-  (with **Remove example projects**); and **Archived**, collapsed.
-- **Filter** (press `/`) matches the title, slug, repo names and branch names; **Sort** by recent activity, title, size
-  or open threads (remembered). The `npx local-review init <slug>` line starts a new project.
-- With no projects yet, `/` is the first-run page instead, with the example projects one click away.
+- **Linked projects** ([`after:`](/concepts/linked-projects/)) share one box spanning the row: "*first title* · N
+  linked projects, each building on the one before", then their cards in order, labelled `1 · FIRST`, `2 · BUILDS ON
+  …`, with arrows between them. The successor's thumbnail starts with the predecessor's stacks in grey.
+- **Sections:** **Active**; **Examples**, once you have projects of your own besides the
+  [example projects](/reference/cli/#local-review-examples-remove), with **Remove example projects** beside the heading
+  (on the Active heading if the examples are all you have); and **Archived**, collapsed (it opens by itself while the
+  filter matches an archived project). At the bottom: **Add the example projects** (or **Bring back the example
+  projects** after you removed them), and **Add the new example project** when an update ships one you don't have.
+- **Filter** (press `/`; Esc clears it) matches the title, slug, repo names and branch names; **Sort** by recent
+  activity, title, size or open threads (remembered). The `npx local-review init <slug>` line starts a new project.
+- With no projects yet, `/` is the [first-run welcome page](/getting-started/quickstart/) instead, with the
+  example projects one click away.
+
+![The root page with only the example projects: each card has an EXAMPLE label, and Remove example projects sits beside the Active heading](../../../assets/shots/root-examples.png "Right after Add the example projects, with nothing else in the data directory.")
 
 ## The sidebar
 
 - **The project page link** at the top: the project's title, plum while you're on the [project page](#the-project-page).
+  A [linked project](/concepts/linked-projects/) has **Builds on *…*** and **Next *…* →** links under it.
+- **An example project** has an **Example** strip above that ("Made-up data to explore."), with **Remove examples**.
 - **One collapsible section per repo**, headed `repo · branch`, with how many commits are fully viewed and how many
   threads are open. A repo with nothing live shows a purple `merged` pill instead of its branch.
 - **Each [PR stack](/concepts/pr-stacks/)** is a box with a coloured border and its title on the top line
@@ -67,9 +82,13 @@ commit ranges, and the [PR stacks](/concepts/pr-stacks/) they split into ([Proje
 ## The PR header
 
 - **Breadcrumbs** above it: `Project › repo · STACK 2 · TITLE › PR #3`. The project and the stack are links to their
-  pages.
+  pages. In a linked project they start with the project it builds on: `Calendar feed → Calendar reminders › …`.
+
+![Breadcrumbs on a PR of a linked project: Calendar feed → Calendar reminders › orchard-api · STACK 1 · REMINDERS › PR #2, above the PR title with Edit and ← Prev / Next →](../../../assets/shots/crop-breadcrumbs.png)
+
 - The PR title with its position in the repo (`#3`), and **Edit** beside it (see
-  [Editing PR titles & descriptions](/using/editing-pr-text/)).
+  [Editing PR titles & descriptions](/using/editing-pr-text/)). On the right, **← Prev** and **Next →** step through
+  the repo's PRs (or press `k` / `j`).
 - Where GitHub shows Open / Draft, a **Draft | Ready** toggle; or a blue **Published** pill with the `#1234 ↗` link once
   a GitHub PR is recorded; or a purple **Merged** pill once it has landed, with "merged &lt;when&gt; (method)" in the
   line below.
@@ -95,9 +114,12 @@ like a PR page: a plum `PROJECT` label and the title, a line with the project's 
 left out and mentioned, as in the picture) and where its `project.yaml` is, then two tabs:
 
 - **Conversation:** the project intro, as the first comment box, with Copy and Edit (the same editor, image
-  attachment and "changed elsewhere" notice as a PR description). Below it, a link to the first PR to review.
-- **Stack:** the [stack picture](/using/stack-pictures/) for the whole project, nothing highlighted, with Show title
-  and Copy / Download.
+  attachment and "changed elsewhere" notice as a PR description). Below it, **Start with #1 …**, a link to the first
+  PR to review.
+- **Stack:** the [stack picture](/using/stack-pictures/) for the whole project, nothing highlighted, with **Show
+  title**, **Copy image**, **Download PNG** and **SVG** (and, in a linked project, **Show *predecessor***).
+
+![The project page's header: a plum PROJECT label, the title, the totals and where its project.yaml is, above the Conversation and Stack tabs](../../../assets/shots/crop-project-tabs.png)
 
 It doesn't list the repos, stacks and PRs: the sidebar does that, and each stack's title there opens its stack page.
 A [linked project](/concepts/linked-projects/) has a bar above the title: "← Builds on *…*" (with that project's
@@ -110,14 +132,16 @@ readiness) and "Next: *…* →", and the sidebar links both ways under the proj
 `/<project>/<repo>/stacks/<n>-<title>` (click a stack's title in the sidebar, its name in a PR's stepper, or its
 breadcrumb) is one stack, laid out like a PR page:
 
-- **The header:** a `STACK n` label in the stack's colour and its title in the same colour; ← / → to the previous and
-  next stack in the project; then the readiness tally (`2/4 ready`, green once they all are, or a purple **Merged**
+- **The header:** a `STACK n` label in the stack's colour and its title in the same colour; **← Prev stack** and
+  **Next stack →** buttons, which go on into the next repo's stacks; then the readiness tally (`2/4 ready`, green once they all are, or a purple **Merged**
   pill once they've all landed), a follow-on badge if it's one, the repo, what the stack sits on and its top branch
   (`base ← top`), its PRs, distinct files and +/−, and how many have merged.
 - **Conversation:** the [Project context](/using/editing-pr-text/#project-and-stack-context) box, then the stack note
   as the first comment box, with Copy and Edit (the same editor, image attachment and "changed elsewhere" notice as a
-  PR description). An empty note offers **Add a stack note**. Below it, a link to the stack's first PR.
-- **Stack:** the [stack picture](/using/stack-pictures/) of just this stack, with Show title and Copy / Download.
+  PR description). An empty note offers **Add a stack note**. Below it, **Start with #n …**, a link to the stack's first
+  PR.
+- **Stack:** the [stack picture](/using/stack-pictures/) of just this stack, with the same **Show title**, **Copy
+  image**, **Download PNG** and **SVG**.
 
 Its PRs aren't listed again: the sidebar shows them, in the stack's box. Unstacked commits and a repo without
 `stacks:` get a stack page too (`…/stacks/unstacked`, `…/stacks/branch`), but no note: only stacks declared in
@@ -154,4 +178,5 @@ the browser is refreshed when the files or branches change, so it's never out of
 ## Live updates and dark mode
 
 Everything updates live: branches are polled every 2 seconds and the data files are watched, so a new commit, a new
-branch, an agent's reply or an edit to `project.yaml` shows up without a reload. Dark mode follows your OS setting.
+branch, an agent's reply or an edit to `project.yaml` shows up without a reload. The header's **● live** says the
+page is connected; **○ offline** means it lost the server and is retrying. Dark mode follows your OS setting.

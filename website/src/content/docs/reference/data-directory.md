@@ -17,22 +17,33 @@ version-controlled; [snapshots](#snapshots) cover that.
       reviews/<repo>/<full-sha>.yaml    # review comments and Viewed marks
       assets/<hash>.<ext>               # images shown in descriptions, stack notes and the intro
       assets/<hash>.<ext>.yaml          # optional: where an image is published (url:), for plan
+      …/*.yaml.bak                      # files set aside, never deleted (below)
   backups/
     2026-10-09T08-45-12Z/               # automatic snapshots: a plain copy of projects/ at that time (UTC)
   examples/                             # only if you added the example projects
-    orchard-<id>/                       # their git repos (made by Local Review; see below)
+    orchard-<id>/                       # their git repos and a manifest.json (made by Local Review; see below)
 ```
 
 | File | Written by | Reference |
 | --- | --- | --- |
 | `project.yaml` | you (`local-review init` creates it), an agent, and the UI for the intro and stack notes | [project.yaml](/reference/project-yaml/) |
-| `prs/<repo>/<sha>.yaml` | the UI (title, description, Draft/Ready) and an agent (branch, GitHub PR, landed) | [PR files schema](/reference/pr-files/) |
-| `reviews/<repo>/<sha>.yaml` | the UI (your comments, Viewed) and an agent (its replies) | [Comment files schema](/reference/comment-files/) |
-| `assets/<hash>.<ext>` | `local-review asset add`, and pasting, dropping or attaching an image in the UI | [Images](#images) |
+| `prs/<repo>/<sha>.yaml` | the UI (title, description, Draft/Ready) and an agent (branch, GitHub PR, landed); `local-review move` copies them between projects | [PR files schema](/reference/pr-files/) |
+| `reviews/<repo>/<sha>.yaml` | the UI (your comments, Viewed) and an agent (its replies); `local-review move` copies them between projects | [Comment files schema](/reference/comment-files/) |
+| `assets/<hash>.<ext>` | `local-review asset add`, and pasting, dropping or attaching an image in the UI; `local-review move` copies the ones moved descriptions show | [Images](#images) |
 | `assets/<hash>.<ext>.yaml` | `local-review asset url`, an agent or you | [Images](#images) |
 
-Every file under `projects/` is re-read on each request and watched, so edits from an agent or an editor show up in
-the browser within about a second, with no restart.
+Every file under `projects/` is watched, and what the server works out from them (and from the repos' branches,
+polled every 2 seconds) is only kept while they're unchanged, so edits from an agent or an editor show up in the
+browser within about a second, with no restart.
+
+**Set-aside files.** Local Review never deletes a file; when one has to go out of the way, it's renamed to a `.bak`,
+which nothing reads:
+
+| Name | Why |
+| --- | --- |
+| `<sha>.superseded-by-<sha8>.yaml.bak` | A prs or reviews file whose comments moved to a rebased commit's file ([Following rebases](/concepts/following-rebases/)). |
+| `<sha>.moved-to-<project>.yaml.bak` | A prs or reviews file `local-review move` copied into another project ([CLI](/reference/cli/#local-review-move)). |
+| `project.example-removed.yaml.bak` | An example project hidden by **Remove examples**; adding them again renames it back. |
 
 **The example projects** (`local-review examples`, or the button on the first-run page) are ordinary projects named
 `projects/example-*`, with `example: true` in their `project.yaml`, reviewing four git repos that Local Review creates

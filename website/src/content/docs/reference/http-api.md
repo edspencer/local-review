@@ -6,7 +6,7 @@ description: The local HTTP API the UI and your agent share.
 The UI is a client of a small HTTP API on the same port, and an agent can use it too. Prefer it to editing files
 while the server runs: its writes are atomic and are merged with concurrent edits
 ([how](/agents/comment-files/#concurrent-edits)). It answers on `http://localhost:5622` only, and only to localhost
-requests; writes must be JSON, except an image upload, whose body is the image (see
+requests; writes must be JSON, except an image upload, whose body is the image, and a `DELETE`, which has none (see
 [Localhost security](/guarantees/localhost-security/)).
 
 ```sh
@@ -30,22 +30,22 @@ More recipes are in the [agent guide](/agents/agent-guide/#api-httplocalhost5622
 
 | Method | Path | |
 | --- | --- | --- |
-| GET | `/api/projects` | Projects: slug, title, repo names/count, `branches`, commit count (`commitCount`, without follow-on stacks and merged PRs; `followOnCount`, `mergedCount`), `totals` (the [aggregate](/concepts/pr-stacks/#totals): `stacks`, `prs`, `additions`, `deletions`, with `followOn` and `merged` beside them), `readiness` (PRs by status, follow-on stacks left out: `{draft, ready, published, merged}`), `archived`, `example`, unresolved count, `modified` (the newest write to any of its files), `activity` (`{at, kind}`: the newest `comment`, live `commit` (author date), `merged` (`landed.at`) or file write, `edit`), `thumb` (the thumbnail's version), `after` and `next` ([linked projects](/concepts/linked-projects/): the predecessor's slug or null, the successors' slugs), `warnings` (project-level, e.g. a bad `after:`); plus `newExamples` (example projects new in this version, not added yet), `projectsDir`, `home` (the user's home directory, so a client can show paths as `~/…`) and `examples`: `present`, `removed` (removed earlier, restorable) or `none`. |
+| GET | `/api/projects` | Projects: slug, title, `description`, `error` (a `project.yaml` that can't be read), repo names/count (`repoCount`), `branches`, commit count (`commitCount`, without follow-on stacks and merged PRs; `followOnCount`, `mergedCount`), `totals` (the [aggregate](/concepts/pr-stacks/#totals): `stacks`, `prs`, `additions`, `deletions`, with `followOn` and `merged` beside them), `readiness` (PRs by status, follow-on stacks left out: `{draft, ready, published, merged}`), `archived`, `example`, unresolved count, `modified` (the newest write to any of its files), `activity` (`{at, kind}`: the newest `comment`, live `commit` (author date), `merged` (`landed.at`) or file write, `edit`), `thumb` (the thumbnail's version), `after` and `next` ([linked projects](/concepts/linked-projects/): the predecessor's slug or null, the successors' slugs), `warnings` (project-level, e.g. a bad `after:`); plus `newExamples` (example projects new in this version, not added yet), `projectsDir`, `home` (the user's home directory, so a client can show paths as `~/…`) and `examples`: `present`, `removed` (removed earlier, restorable) or `none`. |
 | POST | `/api/examples` | `{}`: add the [example projects](/reference/cli/#local-review-examples-remove) (create, restore removed ones, leave existing ones). Returns `{created, restored, existing, removed}` (slugs); 201 if it created any, else 200; 409 if a project of yours has an example's name. The git work doesn't block the server; a second request while one is running gets the same result. |
 | POST | `/api/examples/remove` | `{}`: remove them (rename each `project.yaml` to a `.bak`; nothing deleted). Returns the same shape; 409 while they're still being added. |
 | GET | `/api/projects/:p/thumb.svg` | The root page's thumbnail of the project (a lane per repo, a bar per PR; see [the root page](/using/ui-tour/#the-root-page)), 280×150, light or dark with the page. `ETag` is the list's `thumb`, with `Cache-Control: no-cache`, so a revisit is a 304; same CSP as the stack pictures. |
-| GET | `/api/projects/:p` | `after` (`{slug, title}` or null) and `next` (`[{slug, title}]`): [linked projects](/concepts/linked-projects/); `warnings` (project-level); `description`, repos (range, errors, warnings, `after`: the predecessor's range end in this repo or null, `startsAfter`: whether the range starts there), `stacks` (title, color, commit shas, warning, `description`, `follow_on: true` on follow-on stacks, `weight`), commits (+/−, `position`, `stack` index, PR `title`, unresolved counts, `branch`, `github`, `status`, `progress`, `landed` on landed PRs: the record plus `diff`, and `tip`/`parent`: what's diffed). |
-| PUT | `/api/projects/:p/description` | `{description: string \| null}`: the project intro (null or blank removes it). |
-| PUT | `/api/projects/:p/repos/:r/stacks/:n/description` | `{description, title?}`: stack `n`'s note (1-based in `stacks:`). A `title` that no longer matches is a 409. |
+| GET | `/api/projects/:p` | `slug`, `title`, `file` (its `project.yaml`), `error`; `after` (`{slug, title}` or null) and `next` (`[{slug, title}]`): [linked projects](/concepts/linked-projects/); `warnings` (project-level); `description`, repos (range, errors, warnings, `after`: the predecessor's range end in this repo or null, `startsAfter`: whether the range starts there), `stacks` (title, color, commit shas, warning, `description`, `follow_on: true` on follow-on stacks, `weight`; `number`, the 1-based position in `stacks:` that stack URLs use, null for an implicit group, which has `implicit: 'unstacked'|'branch'` instead), commits (+/−, `position`, `stack` index, PR `title`, unresolved counts, `branch`, `github`, `status`, `progress`, `landed` on landed PRs: the record plus `diff`, and `tip`/`parent`: what's diffed). |
+| PUT | `/api/projects/:p/description` | `{description: string \| null}`: the project intro (null or blank removes it), up to 256 KB. Returns `{description, file}`. |
+| PUT | `/api/projects/:p/repos/:r/stacks/:n/description` | `{description, title?}`: stack `n`'s note (1-based in `stacks:`). A `title` that no longer matches is a 409. Returns `{description, title, file}`; 404 for no such stack. |
 | POST | `/api/projects/:p/assets` | Upload an image: the body is the image itself, with its type as the `Content-Type` (`image/png`, `image/jpeg`, `image/gif`, `image/webp` or `image/svg+xml`), up to 5 MB. Optional `?alt=<text>`. Returns `{name, markdown, created}` (201; 200 with `created: false` if the same image was already there). See [Images](/reference/data-directory/#images). |
 | GET | `/api/projects/:p/assets/:name` | An image, by its `<hash>.<ext>` name (anything else is a 404). Served with its type, `X-Content-Type-Options: nosniff`, `Cross-Origin-Resource-Policy: same-origin` and `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'`, so an SVG opened directly can't run script. |
-| GET | `…` | Metadata (including `branch`, `github`), message body, files with old/new contents, `stack` (with position/count), project-wide `prev`/`next`, `pr`, review. |
+| GET | `…` | `project`, `projectTitle`, `repo`, `repoPath`, `branch` (the range's end, a string), `index`, `total`; `commit`: metadata (including its `branch` record, `github`, `status`, `landed`), message body, files with old/new contents, `stack` (with position/count), project-wide `prev`/`next`, `pr`, review. |
 | GET | `…/review` | The review: the file's contents with threads placed on this commit (`outdated`, relocated `line`), plus `file`, `target_file` (absolute paths), `matched_from`, `matched_by`, `carried_over`, `parse_error`. |
 | GET | `…/pr` | `{title, body, title_source, body_source: 'commit'\|'override', commit_subject, commit_body, branch, github, file, …}` |
 | PUT | `…/pr` | `{title?, body?, branch?, github?, status?}`. `null` clears a field; `status` is `"draft"`, `"ready"` or `null`. See [PR files](/reference/pr-files/#writing-it). |
 | POST | `…/threads` | New thread: `{body, path?, side?, line?, start_line?, start_side?, author?}`. Without `path`/`side`/`line` it's a general thread. |
 | POST | `…/threads/:tid/comments` | Reply: `{body, author?}`. |
-| PATCH | `…/threads/:tid` | `{resolved}`. |
+| PATCH | `…/threads/:tid` | `{resolved: true \| false}`. |
 | PATCH / DELETE | `…/threads/:tid/comments/:cid` | Edit `{body}` / delete. Only the reviewer's own comments: an agent's are never edited or deleted by the UI. |
 | PUT | `…/viewed` | `{path, viewed}`: tick or untick a file's **Viewed** box. |
 | GET | `…/stack.svg`, `…/stack.png` | The [stack picture](/using/stack-pictures/) with this PR highlighted. See below. |
@@ -81,31 +81,39 @@ The SVG is 680px wide; the PNG is drawn at 2x (1360px).
 
 ### Events
 
-`GET /api/events` is a Server-Sent Events stream. The server watches `~/.local-review/projects/` and sends:
+`GET /api/events` is a Server-Sent Events stream. The server watches `~/.local-review/projects/` and polls each
+repo's branches every 2 seconds. It sends an `event: hello` first, then each change as an `event: change` whose data
+is one of these (so listen with `addEventListener('change', …)`; `onmessage` sees nothing), and a comment line every
+25 seconds to keep the connection open:
 
 ```json
 {"type": "review", "project": "my-feature", "repo": "my-service", "sha": "…"}
 {"type": "pr", "project": "my-feature", "repo": "my-service", "sha": "…"}
-{"type": "project", "project": "my-feature", "reason": "…"}
+{"type": "project", "project": "my-feature", "reason": "…", "repo": "my-service"}
 {"type": "projects", "reason": "…"}
 ```
 
-The UI uses it to refresh, so edits to the files (by an agent or an editor) show up within about a second.
+`reason` is `config` (`project.yaml`), `dir`, `reviews`, `prs`, `head` or `refs` (a repo's branches moved; with
+`repo`), or `examples`. The UI uses it to refresh, so edits to the files (by an agent or an editor) show up within about a second.
 
 ## Errors
 
 Errors are JSON, `{"error": "…"}`, with a status code:
 
-- **400**: a malformed request: not JSON, a missing `body`, a `status` other than `draft`/`ready`/`null`, an
-  ambiguous short sha, an empty upload.
-- **403**: a `Host` (or, on a write, an `Origin`) that isn't localhost. See
-  [Localhost security](/guarantees/localhost-security/).
-- **404**: no such project, repo, thread or comment, or a sha that isn't in the repo's range (it may have been
+- **400**: a malformed request: not JSON, a missing `body`, a `status` other than `draft`/`ready`/`null`, a sha that
+  isn't hex or an ambiguous short one, a bad `author`, `path`, `line` or `start_side`, a branch name git wouldn't
+  accept, a malformed `github`, a bad stack number or ref, a text over its size limit, an empty upload.
+- **403**: a `Host` (or, on a write, an `Origin`) that isn't localhost (see
+  [Localhost security](/guarantees/localhost-security/)); or editing or deleting a comment that isn't the reviewer's.
+- **404**: no such project, repo, stack, asset, thread or comment, or a sha that isn't in the repo's range (it may have been
   rebased away: look it up again in `GET /api/projects/:p`).
 - **409**: the file isn't valid YAML, so the server won't overwrite it until it's fixed by hand (nothing is lost); or
-  a stack note's `title` guard no longer matches.
+  a stack note's `title` guard no longer matches; or the example projects can't be added or removed (a project of
+  yours has an example's name, or they're still being added); or an image upload whose name is taken by different
+  contents.
 - **413**: an upload over 5 MB. It's refused from its `Content-Length`, or as soon as a streamed body passes the
   limit, before being stored.
 - **415**: a write (other than `DELETE`) without `Content-Type: application/json`; on an upload, a `Content-Type`
   that isn't one of the image types, or contents that don't match it (`the file says it's PNG but its contents are
   JPG`).
+- **500**: anything else, with the message.

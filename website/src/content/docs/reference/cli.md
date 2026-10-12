@@ -4,8 +4,9 @@ description: Every local-review command and flag.
 ---
 
 One command, `local-review`, does everything: with no arguments it serves the UI, and its subcommands create
-projects, add images, print a project's publishing plan and print the agent guide. Run it with `npx local-review …`, or install
-it once with `npm i -g local-review` and run `local-review …`.
+projects, add images, print a project's publishing plan, move review data between projects, add or hide the example
+projects and print the agent guide. Run it with `npx local-review …`, or install it once with `npm i -g local-review`
+and run `local-review …`.
 
 ```sh
 npx local-review                          # serve the UI on http://localhost:5622
@@ -13,6 +14,8 @@ npx local-review --port 5050              # …on another port
 npx local-review init my-feature          # create ~/.local-review/projects/my-feature/project.yaml
 npx local-review asset add my-feature diagram.png   # prints ![diagram](assets/<hash>.png)
 npx local-review plan my-feature --stack 1 --format json
+npx local-review move my-feature my-follow-up my-service --stack 3   # after splitting a project
+npx local-review examples                 # add the example projects (remove: `examples remove`)
 npx local-review guide                    # print the guide for agents
 ```
 
@@ -24,6 +27,7 @@ Usage: local-review [serve] [--port <n>]
        local-review init <project>
        local-review asset add <project> <file> [--alt <text>]
        local-review asset url <project> <name> <url>
+       local-review move <from> <to> <repo> (<sha>… | --stack <n>) [--to-repo <name>] [--dry-run]
        local-review examples [remove]
        local-review guide
        local-review --version | --help
@@ -51,6 +55,15 @@ Usage: local-review [serve] [--port <n>]
   asset url
           Record where an asset is published (a URL GitHub's readers can reach), so `plan` puts that URL in
           the bodies instead of the local assets/<name> reference.
+  move    Move PRs' review data (prs/ and reviews/ files: titles, descriptions, readiness, branches, comments,
+          Viewed marks) from project <from> to project <to>, e.g. after splitting a project into linked projects.
+          Each file is copied into <to> (never over an existing one: then nothing is moved) and the original is
+          renamed to <sha>.moved-to-<to>.yaml.bak; images the descriptions show are copied too. A snapshot is
+          taken first. project.yaml files aren't edited: what's left to change there is printed.
+          <sha>…           commit shas or unique prefixes (7+ hex), in <from>'s range or with a file there
+          --stack <n>      instead: every commit of declared stack <n> of <repo> in <from>
+          --to-repo <name> the repo's name in <to>, if it differs
+          --dry-run        print what it would do; write nothing
   examples
           Add the example projects: "Orchard", a made-up app in four repos, to click around before reviewing your
           own work. Makes the repos in <data>/examples/ and the projects as projects/example-*. Running it again
@@ -156,6 +169,8 @@ whose PRs have all merged. It's the same as **Add the example projects** on the 
 at the bottom of the project switcher once you have projects of your own (where **Remove example projects** takes
 its place while they're there).
 
+`local-review examples add` does the same.
+
 ```text
 $ npx local-review examples
 Created example-waitlists, example-calendar-feed, example-calendar-reminders, example-webhook-retries
@@ -211,7 +226,10 @@ Then: check both project.yaml files: each repo's range (…) and its stacks' sta
   first. The images the moved descriptions show are copied into `<to>`'s `assets/` too; the originals stay.
 - **Doesn't edit `project.yaml`.** It prints what's left to change: the ranges, `starts_at`, and the `landed:` keys of
   any merged PRs it moved.
-- `--dry-run` prints the same, writing nothing.
+- `--dry-run` writes nothing and takes no snapshot. It prints the same list under
+  `Dry run: nothing written. Moving from <from> to <to> would:`.
+- The snapshot is skipped when nothing changed since the newest one, and when snapshots are off (see
+  [Snapshots](/reference/data-directory/#snapshots)).
 
 ## `local-review guide`
 
@@ -228,7 +246,7 @@ version that matches the Local Review it is driving, without a checkout.
 | --- | --- |
 | `0` | Success. |
 | `1` | An error, printed as `local-review: <message>` (no such project, the port is in use, `init`'s file exists, a file that isn't an image, a `move` that would replace a file, …). |
-| `2` | Bad usage (an unknown command or option, a missing argument): the message, then the usage. |
+| `2` | Bad usage (an unknown command or option, a missing argument, a bad project or asset name, a URL `asset url` can't use): the message, then the usage. |
 
 ## Environment
 

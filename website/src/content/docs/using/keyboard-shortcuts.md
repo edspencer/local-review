@@ -1,11 +1,18 @@
 ---
 title: Keyboard shortcuts
-description: Move between PRs and files without the mouse.
+description: Move between PRs and files, and filter projects, without the mouse.
 ---
 
-Shortcuts are ignored while you're typing in a comment, an editor or the file filter.
+Shortcuts are ignored while you're typing in any text field (a comment, an editor, a filter) or a select.
 
-## Anywhere
+## The root page
+
+| Key | |
+| --- | --- |
+| `/` | Focus the filter. |
+| Esc | In the filter: clear it, and leave it. |
+
+## On a PR page
 
 | Key | |
 | --- | --- |
@@ -13,7 +20,7 @@ Shortcuts are ignored while you're typing in a comment, an editor or the file fi
 | `k` | Previous PR. |
 
 `j` and `k` (and the **Prev** / **Next** buttons) walk every PR in the project in sidebar order: across stacks, and
-across repos. The PRs either side of the one you're on are loaded in the background, so stepping through a stack is
+across repos. They do nothing on the project and stack pages. The PRs either side of the one you're on are loaded in the background, so stepping through a stack is
 instant; see [Moving between PRs](/using/ui-tour/#moving-between-prs).
 
 ## Files changed
@@ -29,7 +36,7 @@ instant; see [Moving between PRs](/using/ui-tour/#moving-between-prs).
 | --- | --- |
 | Enter | Save a title. |
 | ⌘/Ctrl + Enter | Post a comment or reply; save a description, project intro or stack note. |
-| Esc | Cancel (a description editor with changes asks first). |
+| Esc | Cancel (a description editor with changes asks first). Also closes the project switcher and the **…** and **edited ▾** menus. |
 | ⌘/Ctrl + B, I, K | Bold, italic, link, in an editor with a toolbar. |
 
 To select a range of lines for a comment, click one line number and **shift-click** another.
@@ -41,6 +48,7 @@ open, no other shortcut on this page works.
 
 | Key | |
 | --- | --- |
-| Enter | Open the focused image. |
+| Enter or Space | Open the focused image. |
 | ← / → | Previous / next image in the same description, note or comment. |
 | Esc | Close the viewer. |
+| Tab / Shift + Tab | Move between its buttons. |

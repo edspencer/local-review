@@ -77,10 +77,10 @@ threads:
 | `resolved` | `true` or `false` (absent: unresolved). |
 | `outdated` | Server-maintained, only present when `true`: the commented code is gone from this commit. |
 | `anchor` | Server-maintained, never edit: where the thread was made, with the exact text and context. See [Line anchoring](/concepts/following-rebases/#line-anchoring-how-inline-threads-follow-the-code). |
-| `comments` | The thread's comments, oldest first: `id` (`c-…`), `author`, `created`, `body` (Markdown). |
+| `comments` | The thread's comments, oldest first: `id` (`c-…`), `author`, `created`, `body` (Markdown), and `edited` (when) once the reviewer has edited it in the UI. A comment can also be a plain string (its body), and `text:` or `comment:` work in place of `body:`. |
 
 `author` is the reviewer's id (see [`LOCAL_REVIEW_USER`](/reference/environment/#local_review_user-the-reviewer)) or
-`claude` for an agent. Missing `id`, `created`, `resolved` or `author` fields are tolerated; an unknown author shows as
+`claude` for an agent, lowercased when read. Missing `id`, `created`, `resolved` or `author` fields are tolerated; an unknown author shows as
 "unknown". Fields the server doesn't know about are kept.
 
 ## Ranges across old and new lines

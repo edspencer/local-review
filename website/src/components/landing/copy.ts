@@ -27,7 +27,7 @@ export const hero = {
 export const QUICKSTART = {
 	id: 'quickstart',
 	label: 'Quick start',
-	blurb: 'Needs Node 22+ and git. Reads your repos, never writes to them.',
+	blurb: 'Needs Node 22+ and git. Reads your repos, never writes to them. Its first page adds example projects in one click.',
 	command: 'npx local-review',
 	link: { text: 'Set up your first project', href: '/getting-started/quickstart/' },
 } as const;
@@ -51,12 +51,12 @@ export const VALUE_PROPS = [
 	{
 		icon: 'stack',
 		title: 'Every commit is a PR',
-		body: 'Each commit gets a Conversation tab and a Files changed tab, numbered and grouped into colour-coded stacks: one PR per commit, the way the stack will go up on GitHub.',
+		body: 'Each commit gets a Conversation tab, a Files changed tab and a Stack tab, numbered and grouped into colour-coded stacks, each with a page of its own: one PR per commit, the way the stack will go up on GitHub.',
 	},
 	{
 		icon: 'repos',
 		title: 'Stacks across repos',
-		body: 'One project can span several repos, each with its own branch and stacks, so a change that touches the API, the client and the infra is reviewed as one piece of work.',
+		body: 'One project can span several repos, each with its own branch and stacks, so a change that touches the API, the client and the infra is reviewed as one piece of work. When one effort builds on another, link the two and they stay in order.',
 	},
 	{
 		icon: 'chat',
@@ -125,6 +125,14 @@ export const FEATURES = [
 		media: {
 			src: 'landing-plan',
 			alt: 'The Draft | Ready toggle set to Ready, and below it the output of local-review plan for that PR: its commit, branch, base, status ready, title, and GitHub: not created',
+		},
+	},
+	{
+		title: '5. Keep every effort in view',
+		body: 'The root page shows every project as a card: a thumbnail of its stacks, its size, how much is ready and when it last moved. Projects that build on each other sit together, in order.',
+		media: {
+			src: 'landing-root',
+			alt: 'Two linked projects on the root page, from a fictional app: Calendar feed, then an arrow to Calendar reminders, which builds on it; each card has a thumbnail of its stacks (the second starting with the first one’s, in grey), its counts, a readiness bar and when it last moved',
 		},
 	},
 ] as const;

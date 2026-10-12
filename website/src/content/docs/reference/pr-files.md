@@ -16,6 +16,9 @@ One file per commit, created on the first override, Draft/Ready toggle or record
 commit: <full sha>
 patch_id: <git patch-id --stable>   # server-maintained, for rebase re-matching
 subject: <original commit subject>  # server-maintained, for rebase re-matching
+change_id: I8f3c…                   # server-maintained, only if the commit has a Change-Id trailer
+previous_commits: [89abcdef…]       # only after a rebase re-match: earlier shas, oldest first
+matched_by: subject                 # how the last re-match was made: patch-id | change-id | subject
 title: Better PR title              # optional; absent or blank: the commit subject
 body: |                             # optional; absent: the commit body (`description:` also works)
   Markdown.
@@ -44,13 +47,13 @@ Hand-written files only need the fields they set.
 
 | Field | Notes |
 | --- | --- |
-| `commit`, `patch_id`, `subject` | Server-maintained, used to [follow the commit across rebases](/concepts/following-rebases/). For a landed PR, `subject:` is its stored subject, which [stack selectors](/concepts/pr-stacks/#how-starts_at-picks-a-commit) match. |
+| `commit`, `patch_id`, `change_id`, `subject`, `previous_commits`, `matched_by` | Server-maintained, as in [comment files](/reference/comment-files/#file-fields), used to [follow the commit across rebases](/concepts/following-rebases/). For a landed PR, `subject:` is its stored subject, which [stack selectors](/concepts/pr-stacks/#how-starts_at-picks-a-commit) match. |
 | `title` | The PR title. Absent or blank: the commit subject. A `title` identical to the commit subject (or a `body` identical to the commit body) counts as unedited. |
 | `body` (or `description`) | The PR description, Markdown. Absent: the commit body. It can show the project's [images](/using/editing-pr-text/#images) as `![alt](assets/<name>)`. |
 | `status` | `draft` (the default when absent) or `ready`. Case-insensitive (`Ready`, `READY`); any other value counts as absent. Setting it is the reviewer's call: see [Readiness](/concepts/readiness/). |
-| `branch` | The plain git branch an agent tagged this commit with. See [Branches](/concepts/branches/). |
+| `branch` | The plain git branch an agent tagged this commit with (a leading `refs/heads/` is dropped). See [Branches](/concepts/branches/). |
 | `github` | The GitHub PR made from this commit. May also be just a PR number or url; one without a usable number is ignored. A usable `github:` record makes the PR **published**. |
-| `landed` | What merged on GitHub. Shas must be full 40-hex (any case; others are ignored), and `method` is case-insensitive. The block counts once it has a `head` or a `commit`, and makes the PR **merged**. See [Landed PRs](/concepts/landed-prs/). |
+| `landed` | What merged on GitHub. Shas must be full 40-hex (any case; others are ignored), and `method` is case-insensitive. `merge_commit` is read as `commit`. The block counts once it has a `head` or a `commit`, and makes the PR **merged**. See [Landed PRs](/concepts/landed-prs/). |
 | `updated` | When the server last wrote the file. |
 
 Fields the server doesn't know about are kept.

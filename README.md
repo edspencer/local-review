@@ -24,8 +24,10 @@ pushed. Every commit is shown as its own PR, grouped into the stacks you mean to
 coding agent reads your comments and replies in the same place, and when a stack is right, the agent publishes it as
 GitHub stacked PRs.
 
-- **Every commit is a PR**, with a Conversation tab, a Files changed tab and a readiness badge, grouped into
-  colour-coded [PR stacks](https://local-review.edspencer.net/concepts/pr-stacks/), across one repo or several.
+- **Every commit is a PR**, with a Conversation tab, a Files changed tab, a Stack tab and a readiness badge, grouped
+  into colour-coded [PR stacks](https://local-review.edspencer.net/concepts/pr-stacks/), across one repo or several.
+- **Every effort in view.** The root page shows each project as a card with a thumbnail of its stacks, and work that
+  builds on other work is [linked](https://local-review.edspencer.net/concepts/linked-projects/) to it, in order.
 - **Your agent answers in the review.** Comments are plain YAML files that any coding agent can read and reply to; the
   replies show up in your browser live, and threads follow their code through amends and rebases.
 - **Publish when it's ready.** `local-review plan` prints each PR's branch, base, title and body, and your agent opens
@@ -41,7 +43,8 @@ GitHub stacked PRs.
 
 ## Quickstart
 
-Needs Node.js 22 or later and git, on macOS or Linux.
+Needs Node.js 22 or later and git, on macOS or Linux. To look around first, run `npx local-review` and click **Add
+the example projects**: a made-up app reviewed across four repos.
 
 ```sh
 npx local-review init my-feature   # create ~/.local-review/projects/my-feature/project.yaml
@@ -90,20 +93,24 @@ To hand a reviewed project to your agent, paste the
   [PR stacks](https://local-review.edspencer.net/concepts/pr-stacks/) ·
   [Readiness](https://local-review.edspencer.net/concepts/readiness/) ·
   [Landed PRs](https://local-review.edspencer.net/concepts/landed-prs/) ·
+  [Follow-on stacks](https://local-review.edspencer.net/concepts/follow-on-stacks/) ·
+  [Linked projects](https://local-review.edspencer.net/concepts/linked-projects/) ·
   [Following rebases](https://local-review.edspencer.net/concepts/following-rebases/)
 - **Using it:** [A tour of the UI](https://local-review.edspencer.net/using/ui-tour/) ·
   [Reviewing & comments](https://local-review.edspencer.net/using/reviewing-and-comments/) ·
-  [Stack pictures](https://local-review.edspencer.net/using/stack-pictures/)
+  [Stack pictures](https://local-review.edspencer.net/using/stack-pictures/) ·
+  [Keyboard shortcuts](https://local-review.edspencer.net/using/keyboard-shortcuts/)
 - **Reference:** [CLI](https://local-review.edspencer.net/reference/cli/) ·
   [project.yaml](https://local-review.edspencer.net/reference/project-yaml/) ·
   [Comment files](https://local-review.edspencer.net/reference/comment-files/) ·
   [HTTP API](https://local-review.edspencer.net/reference/http-api/) ·
   [Where your data lives](https://local-review.edspencer.net/reference/data-directory/)
+- **[What's new](https://local-review.edspencer.net/whats-new/)**
 
 ## Guarantees
 
-- **Read-only:** it never fetches, checks out, commits or rebases; all git access goes through one read-only
-  allow-list. [Read-only guarantee](https://local-review.edspencer.net/guarantees/read-only/)
+- **Read-only:** it never fetches, checks out, commits or rebases; all git access to your repos goes through one
+  read-only allow-list. [Read-only guarantee](https://local-review.edspencer.net/guarantees/read-only/)
 - **Never deletes:** your review lives in `~/.local-review`, never in your repos; writes are atomic, nothing is
   unlinked, and it's snapshotted hourly. [Never-delete guarantee](https://local-review.edspencer.net/guarantees/never-delete/)
 - **Localhost only:** it binds 127.0.0.1 and rejects non-localhost `Host` and `Origin` headers.

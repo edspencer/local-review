@@ -28,7 +28,8 @@ A test fails the build if any code gains a way around that.
   with all its files still there; adding them again renames it back.
 - **Moving review data copies, then renames.** [`local-review move`](/reference/cli/#local-review-move) writes each
   file into the other project create-only (and moves nothing if any is already there), and only then renames the
-  original to `<sha>.moved-to-<project>.yaml.bak`. It takes a snapshot first.
+  original to `<sha>.moved-to-<project>.yaml.bak`. It takes a snapshot first (unless nothing changed since the newest
+  one, or snapshots are off).
 - **The only deletion anywhere is snapshot pruning**, guarded as below.
 
 The one thing that removes your words is you: deleting your own comment in the UI removes it from the file, as you'd

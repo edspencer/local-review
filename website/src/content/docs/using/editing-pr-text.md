@@ -58,10 +58,12 @@ descriptions, stack notes, the project intro, comments, and an editor's **Previe
 - **← / →**, or the arrows at the sides, step through the other images in the same description, note or comment,
   wrapping round at the ends; the top corner shows which one you're on (`2 / 4`).
 - **Esc**, the **×** button or a click outside the image closes it, and focus goes back to the image. Images can be
-  focused with Tab and opened with Enter, too.
+  focused with Tab and opened with Enter or Space, too.
 - **Images in links keep the link.** A badge or a screenshot that links somewhere else opens its link, as on GitHub.
   An image linked to itself (`[![diagram](assets/….png)](assets/….png)`) opens the viewer; ⌘/Ctrl- or shift-click it
   to open the link instead.
+
+![An image in a stack note open in the viewer: a diagram of what happens to an offered spot, fitted to the window over the dimmed stack page, with its alt text as the caption and zoom and close buttons in the corner](../../../assets/shots/lightbox.png "The viewer, open on an image in a stack note. Staged for this page: the demo's stack notes have no images, so this diagram was added to one with local-review asset add.")
 
 While the viewer is open, the other [keyboard shortcuts](/using/keyboard-shortcuts/) are off, so `j` / `k` don't
 move you to another PR behind it.
@@ -108,6 +110,7 @@ you didn't type: nothing is generated. Details: [How the UI edits project.yaml](
 | --- | --- |
 | The copy icon beside the title | The plain title (no `#n`). |
 | The copy icon in the description header | The description's raw Markdown. |
+| **…** → Copy Markdown | The description's raw Markdown, as the copy icon does. |
 | **…** → Copy title + description | The title, a blank line, then the body. |
 | **Full body** (beside the copy icon), or **…** → Copy full PR body | What the real PR's body should be (below). |
 
