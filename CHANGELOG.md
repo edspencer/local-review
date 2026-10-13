@@ -1,5 +1,38 @@
 # local-review
 
+## 0.9.0
+
+### Minor Changes
+
+- [#44](https://github.com/edspencer/local-review/pull/44) [`6a69842`](https://github.com/edspencer/local-review/commit/6a6984207e9e51778501a3e6a03cec4a6bb4af14) Thanks [@edspencer](https://github.com/edspencer)! - Every text box now keeps a draft as you type, the way GitHub's do: PR titles and descriptions, the project intro, stack
+  notes, new comments, replies, inline comments (on their line or range) and edits of your comments. Drafts are kept in
+  the browser's localStorage, so they survive a reload, a closed tab or a crash; the editor reopens with "Restored an
+  unsaved draft from 10:42" and a Discard button. A draft is cleared when it's saved, cancelled or discarded, or when the
+  saved text comes to say the same, and never when a save fails. If the saved text changed meanwhile (an agent edited the
+  prs file or `project.yaml`), the editor offers "Load it" or "Keep mine" instead of overwriting either. A small amber dot
+  marks the PRs, tabs and stacks with drafts waiting. Drafts follow a rebase like review files do (patch-id, else a
+  unique subject), expire after 30 days, and are capped in size. Two tabs on the same page share them.
+  
+  Drafts never leave the browser until you save them. The "Leave site?" prompt is gone, since drafts come back anyway;
+  it only appears if the browser couldn't keep one (its storage is full or turned off).
+
+- [#43](https://github.com/edspencer/local-review/pull/43) [`21d5d1c`](https://github.com/edspencer/local-review/commit/21d5d1c54cdca95287ca3c0dd5b86ba7b83136a9) Thanks [@edspencer](https://github.com/edspencer)! - The project and stack pages have a **Comments** tab: every comment thread on every PR there (in all repos and stacks
+  on the project page, and published or not), general and inline alike. Open threads come first, then the most recently
+  updated. Each thread says which PR it's on and, if it's inline, its `file:line`, which opens Files changed scrolled to
+  that thread. Resolved and outdated threads start folded, as in Files changed. You can reply, resolve, edit and delete
+  there, and the list and the tab's counter of open threads update live. A PR page now takes `?thread=<id>` to jump to a
+  thread and open it. New, read-only: `GET /api/projects/:p/threads` (`?repo=<name>&stack=<ref>` for one stack).
+
+- [#45](https://github.com/edspencer/local-review/pull/45) [`b2e9a60`](https://github.com/edspencer/local-review/commit/b2e9a60a3efb1174ab5ad3db2daa04923209dc5c) Thanks [@edspencer](https://github.com/edspencer)! - Review threads can be marked **for the GitHub PR**: a **For the GitHub PR** box in the composer for new general and
+  inline comments, and on every existing thread (Conversation, Files changed and the Comments tab). A marked thread has
+  a teal **For GitHub** label (**On GitHub ↗**, a link, once the agent has posted it), isn't counted as an open thread
+  or in review progress, and is left for the agent to post as a GitHub review when it publishes the stack. The Comments
+  tab gets **All / Open / For GitHub** filters with counts. In the review file it's `publish: true` on the thread, and
+  the agent records `published: {url, id, at}`; `POST …/threads` takes `publish`, and `PATCH …/threads/:tid` takes
+  `publish` and `published`. `local-review plan` lists each PR's marked threads with file and line (`publish_threads`
+  in JSON) and warns about outdated ones and published PRs with comments not posted yet. Local Review still never talks
+  to GitHub, and reads nothing back from it.
+
 ## 0.8.0
 
 ### Minor Changes
