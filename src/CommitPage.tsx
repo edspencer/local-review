@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { api, stackColor, type CarriedOver, type CommitResponse, type CommitSummary, type FileData, type GithubInfo, type LandedInfo, type Loc, type PrInfo, type RepoData, type Review, type StackGroup, type Thread } from './api';
 import { BranchStatusMarker, PrBadge, branchNote } from './Branch';
 import { ensure, hoverPrefetch, patch, peek, prefetch, setActive, useCommitEntry } from './commitCache';
-import { Avatar, AuthorLabel, CommentForm, CommentView, Markdown, Octicon, ThreadView, reviewer, type ThreadActions } from './Comments';
+import { Avatar, AuthorLabel, CommentForm, CommentView, Markdown, Octicon, PublishLabel, ThreadView, reviewer, type ThreadActions } from './Comments';
 import { FilesChanged, StatusIcon, type Draft } from './FilesChanged';
 import { BodyEditor, CopyButton, DescriptionMenu, EditIconButton, EditedMarker, FULL_BODY_TIP, TitleEditor, type PrChange, type PrDraft } from './PrEdit';
 import { fullPrBody, normBody, normTitle } from './prText';
@@ -176,6 +176,7 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
     () => ({
       reply: (tid, body) => wrap(api.reply(here, fullSha!, tid, body)),
       resolve: (tid, resolved) => wrap(api.resolve(here, fullSha!, tid, resolved)),
+      publish: (tid, publish) => wrap(api.publish(here, fullSha!, tid, publish)),
       edit: (tid, cid, body) => wrap(api.editComment(here, fullSha!, tid, cid, body)),
       remove: (tid, cid) => wrap(api.deleteComment(here, fullSha!, tid, cid)),
     }),
@@ -305,7 +306,7 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
           loc={loc}
           review={review}
           actions={actions}
-          onNew={(body) => wrap(api.newThread(loc, c.sha, { body }))}
+          onNew={(body, publish) => wrap(api.newThread(loc, c.sha, { body, ...(publish ? { publish } : {}) }))}
           focusThread={route.thread}
           context={<ContextBoxes slug={loc.project} repo={loc.repo} intro={projectIntro} group={group} file={projectFile} />}
           desc={{
@@ -325,7 +326,7 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
           focusFile={route.file}
           focusThread={route.thread}
           onFocusFile={(p) => navigate(routeUrl(loc.project, loc.repo, sha, 'files', p), true)}
-          newThread={(d: Draft, body) => wrap(api.newThread(loc, c.sha, { ...d, body }))}
+          newThread={(d: Draft, body, publish) => wrap(api.newThread(loc, c.sha, { ...d, body, ...(publish ? { publish } : {}) }))}
           setViewed={setViewed}
         />
       )}
@@ -431,7 +432,7 @@ function DescriptionHeader({ pr, draft, setDraft, onRevert, fullBody }: DescProp
   );
 }
 
-function Conversation({ data, loc, review, actions, onNew, desc, context, focusThread }: { data: CommitResponse; loc: Loc; review: Review; actions: ThreadActions; onNew: (body: string) => Promise<unknown>; desc: DescProps; context: React.ReactNode; focusThread: string | null }) {
+function Conversation({ data, loc, review, actions, onNew, desc, context, focusThread }: { data: CommitResponse; loc: Loc; review: Review; actions: ThreadActions; onNew: (body: string, publish: boolean) => Promise<unknown>; desc: DescProps; context: React.ReactNode; focusThread: string | null }) {
   const { pr, draft, setDraft, onSave } = desc;
   const c = data.commit;
   const tilde = useTilde();
@@ -538,7 +539,7 @@ function Conversation({ data, loc, review, actions, onNew, desc, context, focusT
           <Avatar author={reviewer.id} size={40} />
           <div className="timeline-comment">
             <div className="comment-header"><strong>Add a comment</strong></div>
-            <CommentForm onSubmit={onNew} />
+            <CommentForm onSubmit={onNew} publishable />
           </div>
         </div>
         <p className="yaml-hint muted">
@@ -628,12 +629,12 @@ function GeneralThread({ t, actions }: { t: Thread; actions: ThreadActions }) {
   const [first, ...rest] = t.comments;
   if (!first) return null;
   return (
-    <div className={`timeline-item ${t.resolved ? 'is-resolved' : ''}`} id={`thread-${t.id}`}>
+    <div className={`timeline-item ${t.resolved ? 'is-resolved' : ''} ${t.publish ? 'is-publish' : ''}`} id={`thread-${t.id}`}>
       <Avatar author={first.author} size={40} />
       <div className="general-thread">
-        <CommentView c={first} variant="timeline" onEdit={(b) => actions.edit(t.id, first.id, b)} onDelete={() => actions.remove(t.id, first.id)} />
+        <CommentView c={first} variant="timeline" badge={<PublishLabel thread={t} />} onEdit={(b) => actions.edit(t.id, first.id, b)} onDelete={() => actions.remove(t.id, first.id)} />
         <div className="general-replies">
-          <ThreadView thread={{ ...t, comments: rest }} actions={actions} />
+          <ThreadView thread={{ ...t, comments: rest }} actions={actions} marker={false} />
         </div>
       </div>
     </div>

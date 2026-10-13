@@ -90,16 +90,23 @@ export function CommentForm({
   autoFocus,
   initial = '',
   compact,
+  publishable,
+  notice,
 }: {
   placeholder?: string;
   submitLabel?: string;
-  onSubmit: (body: string) => Promise<unknown>;
+  /** `publish`: the "For the GitHub PR" box was ticked (only with `publishable`) */
+  onSubmit: (body: string, publish: boolean) => Promise<unknown>;
   onCancel?: () => void;
   autoFocus?: boolean;
   initial?: string;
   compact?: boolean;
+  /** a new thread: offer the "For the GitHub PR" box */
+  publishable?: boolean;
+  notice?: ReactNode;
 }) {
   const [text, setText] = useState(initial);
+  const [publish, setPublish] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [resetKey, setResetKey] = useState(0);
@@ -108,8 +115,9 @@ export function CommentForm({
     setBusy(true);
     setErr(null);
     try {
-      await onSubmit(text);
+      await onSubmit(text, publishable ? publish : false);
       setText('');
+      setPublish(false);
       setResetKey((k) => k + 1); // back to the Write tab
     } catch (e) {
       setErr((e as Error).message);
@@ -131,9 +139,42 @@ export function CommentForm({
       busy={busy}
       error={err}
       canSubmit={!!text.trim()}
+      notice={notice}
+      extra={publishable && <PublishCheckbox checked={publish} onChange={setPublish} disabled={busy} />}
     />
   );
 }
+
+/** What marking a thread for the GitHub PR means, for its tooltips. */
+export const PUBLISH_TIP = "For the real GitHub PR: the agent posts it as a review comment when it publishes the stack, and doesn't answer it here. Not counted as an open thread.";
+
+/** The "For the GitHub PR" box: a new comment's composer, and an existing thread's footer. */
+export function PublishCheckbox({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  return (
+    <label className={`publish-toggle ${checked ? 'is-on' : ''}`} title={PUBLISH_TIP}>
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+      <Octicon d={SHARE_ICON} size={14} />
+      For the GitHub PR
+    </label>
+  );
+}
+
+/** A thread's marker: "For GitHub" until the agent records that it posted it, then "On GitHub", a link to it. */
+export function PublishLabel({ thread: t, link = true }: { thread: Thread; link?: boolean }) {
+  if (t.published && !link) return <span className="Label Label--publish is-posted" title={`Posted to the GitHub PR: ${t.published.url}`}><Octicon d={SHARE_ICON} size={12} /> On GitHub</span>;
+  if (t.published) {
+    return (
+      <a className="Label Label--publish is-posted" href={t.published.url} target="_blank" rel="noopener noreferrer" title={`Posted to the GitHub PR${t.published.at ? ` ${t.published.at}` : ''}: ${t.published.url}`} onClick={(e) => e.stopPropagation()}>
+        <Octicon d={SHARE_ICON} size={12} /> On GitHub ↗
+      </a>
+    );
+  }
+  if (!t.publish) return null;
+  return <span className="Label Label--publish" title={PUBLISH_TIP}><Octicon d={SHARE_ICON} size={12} /> For GitHub</span>;
+}
+
+// octicon share-16
+const SHARE_ICON = 'M3.75 6.5a.25.25 0 0 0-.25.25v6.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-6.5a.25.25 0 0 0-.25-.25h-1a.75.75 0 0 1 0-1.5h1c.966 0 1.75.784 1.75 1.75v6.5A1.75 1.75 0 0 1 12.25 15h-8.5A1.75 1.75 0 0 1 2 13.25v-6.5C2 5.784 2.784 5 3.75 5h1a.75.75 0 0 1 0 1.5ZM7.47.22a.75.75 0 0 1 1.06 0l2.25 2.25a.751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018l-.97-.97v6.69a.75.75 0 0 1-1.5 0V2.56l-.97.97a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Z';
 
 const ICONS = {
   image: 'M16 13.25A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25V2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75ZM1.75 2.5a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h.94l.03-.03 6.077-6.078a1.75 1.75 0 0 1 2.412-.06L14.5 10.31V2.75a.25.25 0 0 0-.25-.25Zm12.5 11a.25.25 0 0 0 .25-.25v-.917l-4.298-3.889a.25.25 0 0 0-.344.009L4.81 13.5ZM7 6a2 2 0 1 1-3.999.001A2 2 0 0 1 7 6ZM5.5 6a.5.5 0 1 0-1 0 .5.5 0 0 0 1 0Z',
@@ -242,6 +283,7 @@ export function MarkdownEditor({
   toolbar,
   images,
   notice,
+  extra,
   className,
 }: {
   value: string;
@@ -259,6 +301,8 @@ export function MarkdownEditor({
   /** paste, drop or attach images: each is uploaded to the project's assets and its markdown inserted */
   images?: boolean;
   notice?: ReactNode;
+  /** beside the buttons (the "For the GitHub PR" box) */
+  extra?: ReactNode;
   className?: string;
 }) {
   const [tab, setTab] = useState<'write' | 'preview'>('write');
@@ -363,6 +407,7 @@ export function MarkdownEditor({
               <>Markdown supported{upload && ' · paste, drop or attach images'} · ⌘↵ to {submitLabel === 'Comment' || submitLabel === 'Reply' ? 'submit' : 'save'}</>
             )}
           </span>
+          {extra}
           {onCancel && <button type="button" className="btn" onClick={onCancel} disabled={busy}>Cancel</button>}
           <button type="button" className="btn btn-primary" onClick={onSubmit} disabled={busy || !canSubmit || uploading > 0} title={uploading ? 'Wait for the images to upload' : undefined}>{busy ? 'Saving…' : submitLabel}</button>
         </div>
@@ -371,7 +416,7 @@ export function MarkdownEditor({
   );
 }
 
-export function CommentView({ c, onEdit, onDelete, variant = 'inline' }: { c: Comment; onEdit?: (body: string) => Promise<unknown>; onDelete?: () => Promise<unknown>; variant?: 'inline' | 'timeline' }) {
+export function CommentView({ c, onEdit, onDelete, variant = 'inline', badge }: { c: Comment; onEdit?: (body: string) => Promise<unknown>; onDelete?: () => Promise<unknown>; variant?: 'inline' | 'timeline'; badge?: ReactNode }) {
   const [editing, setEditing] = useState(false);
   const header = (
     <div className="comment-header">
@@ -379,6 +424,7 @@ export function CommentView({ c, onEdit, onDelete, variant = 'inline' }: { c: Co
       <AuthorLabel author={c.author} />
       <span className="muted" title={c.created ?? ''}>{c.created ? relativeTime(c.created) : ''}</span>
       {c.edited && <span className="muted" title={`edited ${c.edited}`}>· edited</span>}
+      {badge}
       <span className="spacer" />
       {isReviewer(c.author) && onEdit && !editing && <button className="btn-octicon" title="Edit" onClick={() => setEditing(true)}>Edit</button>}
       {isReviewer(c.author) && onDelete && !editing && (
@@ -410,6 +456,8 @@ export function CommentView({ c, onEdit, onDelete, variant = 'inline' }: { c: Co
 export interface ThreadActions {
   reply: (tid: string, body: string) => Promise<unknown>;
   resolve: (tid: string, resolved: boolean) => Promise<unknown>;
+  /** mark the thread for the GitHub PR, or unmark it */
+  publish: (tid: string, publish: boolean) => Promise<unknown>;
   edit: (tid: string, cid: string, body: string) => Promise<unknown>;
   remove: (tid: string, cid: string) => Promise<unknown>;
 }
@@ -420,7 +468,8 @@ export interface ThreadFold {
   setFolded: (folded: boolean) => void;
 }
 
-export function ThreadView({ thread, actions, context, fold }: { thread: Thread; actions: ThreadActions; context?: ReactNode; fold?: ThreadFold }) {
+/** `marker` false: the thread's publish marker is shown elsewhere (a general thread's first comment). */
+export function ThreadView({ thread, actions, context, fold, marker = true }: { thread: Thread; actions: ThreadActions; context?: ReactNode; fold?: ThreadFold; marker?: boolean }) {
   const [replying, setReplying] = useState(false);
   const [showResolved, setShowResolved] = useState(false);
   const foldRef = useRef<HTMLButtonElement>(null);
@@ -430,10 +479,25 @@ export function ThreadView({ thread, actions, context, fold }: { thread: Thread;
     await actions.resolve(thread.id, !thread.resolved);
     foldRef.current?.focus(); // the button just pressed may be gone (resolving folds the thread): keep focus here
   };
+  const [publishing, setPublishing] = useState(false);
+  const setPublish = async (v: boolean) => {
+    setPublishing(true);
+    try {
+      await actions.publish(thread.id, v);
+    } finally {
+      setPublishing(false);
+    }
+  };
   return (
-    <div className={`thread ${thread.resolved ? 'resolved' : ''} ${thread.outdated ? 'outdated' : ''} ${fold?.folded ? 'is-folded' : ''}`} id={`thread-${thread.id}`}>
+    <div className={`thread ${thread.resolved ? 'resolved' : ''} ${thread.outdated ? 'outdated' : ''} ${thread.publish ? 'is-publish' : ''} ${fold?.folded ? 'is-folded' : ''}`} id={`thread-${thread.id}`}>
       {fold && <FoldHeader ref={foldRef} thread={thread} folded={fold.folded} toggle={() => fold.setFolded(!fold.folded)} />}
       {!(fold?.folded) && context}
+      {!fold && marker && (thread.publish || thread.published) && (
+        <div className="thread-publish-bar">
+          <PublishLabel thread={thread} />
+          <span>{thread.published ? 'Posted to the GitHub PR by the agent.' : "For the GitHub PR: the agent posts it when it publishes the stack, and doesn't answer it here."}</span>
+        </div>
+      )}
       {!(fold?.folded) && thread.outdated && <OutdatedContext thread={thread} label={!fold} />}
       {!fold && thread.resolved && (
         <div className="thread-resolved-bar">
@@ -450,7 +514,15 @@ export function ThreadView({ thread, actions, context, fold }: { thread: Thread;
           </div>
           <div className="thread-footer">
             {replying ? (
-              <CommentForm placeholder="Reply…" submitLabel="Reply" autoFocus compact onCancel={() => setReplying(false)} onSubmit={async (b) => { await actions.reply(thread.id, b); setReplying(false); }} />
+              <CommentForm
+                placeholder="Reply…"
+                submitLabel="Reply"
+                autoFocus
+                compact
+                notice={thread.publish && !thread.published && <div className="publish-notice">This thread is for the GitHub PR, so your reply is posted with it.</div>}
+                onCancel={() => setReplying(false)}
+                onSubmit={async (b) => { await actions.reply(thread.id, b); setReplying(false); }}
+              />
             ) : (
               <div className="thread-footer-row">
                 <Avatar author={reviewer.id} size={24} />
@@ -459,6 +531,13 @@ export function ThreadView({ thread, actions, context, fold }: { thread: Thread;
             )}
             <div className="thread-footer-actions">
               <button className="btn btn-sm" onClick={resolve}>{thread.resolved ? 'Unresolve conversation' : 'Resolve conversation'}</button>
+              {thread.published ? (
+                <span className="publish-toggle is-posted" title="The agent has posted this thread to the GitHub PR">
+                  <Octicon d={SHARE_ICON} size={14} /> <a href={thread.published.url} target="_blank" rel="noopener noreferrer">Posted to the GitHub PR ↗</a>
+                </span>
+              ) : (
+                <PublishCheckbox checked={!!thread.publish} onChange={setPublish} disabled={publishing} />
+              )}
             </div>
           </div>
         </>
@@ -487,6 +566,7 @@ function FoldHeader({ ref, thread: t, folded, toggle }: { ref: Ref<HTMLButtonEle
       <Octicon d={folded ? CHEV_RIGHT : CHEV_DOWN} size={12} className="thread-fold-chev" />
       {t.resolved && <span className="Label Label--resolved">Resolved</span>}
       {t.outdated && <span className="Label Label--attention">Outdated</span>}
+      <PublishLabel thread={t} link={false} />
       {where && <code className="thread-fold-where">{where}</code>}
       {folded && first && (
         <>

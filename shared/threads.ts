@@ -5,6 +5,8 @@
 export interface OrderThread {
   id: string;
   resolved: boolean;
+  /** meant for the GitHub PR (`publish: true`): never open here, the agent posts it rather than answering it */
+  publish?: boolean;
   comments: readonly { created?: string | null; edited?: string | null }[];
 }
 
@@ -34,8 +36,14 @@ export function lastUpdate(t: OrderThread): number {
   return max;
 }
 
-/** An open thread: unresolved, with something in it (as unresolvedCount counts them, and the tab's counter). */
-export const isOpen = (t: OrderThread) => !t.resolved && t.comments.length > 0;
+/**
+ * An open thread: unresolved, with something in it, and not meant for the GitHub PR (as unresolvedCount counts them,
+ * and the tab's counter). A `publish: true` thread waits for the stack to be published, not for an answer here.
+ */
+export const isOpen = (t: OrderThread) => !t.resolved && !t.publish && t.comments.length > 0;
+
+/** Meant for the GitHub PR and not posted there yet (no `published:` record from the agent). */
+export const toPublish = (t: { publish?: boolean; published?: unknown; comments: readonly unknown[] }) => !!t.publish && !t.published && t.comments.length > 0;
 
 export const sortKey = (t: OrderThread): SortKey => ({ open: isOpen(t), at: lastUpdate(t) });
 

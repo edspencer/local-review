@@ -33,6 +33,11 @@ threads:
     start_side: left                    # optional, only for a range that starts on the OTHER side (see below)
     resolved: false
     outdated: true                      # server-maintained, only present when true (see below)
+    publish: true                       # optional: for the real GitHub PR, not for the agent to answer (see below)
+    published:                          # written by the agent once it has posted the thread to GitHub
+      url: https://github.com/<org>/my-service/pull/123#discussion_r456
+      id: 456                           # optional: the GitHub comment's id
+      at: 2026-10-13T12:00:00Z
     anchor:                             # server-maintained: where the thread was made. Never edit.
       commit: 89abcdef…                 # sha it was made on
       path: src/flags/parser.ts
@@ -76,12 +81,32 @@ threads:
 | `start_line`, `start_side` | A multi-line range's first line, and its side if that differs from `side` (below). |
 | `resolved` | `true` or `false` (absent: unresolved). |
 | `outdated` | Server-maintained, only present when `true`: the commented code is gone from this commit. |
+| `publish` | Optional, only present when `true`: the reviewer marked the thread **for the GitHub PR** (below). Absent means a local thread, as before. |
+| `published` | Optional: the agent's record that it posted a `publish` thread to GitHub. `url` (required: the GitHub comment's URL), `id` (the comment's id) and `at` (when). A bare URL (`published: https://…`) is read as `{url}`. |
 | `anchor` | Server-maintained, never edit: where the thread was made, with the exact text and context. See [Line anchoring](/concepts/following-rebases/#line-anchoring-how-inline-threads-follow-the-code). |
 | `comments` | The thread's comments, oldest first: `id` (`c-…`), `author`, `created`, `body` (Markdown), and `edited` (when) once the reviewer has edited it in the UI. A comment can also be a plain string (its body), and `text:` or `comment:` work in place of `body:`. |
 
 `author` is the reviewer's id (see [`LOCAL_REVIEW_USER`](/reference/environment/#local_review_user-the-reviewer)) or
 `claude` for an agent, lowercased when read. Missing `id`, `created`, `resolved` or `author` fields are tolerated; an unknown author shows as
 "unknown". Fields the server doesn't know about are kept.
+
+## Threads for the GitHub PR
+
+A thread with `publish: true` isn't a conversation with the agent: it's a comment the reviewer wants on the real
+GitHub PR. The agent doesn't reply to it or resolve it locally. When it publishes the stack it posts the thread as
+part of the PR's GitHub review (an inline thread at its line, a general one in the review's body), then writes
+`published:` (see [Publishing stacked PRs](/agents/publishing-stacked-prs/#comments-for-the-github-pr)).
+`local-review plan` lists these threads for each PR (`publish_threads`).
+
+- **Per thread, not per comment.** GitHub's unit is a thread at a line too, and a thread either waits for the agent
+  or it doesn't. The thread's comments are posted in order: the first as the review comment, any later ones as
+  replies to it.
+- **Not open.** A `publish` thread isn't counted as an open thread (the sidebar, the tab counters, the agent's list)
+  or as a conversation in a PR's review progress. `resolved` still works as usual, but doesn't stop it going to
+  GitHub: to keep a thread local, take the mark off.
+- **Outward only.** `published:` records what the agent posted, the way `github:` records a PR. Local Review never
+  reads anything back from GitHub, and never calls it.
+- Files without these fields read exactly as before; the server only writes `publish` when it's `true`.
 
 ## Ranges across old and new lines
 

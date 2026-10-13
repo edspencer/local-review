@@ -23,6 +23,7 @@ Address my open review threads. First run `npx local-review guide` and follow th
   --update-refs, keeping subjects unchanged;
 - reply in every thread (author: claude) saying what changed and in which commit;
 - resolve only threads that were clear instructions carried out exactly, and leave the rest open;
+- leave threads marked `publish: true` alone: they're for the GitHub PR, posted when the stack is published;
 - never delete threads or comments; don't push or touch GitHub.
 Then check that the threads re-attached, run the plan command and report what's left.
 ```

@@ -30,9 +30,10 @@ const USAGE = `Usage: local-review [serve] [--port <n>] [--quiet]
                            (the banner is only shown on a terminal anyway)
   plan    For each PR in scope, in order: commit, status (draft / ready / published), branch (with its
           status), base, title and the exact full body (project intro, stack note, ---, PR description), plus
-          any recorded github: info. Warns about stacks with draft PRs, GitHub bases that differ from the
-          plan's, and published PRs that landed upstream without being frozen. Landed (merged) PRs are
-          never planned. Read-only.
+          any recorded github: info and the comments the reviewer marked for the GitHub PR (with file and
+          line). Warns about stacks with draft PRs, GitHub bases that differ from the plan's, published PRs
+          that landed upstream without being frozen, and comments for GitHub not posted yet. Landed
+          (merged) PRs are never planned. Read-only.
           --repo <name>    one repo of the project
           --stack <n>      one declared stack (1-based, as in project.yaml); needs --repo if several repos have it.
                            Naming a follow-on stack plans it (with a note).

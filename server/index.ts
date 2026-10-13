@@ -11,7 +11,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { AGENT_GUIDE, DEFAULT_PORT, EXAMPLE_PROJECT, HOME, PROJECTS_DIR, ROOT, SAFE_NAME, WEB_DIST } from './config.js';
 import { detailOf, filesOf, type CommitSummary } from './commits.js';
 import { prStatus, progressOf, storedStatus } from '../shared/readiness.js';
-import { ReviewConflictError, loadReview, mutateReview, randomId, reviewPath, unresolvedCount, viewReview, type Review, type ReviewContext, type Thread } from './reviews.js';
+import { ReviewConflictError, loadReview, mutateReview, randomId, reviewPath, unresolvedCount, viewReview, type Published, type Review, type ReviewContext, type Thread } from './reviews.js';
 import { branchName, githubOf, loadPr, loadPrs, prPath, prView, titleEdited, writePr, type GithubPr, type LoadedPr } from './prs.js';
 import { reconcileBranch, type RefIndex } from './branches.js';
 import { contextFor, inspectOrphan, liveCommits, prContextFor } from './context.js';
@@ -624,6 +624,8 @@ app.post(`${COMMIT}/threads`, async (c) => {
         }
       }
     }
+    if (b.publish !== undefined && typeof b.publish !== 'boolean') throw new HttpError(400, 'publish must be true or false');
+    if (b.publish) t.publish = true;
     t.comments.push({ id: randomId('c'), author: who, created: now(), body: commentBody });
     r.threads.push(t);
   });
@@ -639,11 +641,31 @@ app.post(`${COMMIT}/threads/:tid/comments`, async (c) => {
   });
 });
 
+/**
+ * `published:` as the agent records it after posting a `publish: true` thread to GitHub: `{url, id?, at?}` (`at`
+ * defaults to now), or null to clear it. Only what the agent says it posted; nothing here reads GitHub.
+ */
+function publishedRecord(v: unknown): Published | null {
+  if (v === null) return null;
+  if (!v || typeof v !== 'object' || Array.isArray(v)) throw new HttpError(400, 'published must be {url, id?, at?} or null');
+  const p = v as Record<string, unknown>;
+  if (typeof p.url !== 'string' || !/^https?:\/\/\S+$/.test(p.url)) throw new HttpError(400, 'published.url must be the http(s) URL of the GitHub comment');
+  if (p.id !== undefined && typeof p.id !== 'number' && typeof p.id !== 'string') throw new HttpError(400, 'published.id must be a number or a string');
+  if (p.at !== undefined && (typeof p.at !== 'string' || Number.isNaN(Date.parse(p.at)))) throw new HttpError(400, 'published.at must be an ISO time');
+  return { url: p.url, ...(p.id !== undefined ? { id: p.id as number | string } : {}), at: (p.at as string | undefined) ?? now() };
+}
+
 app.patch(`${COMMIT}/threads/:tid`, async (c) => {
   const b = await body(c);
+  if (b.publish !== undefined && typeof b.publish !== 'boolean') throw new HttpError(400, 'publish must be true or false');
+  const published = b.published === undefined ? undefined : publishedRecord(b.published);
   return mutate(c, (r) => {
     const t = findThread(r, c.req.param('tid'));
     if (typeof b.resolved === 'boolean') t.resolved = b.resolved;
+    if (b.publish === true) t.publish = true;
+    else if (b.publish === false) delete t.publish;
+    if (published === null) delete t.published;
+    else if (published) t.published = published;
   });
 });
 

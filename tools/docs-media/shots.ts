@@ -169,6 +169,12 @@ export const SHOTS: Shot[] = [
     actions: [{ waitFor: '.comments-tab-item' }],
   },
   {
+    name: 'stack-comments-publish',
+    doc: 'Docs "Using the UI", the Comments tab filtered to For GitHub: the threads marked for the real GitHub PR.',
+    route: '/waitlists/orchard-api/stacks/3-automatic-promotion?tab=comments',
+    actions: [{ waitFor: '.comments-tab-item' }, { click: '.comments-filter .is-publish' }, { waitFor: '.comments-tab-item.is-publish' }],
+  },
+  {
     name: 'welcome',
     doc: 'Docs "Quickstart" / "Using the UI": the first-run welcome page (no projects yet), with Add the example projects.',
     rig: RIGS.empty,
@@ -368,6 +374,15 @@ export const SHOTS: Shot[] = [
     actions: [{ waitFor: '.file-card .thread' }, { scrollTo: '.file-card .thread', block: 'center' }],
     // the commented lines are in the diff just above the thread
     capture: { selector: '.file-card .thread', pad: { top: 150, right: 12, bottom: 12, left: 12 } },
+  },
+  {
+    name: 'crop-publish-thread',
+    doc: 'Docs "Reviewing", comments for the GitHub PR: an inline thread marked For GitHub in Files changed, its box ticked.',
+    route: `${PROMOTE}?tab=files&file=internal/booking/promote.go`,
+    viewport: { width: 1440, height: 1300 },
+    storage: { 'lr.diffStyle': '"unified"' },
+    actions: [{ waitFor: '.file-card .thread.is-publish' }, { scrollTo: '.file-card .thread.is-publish', block: 'center' }],
+    capture: { selector: '.file-card .thread.is-publish', pad: { top: 60, right: 12, bottom: 12, left: 12 } },
   },
   {
     name: 'crop-folded-threads',

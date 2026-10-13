@@ -14,7 +14,7 @@ P=my-feature; R=my-service; SHA=0a1b2c3d     # a short or full sha
 BASE=http://localhost:5622/api/projects/$P/repos/$R/commits/$SHA
 J='Content-Type: application/json'
 
-curl -s $BASE/review | jq '.threads[] | select(.resolved != true)'                       # open threads
+curl -s $BASE/review | jq '.threads[] | select(.resolved != true and .publish != true)'   # open threads
 curl -s -X POST -H "$J" $BASE/threads/<tid>/comments -d '{"author":"claude","body":"…"}'   # reply
 curl -s -X PATCH -H "$J" $BASE/threads/<tid> -d '{"resolved":true}'                       # resolve
 curl -s -X PUT -H "$J" $BASE/pr -d '{"title":"…","body":"…"}'                           # null clears a field
@@ -44,9 +44,9 @@ More recipes are in the [agent guide](/agents/agent-guide/#api-httplocalhost5622
 | GET | `…/review` | The review: the file's contents with threads placed on this commit (`outdated`, relocated `line`), plus `file`, `target_file` (absolute paths), `matched_from`, `matched_by` (set while the comments are still in an earlier commit's file), `carried_over` (`{from, by, saved}`, or null: the review came from an earlier commit after a rebase, and whether it's saved under this sha yet; the PR page shows it as a note), `parse_error`. |
 | GET | `…/pr` | `{title, body, title_source, body_source: 'commit'\|'override', commit_subject, commit_body, branch, github, file, …}` |
 | PUT | `…/pr` | `{title?, body?, branch?, github?, status?}`. `null` clears a field; `status` is `"draft"`, `"ready"` or `null`. See [PR files](/reference/pr-files/#writing-it). |
-| POST | `…/threads` | New thread: `{body, path?, side?, line?, start_line?, start_side?, author?}`. Without `path`/`side`/`line` it's a general thread. |
+| POST | `…/threads` | New thread: `{body, path?, side?, line?, start_line?, start_side?, author?, publish?}`. Without `path`/`side`/`line` it's a general thread. `publish: true` marks it for the GitHub PR ([Threads for the GitHub PR](/reference/comment-files/#threads-for-the-github-pr)). |
 | POST | `…/threads/:tid/comments` | Reply: `{body, author?}`. |
-| PATCH | `…/threads/:tid` | `{resolved: true \| false}`. |
+| PATCH | `…/threads/:tid` | Any of `{resolved: true \| false}`; `{publish: true \| false}` (mark it for the GitHub PR, or not: the reviewer's call); `{published: {url, id?, at?} \| null}` (the agent's record of the GitHub comment it posted: an http(s) `url`, the comment's `id`, `at` defaulting to now; null clears it). 400 for anything else in those fields. |
 | PATCH / DELETE | `…/threads/:tid/comments/:cid` | Edit `{body}` / delete. Only the reviewer's own comments: an agent's are never edited or deleted by the UI. |
 | PUT | `…/viewed` | `{path, viewed}`: tick or untick a file's **Viewed** box. |
 | GET | `…/stack.svg`, `…/stack.png` | The [stack picture](/using/stack-pictures/) with this PR highlighted. See below. |

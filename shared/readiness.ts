@@ -19,7 +19,10 @@ export function prStatus(o: { status?: 'draft' | 'ready'; github?: unknown; land
   return o?.status === 'ready' ? 'ready' : 'draft';
 }
 
-/** Review progress: conversations (threads with at least one comment, outdated ones too) and changed files. */
+/**
+ * Review progress: conversations (threads with at least one comment, outdated ones too, but not those meant for the
+ * GitHub PR, which aren't conversations here) and changed files.
+ */
 export interface Progress {
   threads: number;
   resolved: number;
@@ -27,8 +30,8 @@ export interface Progress {
   viewed: number; // changed files marked Viewed
 }
 
-export function progressOf(threads: { resolved?: boolean; comments: unknown[] }[], files: string[], viewed: string[]): Progress {
-  const real = threads.filter((t) => t.comments.length > 0);
+export function progressOf(threads: { resolved?: boolean; publish?: boolean; comments: unknown[] }[], files: string[], viewed: string[]): Progress {
+  const real = threads.filter((t) => t.comments.length > 0 && !t.publish);
   const seen = new Set(viewed);
   return { threads: real.length, resolved: real.filter((t) => t.resolved).length, files: files.length, viewed: files.filter((f) => seen.has(f)).length };
 }

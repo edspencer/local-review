@@ -229,6 +229,10 @@ export interface Thread {
   resolved: boolean;
   /** computed by the server: the commented code can't be found on this commit */
   outdated?: boolean;
+  /** meant for the real GitHub PR: the agent posts it when it publishes the stack, and doesn't answer it here */
+  publish?: boolean;
+  /** the agent's record of the comment it posted on GitHub */
+  published?: { url: string; id?: number | string; at?: string };
   anchor?: Anchor;
   comments: Comment[];
 }
@@ -353,10 +357,12 @@ export const api = {
   review: (l: Loc, sha: string) => req<Review>('GET', `${base(l, sha)}/review`),
   pr: (l: Loc, sha: string) => req<PrInfo>('GET', `${base(l, sha)}/pr`),
   setPr: (l: Loc, sha: string, change: { title?: string | null; body?: string | null; status?: 'draft' | 'ready' | null }) => req<PrInfo>('PUT', `${base(l, sha)}/pr`, change),
-  newThread: (l: Loc, sha: string, t: { path?: string; side?: 'left' | 'right'; line?: number; start_line?: number; start_side?: 'left' | 'right'; body: string }) =>
+  newThread: (l: Loc, sha: string, t: { path?: string; side?: 'left' | 'right'; line?: number; start_line?: number; start_side?: 'left' | 'right'; body: string; publish?: boolean }) =>
     req<Review>('POST', `${base(l, sha)}/threads`, t),
   reply: (l: Loc, sha: string, tid: string, body: string) => req<Review>('POST', `${base(l, sha)}/threads/${tid}/comments`, { body }),
   resolve: (l: Loc, sha: string, tid: string, resolved: boolean) => req<Review>('PATCH', `${base(l, sha)}/threads/${tid}`, { resolved }),
+  /** mark a thread for the GitHub PR (or unmark it) */
+  publish: (l: Loc, sha: string, tid: string, publish: boolean) => req<Review>('PATCH', `${base(l, sha)}/threads/${tid}`, { publish }),
   editComment: (l: Loc, sha: string, tid: string, cid: string, body: string) => req<Review>('PATCH', `${base(l, sha)}/threads/${tid}/comments/${cid}`, { body }),
   deleteComment: (l: Loc, sha: string, tid: string, cid: string) => req<Review>('DELETE', `${base(l, sha)}/threads/${tid}/comments/${cid}`),
   viewed: (l: Loc, sha: string, path: string, viewed: boolean) => req<Review>('PUT', `${base(l, sha)}/viewed`, { path, viewed }),
