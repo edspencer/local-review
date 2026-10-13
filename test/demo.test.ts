@@ -91,6 +91,7 @@ describe('the seeded demo, through the server', () => {
   test('every review file parses, and its threads land where they were written (one outdated, by design)', async () => {
     let threads = 0;
     const outdated: string[] = [];
+    const forGithub: string[] = [];
     for (const slug of ['waitlists', 'calendar-feed', 'calendar-reminders', 'webhook-retries']) {
       const p = await api(`/projects/${slug}`);
       for (const r of p.repos)
@@ -100,10 +101,13 @@ describe('the seeded demo, through the server', () => {
           for (const t of rev.threads ?? []) {
             threads++;
             if (t.outdated) outdated.push(`${r.name}/${c.sha}`);
+            if (t.publish) forGithub.push(`${r.name}/${c.position}${t.published ? ' posted' : ''}`);
           }
         }
     }
-    assert.equal(threads, 20);
+    assert.equal(threads, 22);
+    // marked for the GitHub PR: two to post in Automatic promotion, one already posted on the published #5
+    assert.deepEqual(forGithub, ['orchard-api/5 posted', 'orchard-api/6', 'orchard-api/8']);
     assert.deepEqual(outdated, [`orchard-api/${sha('orchard-api', 'f6')}`]);
   });
 

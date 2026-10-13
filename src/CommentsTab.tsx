@@ -3,15 +3,23 @@
 // the same way (threadFold.ts), with its PR and line above it; reply, resolve, edit and delete work as on the PR.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, stackColor, type CommitSummary, type ProjectData, type RepoData, type StackGroup, type Thread, type ThreadEntry, type ThreadsResponse } from './api';
-import { AnchorSnippet, AuthorLabel, Avatar, ThreadView, type ThreadActions } from './Comments';
+import { AnchorSnippet, AuthorLabel, Avatar, PUBLISH_TIP, ThreadView, type ThreadActions } from './Comments';
 import { NO_FOLDS, isFolded, reconcileFolds, setFolded, type FoldState } from './threadFold';
 import { StackLink, stackLabel } from './Stacks';
 import { hoverPrefetch } from './commitCache';
-import { entryKey, lastUpdate, orderThreads, sortKey, type SortKey } from '../shared/threads';
+import { entryKey, isOpen, lastUpdate, orderThreads, sortKey, toPublish, type SortKey } from '../shared/threads';
 import { linkTo, relativeTime, routeUrl, useTilde } from './util';
 
 /** Open threads on these PRs, for the tab's counter: from the sidebar's data, so it's there before the tab loads. */
 export const openThreads = (commits: readonly CommitSummary[]) => commits.reduce((n, c) => n + c.unresolved, 0);
+
+/** Which threads the tab lists: all of them, the open ones, or the ones marked for the GitHub PR. */
+type Filter = 'all' | 'open' | 'publish';
+const FILTERS: { f: Filter; label: string; match: (t: Thread) => boolean }[] = [
+  { f: 'all', label: 'All', match: () => true },
+  { f: 'open', label: 'Open', match: isOpen },
+  { f: 'publish', label: 'For GitHub', match: (t) => !!t.publish },
+];
 
 export function CommentsTab({ project, scope }: { project: ProjectData; scope?: { repo: RepoData; group: StackGroup; ref: string } }) {
   const [data, setData] = useState<{ key: string; r: ThreadsResponse } | null>(null);
@@ -34,7 +42,12 @@ export function CommentsTab({ project, scope }: { project: ProjectData; scope?: 
   // threads acted on here keep the place they had (shared/threads.ts orderThreads): for this visit to the tab
   const held = useRef(new Map<string, SortKey>());
   useEffect(() => { held.current = new Map(); }, [key]);
-  const threads = useMemo(() => (r ? orderThreads(r.threads, held.current) : []), [r]);
+  const all = useMemo(() => (r ? orderThreads(r.threads, held.current) : []), [r]);
+  const [filter, setFilter] = useState<Filter>('all');
+  useEffect(() => setFilter('all'), [key]);
+  const match = FILTERS.find((x) => x.f === filter)!.match;
+  const threads = useMemo(() => all.filter((e) => match(e.thread)), [all, match]);
+  const unposted = all.filter((e) => toPublish(e.thread)).length;
 
   // folds, as in Files changed (keyed per PR: thread ids are only unique in their own file)
   const [folds, setFolds] = useState<FoldState>(NO_FOLDS);
@@ -55,6 +68,7 @@ export function CommentsTab({ project, scope }: { project: ProjectData; scope?: 
     return {
       reply: (tid, body) => run(() => api.reply(l, e.sha, tid, body)),
       resolve: (tid, resolved) => run(() => api.resolve(l, e.sha, tid, resolved)),
+      publish: (tid, publish) => run(() => api.publish(l, e.sha, tid, publish)),
       edit: (tid, cid, body) => run(() => api.editComment(l, e.sha, tid, cid, body)),
       remove: (tid, cid) => run(() => api.deleteComment(l, e.sha, tid, cid)),
     };
@@ -71,8 +85,30 @@ export function CommentsTab({ project, scope }: { project: ProjectData; scope?: 
           {r.problems.map((p) => <div key={p.file}>⚠ <code>{tilde(p.file)}</code> is not valid YAML, so its threads aren't listed: {tilde(p.error)}</div>)}
         </div>
       )}
-      {threads.length === 0 ? (
+      {all.length > 0 && (
+        <div className="comments-filter" role="group" aria-label="Show">
+          {FILTERS.map(({ f, label, match: m }) => {
+            const n = all.filter((e) => m(e.thread)).length;
+            return (
+              <button
+                key={f}
+                type="button"
+                className={`btn btn-sm ${filter === f ? 'selected' : ''} ${f === 'publish' ? 'is-publish' : ''}`}
+                aria-pressed={filter === f}
+                onClick={() => setFilter(f)}
+                title={f === 'publish' ? `${PUBLISH_TIP}\n${unposted} of ${n} not posted yet.` : f === 'open' ? 'Unresolved threads that wait for an answer here' : `Every thread on ${where}'s PRs`}
+              >
+                {label} <span className="Counter">{n}</span>
+              </button>
+            );
+          })}
+          {unposted > 0 && filter !== 'publish' && <span className="muted comments-filter-note">{unposted} comment{unposted === 1 ? '' : 's'} to post on GitHub when the stack is published</span>}
+        </div>
+      )}
+      {all.length === 0 ? (
         <div className="blankslate">No comments on {scope ? "this stack's" : "this project's"} PRs yet. Comment on a PR, or have an agent write a review file, and its threads show up here.</div>
+      ) : threads.length === 0 ? (
+        <div className="blankslate">{filter === 'publish' ? <>No comments on {where}'s PRs are marked for the GitHub PR. Tick <strong>For the GitHub PR</strong> on a thread, or when you write one, and the agent posts it when it publishes the stack.</> : <>No open threads on {where}'s PRs.</>}</div>
       ) : (
         <div className="timeline">
           {threads.map((e) => {
@@ -132,7 +168,7 @@ function CommentsTabItem({ project, entry: e, commit: c, group, repo, actions, f
   const a = t.anchor;
   const context = a && t.line && !t.outdated ? <AnchorSnippet anchor={{ ...a, side: t.side ?? a.side, line: t.line, start_line: t.start_line, start_side: t.start_side }} /> : undefined;
   return (
-    <div className={`timeline-item comments-tab-item ${t.resolved ? 'is-resolved' : ''}`}>
+    <div className={`timeline-item comments-tab-item ${t.resolved ? 'is-resolved' : ''} ${t.publish ? 'is-publish' : ''}`}>
       <Avatar author={first?.author ?? 'unknown'} size={40} />
       <div className="timeline-review">
         <div className="timeline-review-header">

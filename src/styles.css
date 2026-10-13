@@ -45,6 +45,9 @@
   --ready: #1f883d;
   --published: #0969da;
   --merged: #8250df;
+  /* threads marked for the GitHub PR (`publish: true`): teal, unlike resolved (green), outdated (yellow), merged (purple) */
+  --publish: #1b7c83;
+  --publish-subtle: #e0f5f6;
 }
 
 * { box-sizing: border-box; }
@@ -1108,6 +1111,8 @@ a.header-project:hover { color: #f6d29b; }
     --stack-orange: #f0883e;
     --stack-pink: #f778ba;
     --stack-teal: #39c5cf;
+    --publish: #39c5cf;
+    --publish-subtle: rgba(57, 197, 207, 0.12);
     --stack-red: #f85149;
     --stack-yellow: #d29922;
     --stack-gray: #6e7681;
@@ -1426,6 +1431,27 @@ a.header-project:hover { color: #f6d29b; }
 /* while dragging: no text selection anywhere (the diff's shadow DOM inherits it), and the cursor stays put */
 body.is-resizing-sidebar { user-select: none; -webkit-user-select: none; cursor: col-resize; }
 body.is-resizing-sidebar * { cursor: col-resize !important; }
+
+/* ---------- threads marked for the GitHub PR (`publish: true`) ---------- */
+.Label--publish { display: inline-flex; align-items: center; gap: 4px; color: var(--publish); border-color: var(--publish); background: var(--publish-subtle); }
+a.Label--publish { text-decoration: none; }
+a.Label--publish:hover { text-decoration: underline; }
+.Label--publish.is-posted { border-style: dashed; }
+.timeline-comment .comment-header .Label--publish { font-size: 11px; line-height: 16px; padding: 0 6px; }
+.thread.is-publish { border-color: var(--publish); box-shadow: inset 3px 0 0 var(--publish); }
+.thread-publish-bar { display: flex; align-items: center; gap: 8px; padding: 6px 16px; font-size: 12px; color: var(--fg-muted); background: var(--publish-subtle); border-bottom: 1px solid var(--border-muted); }
+.thread-publish-bar .Label { font-size: 11px; line-height: 16px; padding: 0 6px; flex: none; }
+.general-thread:has(> .timeline-comment .Label--publish) > .timeline-comment { border-color: var(--publish); box-shadow: inset 3px 0 0 var(--publish); }
+.thread-footer-actions { align-items: center; gap: 12px; }
+.publish-toggle { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--fg-muted); cursor: pointer; user-select: none; white-space: nowrap; }
+.publish-toggle input { margin: 0; accent-color: var(--publish); cursor: pointer; }
+.publish-toggle.is-on, .publish-toggle.is-posted { color: var(--publish); font-weight: 600; }
+.publish-toggle.is-posted { cursor: default; }
+.publish-toggle.is-posted a { color: inherit; }
+.publish-notice { font-size: 12px; color: var(--publish); padding: 0 2px 6px; }
+.comments-filter { display: flex; align-items: center; gap: 6px; margin: 0 0 12px; flex-wrap: wrap; }
+.comments-filter .btn.is-publish.selected { color: var(--publish); box-shadow: inset 0 0 0 1px var(--publish); }
+.comments-filter-note { font-size: 12px; margin-left: 6px; }
 
 /* ---------- foldable threads in Files changed (ThreadView's `fold`, threadFold.ts) ---------- */
 .thread-fold {

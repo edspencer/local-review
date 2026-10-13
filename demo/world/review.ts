@@ -37,6 +37,9 @@ interface ThreadSpec {
   line?: string;
   to?: string;
   resolved?: boolean;
+  /** marked for the real GitHub PR (and, once posted, where it went) */
+  publish?: boolean;
+  published?: { url: string; id: number; at: string };
   comments: C[];
 }
 
@@ -111,6 +114,8 @@ export function buildDataHome(repos: Repos, repoDir: (name: string) => string, o
       Object.assign(o, { path: t.file, side: 'right', line: end, ...(end > line ? { start_line: line } : {}) });
     }
     o.resolved = t.resolved ?? false;
+    if (t.publish) o.publish = true;
+    if (t.published) o.published = t.published;
     o.comments = t.comments.map((c, i) => ({ id: id('c', `${tid}/${i}`), author: c.by ?? REVIEWER, created: c.at, body: c.body.replace(/\n*$/, '\n') }));
     return o;
   };
@@ -318,6 +323,11 @@ Promotion runs inside the cancel transaction, holding the class lock, so two can
           { by: 'claude', at: at('2026-09-14 17:04'), body: 'Added to the doc comment on `MemberWaitlist`: "Position counts only the people still waiting ahead of them."' },
         ],
       }),
+      thread(api, 'f5', 'gh-note', {
+        publish: true,
+        published: { url: `${prUrl('orchard-api', 120)}#pullrequestreview-2201`, id: 2201, at: at('2026-09-15 10:20') },
+        comments: [{ at: at('2026-09-14 17:12'), body: "For reviewers: the position is computed on read, so there's no migration to backfill. @june, the members' app shows it as \"3rd in line\"." }],
+      }),
     ],
   });
 
@@ -385,6 +395,17 @@ Promotion runs inside the cancel transaction, holding the class lock, so two can
           },
         ],
       }),
+      thread(api, 'f6', 'accept-note', {
+        file: promote,
+        line: 'func (s *Service) AcceptOffer(ctx context.Context, entryID, memberID int64) (store.Booking, error) {',
+        publish: true,
+        comments: [
+          {
+            at: at('2026-09-17 09:30'),
+            body: "For reviewers: accepting is one `UPDATE … WHERE status = 'offered'`, so a tap that comes after the hold expired gets a 410 instead of a second booking. The race is covered in `promote_test.go`.",
+          },
+        ],
+      }),
       thread(api, 'f6', 'hold', {
         file: promote,
         line: 'const HoldWindow = 2 * time.Hour',
@@ -437,6 +458,7 @@ Promotion runs inside the cancel transaction, holding the class lock, so two can
       thread(api, 'f8', 'copy', {
         file: 'internal/notify/messages.go',
         line: 'Good news: a spot in %s with %s (%s) is yours if you want it.',
+        publish: true,
         comments: [
           { at: at('2026-09-18 10:15'), body: '"is yours if you want it" could read as *already booked*. Let\'s get June to look at the wording before this goes up; the web banner has the same sentence.' },
         ],

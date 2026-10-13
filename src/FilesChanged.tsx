@@ -5,6 +5,7 @@ import type { FileData, Review, Thread } from './api';
 import { CommentForm, ThreadView, type ThreadActions } from './Comments';
 import { NO_FOLDS, isFolded, reconcileFolds, setFolded, type FoldState } from './threadFold';
 import { isTyping, useLocalStorage } from './util';
+import { isOpen as isOpenThread } from '../shared/threads';
 
 export const LARGE_DIFF_LINES = 800;
 
@@ -83,7 +84,7 @@ export interface FilesChangedProps {
   files: FileData[];
   review: Review;
   actions: ThreadActions;
-  newThread: (d: Draft, body: string) => Promise<unknown>;
+  newThread: (d: Draft, body: string, publish: boolean) => Promise<unknown>;
   setViewed: (path: string, viewed: boolean) => Promise<unknown>;
   focusFile: string | null;
   /** ?thread=… with ?file=…: open that thread and scroll to it rather than to the top of its file */
@@ -382,12 +383,12 @@ function FileTree({ files, threadsByPath, viewed, active, onPick }: { files: Fil
 }
 
 function TreeFile({ f, depth, label, threads, viewed, active, onPick }: { f: FileData; depth: number; label: string; threads?: Thread[]; viewed: boolean; active: boolean; onPick: (p: string) => void }) {
-  const open = threads?.filter((t) => !t.resolved).length ?? 0;
+  const open = threads?.filter(isOpenThread).length ?? 0;
   return (
     <button className={`tree-row tree-file ${active ? 'active' : ''} ${viewed ? 'is-viewed' : ''}`} style={{ paddingLeft: 8 + depth * 14 + 16 }} onClick={() => onPick(f.path)} title={`${f.path}${viewed ? ' (viewed)' : ''}`}>
       <Octicon name="file" className="file-icon" />
       <span className="tree-name">{label}</span>
-      {threads && threads.length > 0 && <span className={`tree-comments ${open ? '' : 'all-resolved'}`} title={`${threads.length} thread(s), ${open} unresolved`}>💬 {threads.length}</span>}
+      {threads && threads.length > 0 && <span className={`tree-comments ${open ? '' : 'all-resolved'}`} title={`${threads.length} thread(s), ${open} open`}>💬 {threads.length}</span>}
       {viewed ? <Octicon name="check" className="tree-viewed" /> : <StatusIcon status={f.status} />}
     </button>
   );
@@ -563,7 +564,7 @@ interface FileCardProps {
   draft: Draft | null;
   setDraft: (d: Draft | null) => void;
   actions: ThreadActions;
-  newThread: (d: Draft, body: string) => Promise<unknown>;
+  newThread: (d: Draft, body: string, publish: boolean) => Promise<unknown>;
 }
 
 const FileCard = memo(function FileCard(p: FileCardProps) {
@@ -571,7 +572,7 @@ const FileCard = memo(function FileCard(p: FileCardProps) {
   const [forceLoad, setForceLoad] = useState(false);
   const isPureRename = (f.status === 'renamed' || f.status === 'copied') && f.additions === 0 && f.deletions === 0 && !f.binary;
   const renderable = !f.binary && !f.tooLarge && !isPureRename && (f.oldContent !== null || f.newContent !== null);
-  const unresolved = p.threads.filter((t) => !t.resolved).length;
+  const unresolved = p.threads.filter(isOpenThread).length;
 
   let content: ReactNode;
   if (!open) content = null;
@@ -620,7 +621,7 @@ const FileCard = memo(function FileCard(p: FileCardProps) {
         {f.binary && <span className="Label">binary</span>}
         <span className="spacer" />
         {p.threads.length > 0 && (
-          <span className={`file-comment-count ${unresolved ? '' : 'all-resolved'}`} title={`${p.threads.length} thread(s), ${unresolved} unresolved`}>💬 {p.threads.length}</span>
+          <span className={`file-comment-count ${unresolved ? '' : 'all-resolved'}`} title={`${p.threads.length} thread(s), ${unresolved} open`}>💬 {p.threads.length}</span>
         )}
         <DiffStat add={f.additions} del={f.deletions} />
         <label className={`viewed-toggle ${p.viewed ? 'checked' : ''}`}>
@@ -806,9 +807,10 @@ function DiffBody({ file: f, threads, diffStyle, draft, setDraft, actions, newTh
                   submitLabel="Add comment"
                   autoFocus
                   compact
+                  publishable
                   onCancel={() => { setDraft(null); setSel(null); }}
-                  onSubmit={async (body) => {
-                    await newThread(a.metadata.draft!, body);
+                  onSubmit={async (body, publish) => {
+                    await newThread(a.metadata.draft!, body, publish);
                     setDraft(null);
                     setSel(null);
                   }}

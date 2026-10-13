@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
 import { atomicWrite, renameToBak } from './safefs.js';
+import { isOpen } from '../shared/threads.js';
 import { isMixed, makeAnchor, placeThread, type Anchor, type DiffFile } from './anchors.js';
 
 export interface Comment {
@@ -26,8 +27,20 @@ export interface Thread {
   start_side?: 'left' | 'right';
   resolved: boolean;
   outdated?: boolean;
+  /** meant for the real GitHub PR: the agent posts it when it publishes the stack, and doesn't answer it here */
+  publish?: boolean;
+  /** written by the agent once it has posted the thread to GitHub */
+  published?: Published;
   anchor?: Anchor;
   comments: Comment[];
+  [k: string]: unknown;
+}
+
+/** Where a `publish: true` thread went on GitHub. Only ever the agent's record of what it posted, never read back from GitHub. */
+export interface Published {
+  url: string;
+  id?: number | string;
+  at?: string;
   [k: string]: unknown;
 }
 
@@ -177,6 +190,18 @@ function normAnchor(a: any): Anchor | undefined {
   return out;
 }
 
+function normPublished(p: any): Published | undefined {
+  if (typeof p === 'string' && p.trim()) return { url: p.trim() }; // `published: <url>`, written by hand
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return undefined;
+  const url = str(p.url);
+  if (!url) return undefined;
+  const out: Published = { ...p, url };
+  const at = str(p.at);
+  if (at) out.at = at;
+  else delete out.at;
+  return out;
+}
+
 function normThread(t: any, i: number): Thread {
   // a bare string (or number) in `threads` is a general comment; never drop it
   if (t !== null && t !== undefined && typeof t !== 'object') t = { comments: [{ body: String(t) }] };
@@ -219,6 +244,11 @@ function normThread(t: any, i: number): Thread {
   else delete out.anchor;
   if (t.outdated === true || t.outdated === 'true') out.outdated = true;
   else delete out.outdated;
+  if (t.publish === true || t.publish === 'true') out.publish = true;
+  else delete out.publish;
+  const published = normPublished(t.published);
+  if (published) out.published = published;
+  else if (t.published == null) delete out.published; // anything else unrecognised is kept as written
   delete (out as any).body;
   if (!str(t.id)) autoIds.add(out);
   return out;
@@ -504,7 +534,7 @@ export function toYaml(r: Review): string {
   Object.assign(ordered, rest);
   ordered.viewed = viewed;
   ordered.threads = threads.map((t) => {
-    const { id, path: p, side, line, start_line, start_side, resolved, outdated, anchor, comments, ...trest } = t;
+    const { id, path: p, side, line, start_line, start_side, resolved, outdated, publish, published, anchor, comments, ...trest } = t;
     const o: any = { id };
     if (p) o.path = p;
     if (p && side) o.side = side;
@@ -513,6 +543,8 @@ export function toYaml(r: Review): string {
     if (p && start_line && start_side && start_side !== (side ?? 'right')) o.start_side = start_side;
     o.resolved = resolved;
     if (outdated) o.outdated = true;
+    if (publish) o.publish = true;
+    if (published !== undefined) o.published = published;
     Object.assign(o, trest);
     if (anchor) {
       const { commit: ac, path: ap, old_path, side: as, line: al, start_line: asl, start_side: ass, start_text, text, before, after, ...arest } = anchor;
@@ -620,6 +652,7 @@ export function mutateReview(ctx: ReviewContext, fn: (r: Review) => void): Promi
   });
 }
 
+/** Open threads: unresolved, with a comment, and not meant for GitHub (those aren't for the agent to answer here). */
 export function unresolvedCount(r: Review) {
-  return r.threads.filter((t) => !t.resolved && t.comments.length > 0).length;
+  return r.threads.filter(isOpen).length;
 }

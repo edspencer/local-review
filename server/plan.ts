@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import YAML from 'yaml';
 import { fullPrBody } from '../shared/prText.js';
 import { baseSha, commitBody, isAncestor } from './commits.js';
-import { inspectOrphan, liveCommits } from './context.js';
+import { contextFor, inspectOrphan, liveCommits } from './context.js';
+import { viewReview, type Published, type Thread } from './reviews.js';
 import { loadRefs, reconcileBranch, stripRemote, type BranchInfo } from './branches.js';
 import { loadPrs, prPath, prView, readPrFile, type GithubPr, type LoadedPr } from './prs.js';
 import { loadProject, type LoadedProject, type LoadedRepo } from './projects.js';
@@ -28,7 +29,25 @@ export interface PlanPr {
   images: AssetUse[]; // the project assets the body shows: each one's file here, and its published URL if recorded
   github: GithubPr | null;
   status: PrStatus; // draft / ready (the reviewer's call, prs/ `status:`), or published once `github` is recorded
+  publish_threads: PlanThread[]; // threads the reviewer marked for the GitHub PR (`publish: true`), posted or not
   warnings: string[];
+}
+
+/**
+ * A review thread meant for the GitHub PR: the agent posts it as part of the PR's review when it publishes the stack
+ * (an inline one at its line, a general one in the review's body), then records `published:`.
+ */
+export interface PlanThread {
+  id: string;
+  path: string | null; // null: a general comment, for the review's body
+  line: number | null; // null with a path: a comment on the whole file
+  side: 'left' | 'right' | null; // GitHub's LEFT (the old file) / RIGHT (the new one)
+  start_line: number | null; // a multi-line comment's first line
+  start_side: 'left' | 'right' | null;
+  outdated: boolean; // the commented lines aren't in the PR's diff any more: there's no line to post it on
+  resolved: boolean;
+  comments: { id: string; author: string; created: string | null; body: string }[]; // bodies as for GitHub (published image URLs in place)
+  published: Published | null; // the agent's record of the posted comment; null: not posted yet
 }
 
 export interface Plan {
@@ -146,10 +165,30 @@ async function repoPlan(project: LoadedProject, r: LoadedRepo, onlyStack?: numbe
       if (l?.parseError) w.push(`prs file doesn't parse: ${l.parseError}`);
       // images: GitHub can't show a file on this machine, so each needs a published URL (or a manual upload)
       const { body, assets: images } = resolveAssetRefs(project.cfg.dir, fullPrBody({ intro: project.cfg.description, stackNote: g?.description, body: view.body }));
+      const nBodyImages = images.length;
       for (const a of images) {
         if (a.url) continue;
         if (!a.file) w.push(`image assets/${a.name} isn't in the project's assets folder (${assetsDir(project.cfg.dir)}); add it with \`local-review asset add\`, or fix the reference`);
         else w.push(`image assets/${a.name} has no published URL, so GitHub can't show it: drag ${a.file} into the PR on GitHub (which replaces the reference), or record a URL with \`local-review asset url ${project.cfg.slug} ${a.name} <url>\``);
+      }
+      // threads marked for the GitHub PR: each one's comments, as they'd be posted
+      const publish: PlanThread[] = [];
+      const rv = await viewReview(contextFor(r.reviewsDir, r.cfg, r.info, c)).catch(() => null);
+      if (rv?.parseError) w.push(`review file doesn't parse, so any comments marked for GitHub aren't listed: ${rv.parseError}`);
+      for (const t of rv && !rv.parseError ? rv.review.threads.filter((x) => x.publish && x.comments.length) : []) {
+        const pt = planThread(project.cfg.dir, t, images);
+        publish.push(pt);
+        if (pt.published) continue;
+        const where = pt.path ? `${pt.path}${pt.line ? `:${pt.line}` : ''}` : 'general';
+        if (pt.outdated) w.push(`comment for GitHub ${t.id} (${where}) is outdated: its lines aren't in this diff any more, so post it in the review's body (or ask the reviewer)`);
+      }
+      const unposted = publish.filter((x) => !x.published).length;
+      if (unposted && l?.override.github) w.push(`${unposted} comment${unposted === 1 ? '' : 's'} marked for GitHub ${unposted === 1 ? "isn't" : "aren't"} posted on PR #${l.override.github.number} yet`);
+      for (const a of images.slice(nBodyImages)) {
+        if (a.url) continue;
+        w.push(a.file
+          ? `image assets/${a.name} in a comment for GitHub has no published URL, so GitHub can't show it: record one with \`local-review asset url ${project.cfg.slug} ${a.name} <url>\`, or leave it to the reviewer`
+          : `image assets/${a.name} in a comment for GitHub isn't in the project's assets folder`);
       }
       const pr: PlanPr = {
         repo: name,
@@ -167,6 +206,7 @@ async function repoPlan(project: LoadedProject, r: LoadedRepo, onlyStack?: numbe
         images,
         github: l?.override.github ?? null,
         status: prStatus(l?.override),
+        publish_threads: publish,
         warnings: w,
       };
       out.push(pr);
@@ -188,6 +228,27 @@ async function repoPlan(project: LoadedProject, r: LoadedRepo, onlyStack?: numbe
       warnings.push(`${name} ${stackLabel(ps[0])}: ${drafts.length} of ${ps.length} PR${ps.length === 1 ? ' is' : 's are'} still draft (${drafts.map((p) => `PR #${p.number}`).join(', ')}); only the reviewer marks PRs ready`);
   }
   return { prs: out, warnings, landed };
+}
+
+/** One `publish: true` thread for the plan; any images its comments show are added to `images` (once each). */
+function planThread(projectDir: string, t: Thread, images: AssetUse[]): PlanThread {
+  const inline = !!(t.path && t.line);
+  return {
+    id: t.id,
+    path: t.path ?? null,
+    line: inline ? t.line! : null,
+    side: inline ? (t.side ?? 'right') : null,
+    start_line: inline ? (t.start_line ?? null) : null,
+    start_side: inline && t.start_line ? (t.start_side ?? t.side ?? 'right') : null,
+    outdated: !!t.outdated,
+    resolved: t.resolved,
+    comments: t.comments.map((c) => {
+      const { body, assets } = resolveAssetRefs(projectDir, c.body);
+      for (const a of assets) if (!images.some((x) => x.name === a.name)) images.push(a);
+      return { id: c.id, author: c.author, created: c.created, body };
+    }),
+    published: t.published ?? null,
+  };
 }
 
 /**
@@ -284,6 +345,20 @@ export function planMarkdown(plan: Plan): string {
     o.push('', 'Body:', '');
     const f = fence(p.body);
     o.push(`${f}markdown`, p.body, f, '');
+    if (p.publish_threads.length) {
+      const left = p.publish_threads.filter((t) => !t.published).length;
+      o.push(`Comments for the GitHub PR (${left} to post${left < p.publish_threads.length ? `, ${p.publish_threads.length - left} posted` : ''}):`, '');
+      for (const t of p.publish_threads) {
+        const where = !t.path ? 'general (the review body)' : !t.line ? `\`${t.path}\` (the whole file)` : `\`${t.path}\` ${t.start_line ? `lines ${t.start_side !== t.side ? `${t.start_side} ` : ''}${t.start_line} to ${t.line}` : `line ${t.line}`} (${t.side === 'left' ? 'LEFT, the old file' : 'RIGHT'})`;
+        o.push(`- Thread \`${t.id}\`, ${where}${t.outdated ? ' **(outdated: not in the diff any more)**' : ''}${t.published ? `: posted ${t.published.url}` : ''}`);
+        for (const c of t.comments) {
+          const text = c.body.replace(/\n+$/, '');
+          const cf = fence(text);
+          o.push('', `  ${c.author}${c.created ? `, ${c.created}` : ''}:`, '', `  ${cf}markdown`, ...text.split('\n').map((x) => (x ? `  ${x}` : '')), `  ${cf}`);
+        }
+        o.push('');
+      }
+    }
   }
   if (!plan.prs.length) o.push('(no PRs in scope)', '');
   return o.join('\n');
