@@ -7,9 +7,7 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
-## Coming in 0.8.0: llms.txt for agents, and a startup banner
-
-Not released yet.
+## 0.8.0: llms.txt for agents, and a startup banner
 
 - **`/llms.txt`, for coding agents.** Tell your agent "Read http://localhost:5622/llms.txt and create a local-review
   project for my feature-xyz branch on ~/code/my-git-project" and it has what it needs: the rules, the recipe, the

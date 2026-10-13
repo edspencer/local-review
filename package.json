@@ -1,6 +1,6 @@
 {
   "name": "local-review",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Review a stack of local commits like a stack of GitHub PRs, before any of them is pushed. Comments live in plain YAML files your coding agent can read and reply to.",
   "keywords": [
     "code-review",
