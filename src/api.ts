@@ -269,6 +269,21 @@ export interface Review {
   previous_commits?: string[];
 }
 
+/** One thread in the Comments tab (GET /api/projects/:p/threads): the PR it's on, the thread, its last update. */
+export interface ThreadEntry {
+  repo: string;
+  sha: string;
+  position: number;
+  thread: Thread;
+  updated: string | null;
+}
+
+export interface ThreadsResponse {
+  threads: ThreadEntry[];
+  /** review files that aren't valid YAML: their threads are missing until they're fixed */
+  problems: { repo: string; sha: string; file: string; error: string }[];
+}
+
 export interface CommitRef {
   repo: string;
   sha: string;
@@ -331,6 +346,9 @@ export const api = {
   addExamples: () => req<ExamplesResult>('POST', '/api/examples', {}),
   removeExamples: () => req<ExamplesResult>('POST', '/api/examples/remove', {}),
   project: (slug: string) => req<ProjectData>('GET', `/api/projects/${enc(slug)}`),
+  /** every thread of the project, or of one repo, or one stack (its ref as in the stack page's URL) */
+  threads: (slug: string, scope?: { repo: string; stack?: string }) =>
+    req<ThreadsResponse>('GET', `/api/projects/${enc(slug)}/threads${scope ? `?repo=${enc(scope.repo)}${scope.stack !== undefined ? `&stack=${enc(scope.stack)}` : ''}` : ''}`),
   commit: (l: Loc, sha: string) => req<CommitResponse>('GET', base(l, sha)),
   review: (l: Loc, sha: string) => req<Review>('GET', `${base(l, sha)}/review`),
   pr: (l: Loc, sha: string) => req<PrInfo>('GET', `${base(l, sha)}/pr`),

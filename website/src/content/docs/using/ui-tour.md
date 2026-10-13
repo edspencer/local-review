@@ -1,6 +1,6 @@
 ---
 title: A tour of the UI
-description: The root page, header, sidebar, PR header, tabs, the project and stack pages, and what each shows.
+description: The root page, header, sidebar, PR header, tabs, the project and stack pages (with their Comments tabs), and what each shows.
 ---
 
 Local Review's layout follows GitHub's pull-request page closely, so it should feel familiar: a sidebar of PRs, and for
@@ -117,15 +117,17 @@ header and stepper live.
 
 `/<project>` (the link at the top of the sidebar, the first breadcrumb, or the project title in the header) is laid out
 like a PR page: a plum `PROJECT` label and the title, a line with the project's totals (follow-on stacks and merged PRs
-left out and mentioned, as in the picture) and where its `project.yaml` is, then two tabs:
+left out and mentioned, as in the picture) and where its `project.yaml` is, then three tabs:
 
 - **Conversation:** the project intro, as the first comment box, with Copy and Edit (the same editor, image
   attachment and "changed elsewhere" notice as a PR description). Below it, **Start with #1 …**, a link to the first
   PR to review.
+- **Comments:** every comment thread on every PR of the project, in all its repos and stacks, published or not. Its
+  counter is the number of open threads. See [The Comments tab](#the-comments-tab).
 - **Stack:** the [stack picture](/using/stack-pictures/) for the whole project, nothing highlighted, with **Show
   title**, **Copy image**, **Download PNG** and **SVG** (and, in a linked project, **Show *predecessor***).
 
-![The project page's header: a plum PROJECT label, the title, the totals and where its project.yaml is, above the Conversation and Stack tabs](../../../assets/shots/crop-project-tabs.png)
+![The project page's header: a plum PROJECT label, the title, the totals and where its project.yaml is, above the Conversation, Comments and Stack tabs](../../../assets/shots/crop-project-tabs.png)
 
 It doesn't list the repos, stacks and PRs: the sidebar does that, and each stack's title there opens its stack page.
 A [linked project](/concepts/linked-projects/) has a bar above the title: "← Builds on *…*" (with that project's
@@ -146,6 +148,8 @@ breadcrumb) is one stack, laid out like a PR page:
   as the first comment box, with Copy and Edit (the same editor, image attachment and "changed elsewhere" notice as a
   PR description). An empty note offers **Add a stack note**. Below it, **Start with #n …**, a link to the stack's first
   PR.
+- **Comments:** every comment thread on the stack's PRs, with the count of open ones on the tab. See
+  [The Comments tab](#the-comments-tab).
 - **Stack:** the [stack picture](/using/stack-pictures/) of just this stack, with the same **Show title**, **Copy
   image**, **Download PNG** and **SVG**.
 
@@ -154,6 +158,30 @@ Its PRs aren't listed again: the sidebar shows them, in the stack's box. Unstack
 `project.yaml` have one.
 
 ![The stack page: STACK 3 in purple, its readiness tally and branches, the project context and the stack note](../../../assets/shots/stack-page.png)
+
+## The Comments tab
+
+The project and stack pages' **Comments** tab gathers the threads of many PRs in one list: general comments from
+each PR's Conversation tab, and inline and file comments with their replies. Every commit in the sidebar counts, so
+PRs that haven't been published yet are in it too. (The project intro and the stack notes aren't threads: they stay on
+the Conversation tab.)
+
+- **The order:** open threads first, then by last update (the newest comment or reply, or an edit), newest first.
+  A thread you resolve or reply to here stays where it is until you leave the tab, so it doesn't jump away from under
+  the cursor.
+- **Each thread** looks as it does in Files changed: who started it, when, and which PR it's on (`#5 Show your
+  waitlist position…`, which opens that PR). An inline comment also has its `file:line`, which opens Files changed
+  scrolled to the thread, and the lines it's on. On the project page, each thread also shows its repo and stack, and
+  the stack's name opens that stack's Comments tab.
+- **Folding:** resolved and outdated threads start folded to one row, as in Files changed. The row shows
+  Resolved / Outdated, the line, who started the thread and how it begins. Click it to open the thread.
+- **Reply, resolve, edit and delete** work as they do on the PR. They write the same review file.
+
+It's live: a reply an agent writes into a review file, or a thread resolved on a PR page, shows up here (and in the
+counter) without a reload. A review file that isn't valid YAML is named in a warning above the list, and its threads
+are left out until it's fixed.
+
+![A stack page's Comments tab: open threads from two of its PRs, each with the PR's number and title, the file and line, the commented code and the comments](../../../assets/shots/stack-comments.png "A stack's Comments tab. Each thread links to its PR, and to its line in Files changed.")
 
 ## URLs
 
@@ -164,7 +192,8 @@ Its PRs aren't listed again: the sidebar shows them, in the stack's box. Unstack
 | `/<project>/<repo>` | The repo's first commit. |
 | `/<project>/<repo>/<sha>` | A PR (a short or full sha). |
 | `/<project>/<repo>/stacks/<ref>` | A stack page. `<ref>` is the stack's number in `stacks:` and its title as a slug (`2-joining-and-leaving`), or `unstacked` / `branch` for the implicit groups. |
-| `…?tab=files` / `…?tab=stack` | The Files changed or Stack tab (project and stack pages have Conversation and Stack). Add `&file=<path>` to jump to a file. |
+| `…?tab=files` / `…?tab=stack` | A PR's Files changed or Stack tab. Add `&file=<path>` to jump to a file, and `&thread=<id>` as well to jump to a thread in it and open it. On the Conversation tab, `?thread=<id>` jumps to a general thread. |
+| `…?tab=comments` / `…?tab=stack` | The project or stack page's [Comments](#the-comments-tab) or Stack tab. |
 
 Old `/<repo>/<sha>` URLs (from before projects) redirect into the project that has that repo.
 

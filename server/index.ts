@@ -29,6 +29,7 @@ import { THUMB_MAX_W, THUMB_MIN_W, renderStackSvg, renderThumbSvg, scopeModel, s
 import type { PrStatus } from '../shared/readiness.js';
 import { parseStackRef, resolveStackRef } from '../shared/stackRef.js';
 import { agentGuide, llmsFullTxt, llmsTxt, type LlmsInput } from '../shared/llms.js';
+import { collectThreads } from './threads.js';
 
 const app = new Hono();
 
@@ -542,6 +543,27 @@ for (const kind of ['svg', 'png'] as const) {
 }
 
 // ---------------- comments ----------------
+// Every thread on every PR of the project (or of one repo, or one stack: `?repo=<name>&stack=<ref>`, the ref as in
+// a stack page's URL), open ones first, then the most recently updated: the Comments tab. Read-only.
+app.get('/api/projects/:project/threads', async (c) => {
+  const project = await getProject(c.req.param('project'));
+  const repoName = c.req.query('repo');
+  const ref = c.req.query('stack');
+  if (ref !== undefined && repoName === undefined) throw new HttpError(400, '?stack= needs ?repo= as well');
+  let scope: { repo: string; shas?: string[] } | undefined;
+  if (repoName !== undefined) {
+    const repo = findRepo(project, repoName);
+    scope = { repo: repo.cfg.name };
+    if (ref !== undefined) {
+      if (!parseStackRef(ref)) throw new HttpError(400, `bad stack '${ref}' (expected <number>[-<title>], unstacked or branch)`);
+      const found = resolveStackRef(repo.stacks, ref);
+      if (!found) throw new HttpError(404, `repo '${repo.cfg.name}' has no stack '${ref}'`);
+      scope.shas = found.group.shas;
+    }
+  }
+  return c.json(await collectThreads(project, scope));
+});
+
 async function body(c: Context): Promise<any> {
   try {
     return await c.req.json();

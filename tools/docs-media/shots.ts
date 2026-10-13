@@ -163,6 +163,12 @@ export const SHOTS: Shot[] = [
     route: '/waitlists/orchard-api/stacks/3-automatic-promotion',
   },
   {
+    name: 'stack-comments',
+    doc: 'Docs "Using the UI", the Comments tab: every thread on a stack\'s PRs, open ones first, with their PR and line.',
+    route: '/waitlists/orchard-api/stacks/3-automatic-promotion?tab=comments',
+    actions: [{ waitFor: '.comments-tab-item' }],
+  },
+  {
     name: 'welcome',
     doc: 'Docs "Quickstart" / "Using the UI": the first-run welcome page (no projects yet), with Add the example projects.',
     rig: RIGS.empty,
@@ -192,7 +198,7 @@ export const SHOTS: Shot[] = [
   },
   {
     name: 'crop-project-tabs',
-    doc: 'Docs "Using the UI", the project page: its header and the Conversation | Stack tabs.',
+    doc: 'Docs "Using the UI", the project page: its header and the Conversation | Comments | Stack tabs.',
     route: '/waitlists',
     viewport: { width: 1100, height: 900 }, // the crop spans the main column: narrow enough to sit at ~1:1 on a docs page
     capture: { selector: ['.project-home .pr-header', '.project-home .tabnav'], pad: 12 },

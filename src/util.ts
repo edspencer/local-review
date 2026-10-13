@@ -2,8 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useState, useSyncExt
 import { tildify } from '../shared/paths';
 
 // ---------- routing (tiny, history API) ----------
-// /<project>/<repo>/<sha>[?tab=files&file=…] is a PR page; /<project>/<repo>/stacks/<ref>[?tab=stack] a stack page
-// (shared/stackRef.ts); /<project>[?tab=stack] the project page. `/<project>/<repo>` opens its first commit; an old
+// /<project>/<repo>/<sha>[?tab=files&file=…&thread=…] is a PR page; /<project>/<repo>/stacks/<ref>[?tab=stack|comments]
+// a stack page (shared/stackRef.ts); /<project>[?tab=stack|comments] the project page. `/<project>/<repo>` opens its first commit; an old
 // `/<repo>/<sha>` URL (from before projects) is redirected by App into the project that has that repo.
 export interface Route {
   project: string | null;
@@ -11,8 +11,10 @@ export interface Route {
   sha: string | null;
   /** a stack page's ref (`2-groundwork`, `unstacked`), '' for `…/stacks/` alone; null: not a stack page */
   stack: string | null;
-  tab: 'conversation' | 'files' | 'stack';
+  tab: 'conversation' | 'files' | 'stack' | 'comments';
   file: string | null;
+  /** a PR page's `?thread=<id>`: scroll to that thread (and open it), on its Conversation or Files changed tab */
+  thread: string | null;
   /** path segments as given, for redirecting old URLs */
   parts: string[];
 }
@@ -26,8 +28,9 @@ function parse(): Route {
     repo: parts[1] ?? null,
     sha: stack === null ? parts[2] ?? null : null,
     stack,
-    tab: q.get('tab') === 'files' ? 'files' : q.get('tab') === 'stack' ? 'stack' : 'conversation',
+    tab: q.get('tab') === 'files' ? 'files' : q.get('tab') === 'stack' ? 'stack' : q.get('tab') === 'comments' ? 'comments' : 'conversation',
     file: q.get('file'),
+    thread: q.get('thread'),
     parts,
   };
 }
@@ -50,20 +53,24 @@ export function useRoute(): Route {
   );
 }
 
-export function routeUrl(project: string, repo: string, sha: string, tab: Route['tab'] = 'conversation', file?: string | null) {
+export function routeUrl(project: string, repo: string, sha: string, tab: Route['tab'] = 'conversation', file?: string | null, thread?: string | null) {
   const q = new URLSearchParams();
   if (tab !== 'conversation') q.set('tab', tab);
   if (file) q.set('file', file);
+  if (thread) q.set('thread', thread);
   const qs = q.toString();
   return `/${encodeURIComponent(project)}/${encodeURIComponent(repo)}/${sha}${qs ? `?${qs}` : ''}`;
 }
 
-const withTab = (path: string, tab: Route['tab']) => (tab === 'stack' ? `${path}?tab=stack` : path);
+/** A PR page's tab for a link from wherever you are: PRs have no Comments tab, so that one opens Conversation. */
+export const prTab = (tab: Route['tab']): Route['tab'] => (tab === 'comments' ? 'conversation' : tab);
 
-/** The project page: its intro (Conversation) or the whole project's stack picture. */
+const withTab = (path: string, tab: Route['tab']) => (tab === 'stack' || tab === 'comments' ? `${path}?tab=${tab}` : path);
+
+/** The project page: its intro (Conversation), every thread in it (Comments) or the whole project's stack picture. */
 export const projectUrl = (project: string, tab: Route['tab'] = 'conversation') => withTab(`/${encodeURIComponent(project)}`, tab);
 
-/** A stack page, by its ref (shared/stackRef.ts): its note (Conversation) or its stack picture. */
+/** A stack page, by its ref (shared/stackRef.ts): its note (Conversation), its threads (Comments) or its stack picture. */
 export const stackUrl = (project: string, repo: string, ref: string, tab: Route['tab'] = 'conversation') =>
   withTab(`/${encodeURIComponent(project)}/${encodeURIComponent(repo)}/stacks/${encodeURIComponent(ref)}`, tab);
 

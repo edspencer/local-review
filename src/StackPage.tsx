@@ -1,9 +1,11 @@
 // `/<project>/<repo>/stacks/<ref>`: one PR stack, laid out like a PR page. Conversation has the project context and
-// the stack's note (editable, with images); Stack has the picture of just this stack. Its PRs aren't listed here:
+// the stack's note (editable, with images); Comments every thread on the stack's PRs; Stack the picture of just this
+// stack. Its PRs aren't listed here:
 // the sidebar already shows them, under this stack's title.
 import { useEffect, useMemo } from 'react';
 import { stackColor, type CommitSummary, type ProjectData, type RepoData, type StackGroup } from './api';
 import { Octicon } from './Comments';
+import { CommentsTab, openThreads } from './CommentsTab';
 import { ContextBoxes, StackNoteText, canHaveNote } from './ProjectText';
 import { FollowOnBadge, ReadinessBadge } from './Readiness';
 import { Crumbs, stackLabel, stackTally } from './Stacks';
@@ -18,7 +20,7 @@ export const STACK_ICON = 'M7.122.392a1.75 1.75 0 0 1 1.756 0l5.003 2.902c.83.48
 export function StackPage({ project, repo, route, version }: { project: ProjectData; repo: RepoData; route: Route; version: string }) {
   const ref = route.stack ?? '';
   const found = resolveStackRef(repo.stacks, ref);
-  const tab = route.tab === 'stack' ? 'stack' : 'conversation';
+  const tab = route.tab === 'stack' || route.tab === 'comments' ? route.tab : 'conversation';
   // a renamed or reordered stack: follow it to its ref now (the number finds it, the title notices the move)
   useEffect(() => {
     if (found && found.ref !== ref) navigate(stackUrl(project.slug, repo.name, found.ref, tab), true);
@@ -54,7 +56,7 @@ export function StackPage({ project, repo, route, version }: { project: ProjectD
   const bySha = new Map(repo.commits.map((c) => [c.sha, c]));
   const commits = g.shas.map((s) => bySha.get(s)).filter((c): c is CommitSummary => !!c);
   const at = all.findIndex((x) => x.repo === repo.name && x.g.index === g.index);
-  const go = (t: 'conversation' | 'stack') => navigate(stackUrl(project.slug, repo.name, found.ref, t));
+  const go = (t: 'conversation' | 'comments' | 'stack') => navigate(stackUrl(project.slug, repo.name, found.ref, t));
   const to = (x: { repo: string; g: StackGroup } | undefined) => x && navigate(stackUrl(project.slug, x.repo, stackRef(x.g), tab));
   const prev = all[at - 1];
   const next = all[at + 1];
@@ -84,6 +86,9 @@ export function StackPage({ project, repo, route, version }: { project: ProjectD
         <button className={`tabnav-tab ${tab === 'conversation' ? 'selected' : ''}`} onClick={() => go('conversation')} title="The stack's note, with the project context above it">
           💬 Conversation
         </button>
+        <button className={`tabnav-tab ${tab === 'comments' ? 'selected' : ''}`} onClick={() => go('comments')} title="Every comment thread on this stack's PRs, open ones first">
+          🗨 Comments <span className="Counter" title="Open threads">{openThreads(commits)}</span>
+        </button>
         <button className={`tabnav-tab ${tab === 'stack' ? 'selected' : ''}`} onClick={() => go('stack')} title="A picture of this stack, to copy or download">
           ▤ Stack
         </button>
@@ -95,7 +100,9 @@ export function StackPage({ project, repo, route, version }: { project: ProjectD
         )}
       </div>
 
-      {tab === 'stack' ? (
+      {tab === 'comments' ? (
+        <CommentsTab project={project} scope={{ repo, group: g, ref: found.ref }} />
+      ) : tab === 'stack' ? (
         commits.length ? (
           <StackPicture
             base={`/api/projects/${encodeURIComponent(project.slug)}/repos/${encodeURIComponent(repo.name)}/stacks/${encodeURIComponent(found.ref)}/stack`}
