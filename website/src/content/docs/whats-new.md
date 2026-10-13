@@ -7,9 +7,7 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
-## Coming in 0.9.0: every thread in one place, comments for GitHub, and drafts that survive a reload
-
-Not released yet.
+## 0.9.0: every thread in one place, comments for GitHub, and drafts that survive a reload
 
 - **A Comments tab on the project and stack pages.** Every comment thread on every PR there, including PRs that aren't
   published yet, in one list: open ones first, then the most recently updated. Each one shows which PR it's on, and
