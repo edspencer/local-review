@@ -7,6 +7,16 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
+## Coming in 0.9.0: every thread in one place
+
+Not released yet.
+
+- **A Comments tab on the project and stack pages.** Every comment thread on every PR there, including PRs that aren't
+  published yet, in one list: open ones first, then the most recently updated. Each one shows which PR it's on, and
+  an inline comment's `file:line` opens Files changed scrolled to it. Resolved and outdated threads start folded, as in
+  Files changed, and you can reply and resolve from the list. The tab's counter is the number of open threads, and it
+  all updates live. See [The Comments tab](/using/ui-tour/#the-comments-tab).
+
 ## 0.8.0: llms.txt for agents, and a startup banner
 
 - **`/llms.txt`, for coding agents.** Tell your agent "Read http://localhost:5622/llms.txt and create a local-review

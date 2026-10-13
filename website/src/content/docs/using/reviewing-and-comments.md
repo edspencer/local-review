@@ -1,6 +1,6 @@
 ---
 title: Reviewing & comments
-description: Read diffs, leave general and inline comments, resolve threads and mark files as viewed.
+description: Read diffs, leave general and inline comments, resolve threads, mark files as viewed, and see every thread of a stack or project in one place.
 ---
 
 Reviewing works the way it does on GitHub: read the diff, comment on a line or a range of lines, reply, resolve, and
@@ -56,6 +56,15 @@ shows the original lines. See [Following rebases](/concepts/following-rebases/).
 The Conversation tab holds the PR's general threads (those without a file and line), with the same Reply and Resolve.
 Outdated threads show there too, with an "Outdated" label and their original code. Resolved threads fold, as on
 GitHub: each run of them becomes one **N resolved conversations** row that opens them again.
+
+## Every thread in one place
+
+To see the threads of a whole stack or project at once, open the **Comments** tab on its
+[stack page](/using/ui-tour/#the-stack-page) or [project page](/using/ui-tour/#the-project-page). It lists every
+thread on every PR there, published or not: open ones first, then the most recently updated. The tab's counter is the
+number of open threads. Each thread says which PR it's on, and an inline one says its `file:line`, which opens Files
+changed at that thread. Resolved and outdated threads start folded, as in Files changed. You can reply, resolve, edit
+and delete there too, and an agent's replies show up live. See [The Comments tab](/using/ui-tour/#the-comments-tab).
 
 ## Who you are
 
