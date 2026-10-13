@@ -28,7 +28,11 @@ It lists each PR in scope, in order, with:
 - the title, and the **exact full body**: project intro, stack note, `---`, PR description, the same as the UI's
   "Full body" button;
 - any recorded `github:` info;
-- the images the body shows (`images[]` in JSON: `name`, `file`, `url`).
+- the images the body shows (`images[]` in JSON: `name`, `file`, `url`), and those in its comments for GitHub;
+- its **comments for the GitHub PR**, the threads the reviewer marked `publish: true` (`publish_threads[]` in JSON:
+  `id`, `path`, `line`, `side`, `start_line`, `start_side`, `outdated`, `resolved`, `comments[]` with `author` and
+  `body`, and `published`, null until you've posted it). `path` null is a general comment; a `path` with `line`
+  null is about the whole file.
 
 It warns about anything that needs fixing first: unresolved `starts_at` selectors, PRs without a branch, `missing`
 and `moved` branches, and stacks that still contain draft PRs (only the reviewer can clear that one, by marking them ready). `--format json` is for scripts, e.g. `jq -r '.prs[0].body'`.
@@ -36,7 +40,9 @@ It also warns when a live PR's recorded `github.base` differs from the plan's ba
 order), and when a prs file with a `github:` record and no `landed:` has a commit that's now in the repo base: it
 landed upstream but wasn't frozen (do that now; "After merges"). And for each image (`assets/<name>`) in a body with
 no published URL, since GitHub can't show a file on this machine ("Images" under "Materializing"). Where a URL is
-recorded, the body already has it in place of `assets/<name>`.
+recorded, the body already has it in place of `assets/<name>`. And for comments for GitHub: one that's outdated
+(its lines aren't in the diff any more, so it goes in the review's body), an image in one with no published URL, and
+a PR that's already on GitHub with comments not posted yet.
 
 In a linked project ("Linked projects") whose range in a repo starts where the predecessor's ends, the first PR there
 is based on the **predecessor's top PR's branch** instead (`base_from: predecessor`; the others are `repo-base` and

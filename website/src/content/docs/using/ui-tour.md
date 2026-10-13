@@ -174,14 +174,20 @@ the Conversation tab.)
   scrolled to the thread, and the lines it's on. On the project page, each thread also shows its repo and stack, and
   the stack's name opens that stack's Comments tab.
 - **Folding:** resolved and outdated threads start folded to one row, as in Files changed. The row shows
-  Resolved / Outdated, the line, who started the thread and how it begins. Click it to open the thread.
-- **Reply, resolve, edit and delete** work as they do on the PR. They write the same review file.
+  Resolved / Outdated / For GitHub, the line, who started the thread and how it begins. Click it to open the thread.
+- **Reply, resolve, edit and delete** work as they do on the PR. They write the same review file, and so does the
+  **For the GitHub PR** box on each thread.
+- **All / Open / For GitHub:** buttons above the list, each with its count, show every thread, only the open ones,
+  or only those [marked for the GitHub PR](/using/reviewing-and-comments/#comments-for-the-github-pr). While some
+  of those aren't posted yet, a note beside the buttons says how many.
 
 It's live: a reply an agent writes into a review file, or a thread resolved on a PR page, shows up here (and in the
 counter) without a reload. A review file that isn't valid YAML is named in a warning above the list, and its threads
 are left out until it's fixed.
 
 ![A stack page's Comments tab: open threads from two of its PRs, each with the PR's number and title, the file and line, the commented code and the comments](../../../assets/shots/stack-comments.png "A stack's Comments tab. Each thread links to its PR, and to its line in Files changed.")
+
+![The Comments tab filtered to For GitHub: two threads with a teal For GitHub label and a teal edge, each with its For the GitHub PR box ticked](../../../assets/shots/stack-comments-publish.png "Filtered to the comments for the GitHub PR. Untick a thread's box to keep it local.")
 
 ## URLs
 

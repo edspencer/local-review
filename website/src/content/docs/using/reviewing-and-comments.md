@@ -57,6 +57,30 @@ The Conversation tab holds the PR's general threads (those without a file and li
 Outdated threads show there too, with an "Outdated" label and their original code. Resolved threads fold, as on
 GitHub: each run of them becomes one **N resolved conversations** row that opens them again.
 
+## Comments for the GitHub PR
+
+Some comments are for the PR's readers on GitHub, not for your agent: a note on why the code is the way it is, a
+question for a colleague. Tick **For the GitHub PR** when you write one (in the Conversation tab's comment box, or
+under a new inline comment), or on any existing thread, beside **Resolve conversation**: on the PR's Conversation
+tab, in Files changed, or in the Comments tab. Untick it to make the thread local again.
+
+- **What it changes:** the thread gets a teal **For GitHub** label and a teal edge, so it stands apart from resolved
+  (green) and outdated (yellow) ones. It isn't an open thread any more: your agent doesn't answer it, and it's left
+  out of the open-thread counters and of the PR's review progress.
+- **Where it goes:** when your agent publishes the stack, it posts these threads as one GitHub review per PR (a
+  "Comment" review, never an approval): inline ones at their lines, general and outdated ones in the review's body.
+  It then records where each went, and the label becomes **On GitHub ↗**, a link to the comment. A reply you add to
+  a marked thread goes with it.
+- **At a glance:** the Comments tab's **For GitHub** button lists them, with a count, and says how many aren't
+  posted yet. `local-review plan` lists them for each PR, with file and line.
+- **Resolving it doesn't stop it going.** To keep a thread off GitHub, untick the box.
+
+Local Review still never talks to GitHub: the mark is a `publish: true` in the review file
+([schema](/reference/comment-files/#threads-for-the-github-pr)), and your agent does the posting
+([how](/agents/publishing-stacked-prs/#comments-for-the-github-pr)). Nothing is ever read back from GitHub.
+
+![A thread marked for the GitHub PR in Files changed: a teal For GitHub label in its header, and the For the GitHub PR box ticked beside Resolve conversation](../../../assets/shots/crop-publish-thread.png "A thread for the GitHub PR. The agent leaves it alone, and posts it when it publishes the stack.")
+
 ## Every thread in one place
 
 To see the threads of a whole stack or project at once, open the **Comments** tab on its
@@ -64,7 +88,8 @@ To see the threads of a whole stack or project at once, open the **Comments** ta
 thread on every PR there, published or not: open ones first, then the most recently updated. The tab's counter is the
 number of open threads. Each thread says which PR it's on, and an inline one says its `file:line`, which opens Files
 changed at that thread. Resolved and outdated threads start folded, as in Files changed. You can reply, resolve, edit
-and delete there too, and an agent's replies show up live. See [The Comments tab](/using/ui-tour/#the-comments-tab).
+and delete there too, and an agent's replies show up live. Its **For GitHub** button lists the
+[comments for the GitHub PR](#comments-for-the-github-pr). See [The Comments tab](/using/ui-tour/#the-comments-tab).
 
 ## Who you are
 

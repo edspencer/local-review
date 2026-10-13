@@ -27,12 +27,15 @@ How to *behave* in a review (reply first, when to resolve, how to fix a commit m
    `GET http://localhost:5622/api/projects/<project>/repos/<repo>/commits/<sha>/review` returns `file` (where they are
    now), `target_file` and `carried_over`. Either file can be edited; the server moves it on its next write.
 
-2. **List the unresolved threads:** those with `resolved: false`, or no `resolved`. For example:
+2. **List the open threads:** those with `resolved: false` (or no `resolved`) and no `publish: true`. For example:
 
    ```sh
    npx yaml --json --single < ~/.local-review/projects/my-feature/reviews/my-service/<sha>.yaml \
-     | jq '.threads[] | select(.resolved != true) | {id, path, line, last: .comments[-1].body}'
+     | jq '.threads[] | select(.resolved != true and .publish != true) | {id, path, line, last: .comments[-1].body}'
    ```
+
+   A thread with `publish: true` is the reviewer's comment **for the real GitHub PR**: don't reply to it or resolve
+   it here. You post it when you publish the stack, then record `published:` (step 8).
 
    Or just read the YAML. `path`/`side`/`line` say what's being discussed, on the file's `commit`. Use
    `git show <commit>` in the reviewed repo (read-only) for the code. If `outdated: true`, the code is gone from this
@@ -58,6 +61,21 @@ How to *behave* in a review (reply first, when to resolve, how to fix a commit m
 7. **Keep the file valid YAML.** If it fails to parse, the UI shows an error and the server refuses to overwrite it
    until it's fixed, so nothing is lost. Write the whole file at once (or via a temp file and a rename).
 
+8. **After posting a `publish: true` thread to GitHub** (only while publishing the stack, see
+   [Publishing stacked PRs](/agents/publishing-stacked-prs/#comments-for-the-github-pr)), record it on the thread,
+   next to `publish: true`:
+
+   ```yaml
+       publish: true
+       published:
+         url: https://github.com/<org>/my-service/pull/123#discussion_r456
+         id: 456
+         at: 2026-10-13T12:00:00Z
+   ```
+
+   Never set or clear `publish` yourself: it's the reviewer's mark. Never copy anything from GitHub into the file
+   except this record of what you posted.
+
 The server watches `~/.local-review/projects/` and pushes changes to the browser over Server-Sent Events
 (`/api/events`), so edits appear within about a second. Fields the server doesn't know about are kept. Missing `id`,
 `created`, `resolved` or `author` fields are tolerated: an unknown author shows as "unknown".
@@ -65,7 +83,7 @@ The server watches `~/.local-review/projects/` and pushes changes to the browser
 :::tip[Server running? Use the API]
 While the server runs, the [HTTP API](/reference/http-api/) does the same with no YAML to get wrong:
 `POST …/threads/<tid>/comments` with `{"author":"claude","body":"…"}` to reply, `PATCH …/threads/<tid>` with
-`{"resolved":true}` to resolve.
+`{"resolved":true}` to resolve, or with `{"published":{"url":"…","id":456}}` to record a posted thread.
 :::
 
 ## Concurrent edits

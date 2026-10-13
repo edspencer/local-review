@@ -199,7 +199,8 @@ project page, sidebar, project list) leave follow-on stacks out and mention them
 (`+1 follow-on stack (2 PRs)`); the API's `GET /api/projects` gives `commitCount` without them and `followOnCount`.
 
 **`reviews/<repo>/<sha>.yaml`.** Its `threads[]` each have an `id`, `resolved`, optional `path`/`side`/`line`, and
-`comments[]` (`author`, `body`).
+`comments[]` (`author`, `body`). A thread with `publish: true` is meant for the real GitHub PR, not for you to answer
+("Handling review threads"); once you've posted it, it gets `published:` (`url`, `id`, `at`).
 
 **`prs/<repo>/<sha>.yaml`.** All fields are optional. Hand-written files need only the fields you set:
 
@@ -233,7 +234,9 @@ their call.** Don't clear it either. Recording `github:` after publishing is wha
 
 **Local Review comments and GitHub comments are entirely separate.** Review threads here are between the reviewer
 and you, locally. Never copy them to GitHub, and never import GitHub review threads or comments into Local Review
-files, not even for merged or historical PRs.
+files, not even for merged or historical PRs. The one exception points outward only: threads the reviewer marked
+**for the GitHub PR** (`publish: true`), which you post as review comments when you publish their stack ("Comments
+for the GitHub PR"), recording only where they went (`published:`).
 
 **Files follow rebases.** A file named after an old sha is re-attached to the new commit by patch-id, then by
 Change-Id, then by **subject**. Landed PRs' files never move and are never taken by another commit. A fixup or amend changes the patch, so the subject is what carries the comments
@@ -270,9 +273,10 @@ J='Content-Type: application/json'
 # all commits: position, stack, title, status, unresolved, branch, github
 curl -s http://localhost:5622/api/projects/$P | jq '.repos[] | {name, commits: [.commits[] | {position, short, title, status, unresolved, branch, github}]}'
 
-curl -s $BASE/review | jq '.threads[] | select(.resolved != true)'                      # open threads
+curl -s $BASE/review | jq '.threads[] | select(.resolved != true and .publish != true)'  # open threads
 curl -s -X POST -H "$J" $BASE/threads/<tid>/comments -d '{"author":"claude","body":"…"}'  # reply
 curl -s -X PATCH -H "$J" $BASE/threads/<tid> -d '{"resolved":true}'                      # resolve
+curl -s -X PATCH -H "$J" $BASE/threads/<tid> -d '{"published":{"url":"…","id":456}}'      # posted to GitHub
 curl -s -X PUT -H "$J" $BASE/pr -d '{"title":"…","body":"…"}'                          # null clears a field
 curl -s -X PUT -H "$J" $BASE/pr -d '{"branch":"me/x"}'                                 # record a branch
 ```
@@ -287,7 +291,7 @@ To find every open thread in a project:
 
 ```sh
 for f in ~/.local-review/projects/$P/reviews/*/*.yaml; do
-  npx yaml --json --single < "$f" | jq -r --arg f "${f##*/reviews/}" '.threads[]? | select(.resolved != true) | "\($f) \(.id) \(.path // "general"):\(.line // "") \(.comments[-1].body | split("\n")[0])"'
+  npx yaml --json --single < "$f" | jq -r --arg f "${f##*/reviews/}" '.threads[]? | select(.resolved != true and .publish != true) | "\($f) \(.id) \(.path // "general"):\(.line // "") \(.comments[-1].body | split("\n")[0])"'
 done
 ```
 
@@ -300,6 +304,9 @@ For each thread:
 - **Leave it open** when it was a question, needed a judgement call, or you did something different from what was
   asked. The reviewer resolves those.
 - **Never delete threads or comments, and never change `id`s.** Don't edit the reviewer's comments.
+- **Leave threads with `publish: true` alone.** They're the reviewer's comments for the real GitHub PR: don't reply,
+  resolve or act on them here (unless the reviewer also asks you to), and never set or clear `publish` yourself. You
+  post them when you publish their stack ("Comments for the GitHub PR"). They don't count as open threads.
 
 ## Fixing a reviewed commit in a stack
 
@@ -367,7 +374,11 @@ It lists each PR in scope, in order, with:
 - the title, and the **exact full body**: project intro, stack note, `---`, PR description, the same as the UI's
   "Full body" button;
 - any recorded `github:` info;
-- the images the body shows (`images[]` in JSON: `name`, `file`, `url`).
+- the images the body shows (`images[]` in JSON: `name`, `file`, `url`), and those in its comments for GitHub;
+- its **comments for the GitHub PR**, the threads the reviewer marked `publish: true` (`publish_threads[]` in JSON:
+  `id`, `path`, `line`, `side`, `start_line`, `start_side`, `outdated`, `resolved`, `comments[]` with `author` and
+  `body`, and `published`, null until you've posted it). `path` null is a general comment; a `path` with `line`
+  null is about the whole file.
 
 It warns about anything that needs fixing first: unresolved `starts_at` selectors, PRs without a branch, `missing`
 and `moved` branches, and stacks that still contain draft PRs (only the reviewer can clear that one, by marking them ready). `--format json` is for scripts, e.g. `jq -r '.prs[0].body'`.
@@ -375,7 +386,9 @@ It also warns when a live PR's recorded `github.base` differs from the plan's ba
 order), and when a prs file with a `github:` record and no `landed:` has a commit that's now in the repo base: it
 landed upstream but wasn't frozen (do that now; "After merges"). And for each image (`assets/<name>`) in a body with
 no published URL, since GitHub can't show a file on this machine ("Images" under "Materializing"). Where a URL is
-recorded, the body already has it in place of `assets/<name>`.
+recorded, the body already has it in place of `assets/<name>`. And for comments for GitHub: one that's outdated
+(its lines aren't in the diff any more, so it goes in the review's body), an image in one with no published URL, and
+a PR that's already on GitHub with comments not posted yet.
 
 In a linked project ("Linked projects") whose range in a repo starts where the predecessor's ends, the first PR there
 is based on the **predecessor's top PR's branch** instead (`base_from: predecessor`; the others are `repo-base` and
@@ -398,8 +411,8 @@ and `stack.follow_on` on each PR.
    the reviewer names one. If it still has draft PRs, say so:
    the reviewer marks them ready (or tells you to go ahead anyway).
 2. **Wait for an explicit go-ahead.**
-3. Publish that one stack (below).
-4. Record what you created, and **report back** with the PR URLs.
+3. Publish that one stack (below), with its comments for the GitHub PR.
+4. Record what you created, and **report back** with the PR URLs and how many comments you posted.
 5. Stop. The next stack waits for the next go-ahead.
 
 This uses the [`gh stack` extension](https://github.com/github/gh-stack) (`gh extension install github/gh-stack`).
@@ -449,6 +462,8 @@ for b in $(jq -r '.prs[].branch.name' /tmp/plan.json); do
     | jq '{github: {number, url, branch: .headRefName, base: .baseRefName}}' \
     | curl -s -X PUT -H "$J" -d @- http://localhost:5622/api/projects/$P/repos/$R/commits/$sha/pr >/dev/null
 done
+
+# 5. the reviewer's comments for the GitHub PR, as one review per PR (see "Comments for the GitHub PR")
 ```
 
 Checked against the docs and the extension's source (October 2026):
@@ -478,6 +493,58 @@ Not verified (needs a live test):
   after a local force-push the repo's "dismiss stale approvals" rule probably applies.
 
 Check `gh stack link --help` before you run it, and if anything differs from the above, tell the reviewer rather than guess.
+
+### Comments for the GitHub PR
+
+The reviewer can mark threads **for the GitHub PR** (`publish: true`): comments meant for the PR's readers on GitHub,
+not for you. The plan lists them per PR (`publish_threads[]`). Post them as part of publishing their stack (step 5),
+after the PRs exist, as **one review per PR** with `event: COMMENT` (never `APPROVE` or `REQUEST_CHANGES`, which are
+the reviewer's call): each inline thread at its line, and general, file-level and outdated ones in the review's
+body. Line numbers are the commit's, and a stacked PR's diff is exactly its commit's, so they match GitHub's. `side`
+`left` is GitHub's `LEFT` (the old file). Post only threads whose `published` is null, and only the reviewer's
+comments (skip any `author: claude` reply).
+
+```sh
+# 5. per PR with comments to post: the review, then record each thread's GitHub comment
+jq -c '.prs[] | select(any(.publish_threads[]; .published == null))' /tmp/plan.json | while read -r pr; do
+  N=$(gh pr view "$(jq -r .branch.name <<<"$pr")" --json number --jq .number)
+  jq '[.publish_threads[] | select(.published == null) | .comments |= map(select(.author != "claude"))] as $t | {
+      commit_id: .commit, event: "COMMENT",
+      body: ([$t[] | select(.line == null or .outdated)
+        | (if .path then "On `\(.path)`\(if .line then " line \(.line)" else "" end):\n\n" else "" end) + ([.comments[].body] | join("\n\n"))]
+        | join("\n\n---\n\n")),
+      comments: [$t[] | select(.line != null and (.outdated | not))
+        | {path, line, side: (.side | ascii_upcase), body: .comments[0].body}
+        + (if .start_line then {start_line, start_side: (.start_side | ascii_upcase)} else {} end)]
+    }' <<<"$pr" > /tmp/review.json
+  gh api "repos/{owner}/{repo}/pulls/$N/reviews" --input /tmp/review.json > /tmp/review-out.json || break
+  RID=$(jq .id /tmp/review-out.json)
+  gh api "repos/{owner}/{repo}/pulls/$N/reviews/$RID/comments" > /tmp/review-comments.json
+  # record where each one went: an inline thread its comment, the others the review
+  jq -c --slurpfile out /tmp/review-out.json --slurpfile cs /tmp/review-comments.json '
+    def norm: sub("\\s+$"; "");
+    .commit as $sha | .publish_threads[] | select(.published == null) | . as $t
+    | (if .line != null and (.outdated | not)
+       then first($cs[0][] | select(.path == $t.path and .line == $t.line and (.body | norm) == ($t.comments[0].body | norm)) | {url: .html_url, id})
+       else {url: $out[0].html_url, id: $out[0].id} end) as $p
+    | {sha: $sha, tid: .id, published: $p}' <<<"$pr" | while read -r x; do
+    curl -s -X PATCH -H "$J" -d "$(jq -c '{published}' <<<"$x")" \
+      "http://localhost:5622/api/projects/$P/repos/$R/commits/$(jq -r .sha <<<"$x")/threads/$(jq -r .tid <<<"$x")" >/dev/null
+  done
+done
+```
+
+- **An inline thread with more than one comment** (the reviewer added to it): the review carries its first comment.
+  Post each later one as a reply, `gh api "repos/{owner}/{repo}/pulls/$N/comments/<id>/replies" -f body=…`, with the
+  `id` you recorded.
+- **GitHub rejects a line** ("pull_request_review_thread.line must be part of the diff"): the review fails as a
+  whole, and nothing is posted. Move that thread into the body (as for outdated ones) and post again.
+- **Check:** re-run the plan. Every posted thread now has `published`, and there's no "not posted" warning. Without the
+  server, write `published:` (`url`, `id`, `at`) into the thread in the review file instead.
+- **Threads marked after a stack went up:** the plan warns for each PR that's on GitHub with comments not posted.
+  Post them the same way (step 5 alone), with the reviewer's go-ahead, as for a stack.
+- The comments go up under the account `gh` is logged in as. Only ever post `publish: true` threads, never read
+  GitHub's comments back into Local Review, and don't change `publish` yourself: it's the reviewer's mark.
 
 ### Images
 
@@ -561,7 +628,8 @@ grep -q '^landed:' "$F" 2>/dev/null || jq -r --arg m "$METHOD" \
 - The landed PRs stay first in the repo, in their stacks, with their numbers; their review and prs files stay where
   they are. Don't remove or regroup the stacks. Once everything has landed, the branch can go (`branch:` is optional
   with `landed:`) and the project is archived automatically. Review threads on landed PRs work as normal, and stay
-  in Local Review: don't carry them to GitHub, and don't import GitHub's.
+  in Local Review: don't carry them to GitHub (only `publish: true` ones go, when their stack is published), and
+  don't import GitHub's.
 - A PR merged without being frozen (you fetched first) can still be frozen: its prs file is where it was, and `gh pr
   view` still has the data. `local-review plan` lists the ones whose commits it can see in the base.
 
@@ -666,6 +734,7 @@ Address my open review threads. First run `npx local-review guide` and follow th
   --update-refs, keeping subjects unchanged;
 - reply in every thread (author: claude) saying what changed and in which commit;
 - resolve only threads that were clear instructions carried out exactly, and leave the rest open;
+- leave threads marked `publish: true` alone: they're for the GitHub PR, posted when the stack is published;
 - never delete threads or comments; don't push or touch GitHub.
 Then check that the threads re-attached, run the plan command and report what's left.
 ```

@@ -7,7 +7,7 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
-## Coming in 0.9.0: every thread in one place
+## Coming in 0.9.0: every thread in one place, and comments for GitHub
 
 Not released yet.
 
@@ -16,6 +16,13 @@ Not released yet.
   an inline comment's `file:line` opens Files changed scrolled to it. Resolved and outdated threads start folded, as in
   Files changed, and you can reply and resolve from the list. The tab's counter is the number of open threads, and it
   all updates live. See [The Comments tab](/using/ui-tour/#the-comments-tab).
+- **Comments for the GitHub PR.** Tick **For the GitHub PR** on a comment, as you write it or later on any thread
+  (Conversation, Files changed or the Comments tab), and it's meant for the real PR rather than your agent: a teal
+  **For GitHub** label, left out of the open-thread counts, and posted by your agent as a GitHub review when it
+  publishes the stack. The Comments tab's **For GitHub** button lists them, and `local-review plan` gives each PR's,
+  with file and line (`publish_threads` in JSON). Local Review still never talks to GitHub: the mark is
+  `publish: true` in the review file, and the agent records where each one went. See
+  [Comments for the GitHub PR](/using/reviewing-and-comments/#comments-for-the-github-pr).
 
 ## 0.8.0: llms.txt for agents, and a startup banner
 
