@@ -7,16 +7,17 @@ import { IntroText, TotalsLine, repoAggregate } from './ProjectText';
 import { repoLabel } from '../shared/repoLabel';
 import { mergeAggregates, summary } from '../shared/totals';
 import { StackPicture } from './StackTab';
+import { CommentsTab, openThreads } from './CommentsTab';
 import { LinksContext, linkTo, navigate, projectUrl, routeUrl, useTilde, type Route } from './util';
 
 /**
  * `/<project>`: the project page, laid out like a PR page. Conversation has the project intro (editable, with
- * images); Stack has the picture of every repo and stack (nothing highlighted). Its repos, stacks and PRs aren't
+ * images); Comments every thread on its PRs, in all its repos and stacks; Stack has the picture of every repo and stack (nothing highlighted). Its repos, stacks and PRs aren't
  * listed here: the sidebar already shows them, and each stack's title there opens its page.
  */
 export function ProjectHome({ project, route, version, summaries }: { project: ProjectData; route: Route; version: string; summaries?: ProjectSummary[] }) {
-  const tab = route.tab === 'stack' ? 'stack' : 'conversation';
-  const go = (t: 'conversation' | 'stack') => navigate(projectUrl(project.slug, t));
+  const tab = route.tab === 'stack' || route.tab === 'comments' ? route.tab : 'conversation';
+  const go = (t: 'conversation' | 'comments' | 'stack') => navigate(projectUrl(project.slug, t));
   // totals leave follow-on stacks out (shared/totals.ts, the same numbers as the picture)
   const total = summary(mergeAggregates(project.repos.map(repoAggregate)), project.repos.length);
   const first = project.repos.flatMap((r) => r.commits.filter((c) => !c.landed).map((c) => ({ repo: r.name, c })))[0];
@@ -54,6 +55,9 @@ export function ProjectHome({ project, route, version, summaries }: { project: P
         <button className={`tabnav-tab ${tab === 'conversation' ? 'selected' : ''}`} onClick={() => go('conversation')} title="The project intro: it starts every full PR body">
           💬 Conversation
         </button>
+        <button className={`tabnav-tab ${tab === 'comments' ? 'selected' : ''}`} onClick={() => go('comments')} title="Every comment thread on the project's PRs, in all its repos and stacks, open ones first">
+          🗨 Comments <span className="Counter" title="Open threads">{openThreads(project.repos.flatMap((r) => r.commits))}</span>
+        </button>
         <button className={`tabnav-tab ${tab === 'stack' ? 'selected' : ''}`} onClick={() => go('stack')} title="A picture of every repo and stack in the project, to copy or download">
           ▤ Stack
         </button>
@@ -63,7 +67,9 @@ export function ProjectHome({ project, route, version, summaries }: { project: P
         </span>
       </div>
 
-      {tab === 'stack' ? (
+      {tab === 'comments' ? (
+        <CommentsTab project={project} />
+      ) : tab === 'stack' ? (
         <StackPicture
           base={`/api/projects/${encodeURIComponent(project.slug)}/stack`}
           version={version}

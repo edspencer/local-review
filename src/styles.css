@@ -673,6 +673,16 @@ button { font-family: inherit; }
 .new-comment { margin-top: 24px; padding-top: 16px; border-top: 2px solid var(--border-muted); }
 .new-comment .comment-form { border: 0; }
 .yaml-hint { margin-left: 56px; font-size: 12px; }
+/* the stack and project pages' Comments tab (CommentsTab.tsx): Files changed's threads, with their PR above */
+.comments-tab .timeline-item.is-resolved > .avatar { opacity: 0.6; }
+.comments-tab-pr, .comments-tab a.file-link { text-decoration: none; }
+.comments-tab a.file-link { color: var(--accent); }
+.comments-tab a.file-link:hover, .comments-tab a.file-link:focus-visible { text-decoration: underline; }
+.comments-tab-pr { font-weight: 600; color: var(--fg); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
+.comments-tab-pr:hover, .comments-tab-pr:focus-visible { color: var(--accent); }
+.comments-tab-in { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; }
+.comments-tab-stack { color: var(--stack); font-weight: 700; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; text-decoration: none; }
+.comments-tab-stack:hover, .comments-tab-stack:focus-visible { text-decoration: underline; text-underline-offset: 2px; }
 .conversation-sidebar { width: 260px; flex: none; font-size: 12px; }
 .sidebar-section { padding: 0 0 16px; margin-bottom: 16px; border-bottom: 1px solid var(--border-muted); }
 .sidebar-section h3 { font-size: 12px; color: var(--fg-muted); margin: 0 0 8px; font-weight: 600; }

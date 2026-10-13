@@ -12,7 +12,7 @@ import { FollowOnBadge, ReadinessBadge, ReadinessControl } from './Readiness';
 import { progressOf, statusTooltip } from '../shared/readiness';
 import { StackTab } from './StackTab';
 import { TopProgress } from './TopProgress';
-import { navigate, relativeTime, routeUrl, useTilde, type Route } from './util';
+import { navigate, prTab, relativeTime, routeUrl, useTilde, type Route } from './util';
 
 export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, projectFile, onChanged, repoData, vizVersion }: { route: Route; loc: Loc; projectTitle: string; projectIntro: string | null; projectFile: string; onChanged: () => void; repoData?: RepoData; vizVersion: string }) {
   const sha = route.sha!;
@@ -189,7 +189,7 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
   if (!data || !review) return <div className="page"><TopProgress /><div className="loading">Loading…</div></div>;
 
   const c = data.commit;
-  const tab = route.tab;
+  const tab = prTab(route.tab);
   const go = (t: Route['tab']) => navigate(routeUrl(loc.project, loc.repo, sha, t));
   const goTo = (to: { repo: string; sha: string } | null) => {
     if (to) navigate(routeUrl(loc.project, to.repo, to.sha.slice(0, 8), tab));
@@ -306,6 +306,7 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
           review={review}
           actions={actions}
           onNew={(body) => wrap(api.newThread(loc, c.sha, { body }))}
+          focusThread={route.thread}
           context={<ContextBoxes slug={loc.project} repo={loc.repo} intro={projectIntro} group={group} file={projectFile} />}
           desc={{
             fullBody: fullPrBody({ intro: projectIntro, stackNote: group?.description, body: data.pr.body }),
@@ -322,6 +323,7 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
           review={review}
           actions={actions}
           focusFile={route.file}
+          focusThread={route.thread}
           onFocusFile={(p) => navigate(routeUrl(loc.project, loc.repo, sha, 'files', p), true)}
           newThread={(d: Draft, body) => wrap(api.newThread(loc, c.sha, { ...d, body }))}
           setViewed={setViewed}
@@ -429,7 +431,7 @@ function DescriptionHeader({ pr, draft, setDraft, onRevert, fullBody }: DescProp
   );
 }
 
-function Conversation({ data, loc, review, actions, onNew, desc, context }: { data: CommitResponse; loc: Loc; review: Review; actions: ThreadActions; onNew: (body: string) => Promise<unknown>; desc: DescProps; context: React.ReactNode }) {
+function Conversation({ data, loc, review, actions, onNew, desc, context, focusThread }: { data: CommitResponse; loc: Loc; review: Review; actions: ThreadActions; onNew: (body: string) => Promise<unknown>; desc: DescProps; context: React.ReactNode; focusThread: string | null }) {
   const { pr, draft, setDraft, onSave } = desc;
   const c = data.commit;
   const tilde = useTilde();
@@ -449,6 +451,16 @@ function Conversation({ data, loc, review, actions, onNew, desc, context }: { da
   for (const t of threads) if (!t.resolved) seenOpen.current.ids.add(t.id);
   const shown = unfolded.sha === c.sha ? unfolded.ids : null;
   const expand = (ts: Thread[]) => setUnfolded((u) => ({ sha: c.sha, ids: new Set([...(u.sha === c.sha ? u.ids : []), ...ts.map((t) => t.id)]) }));
+  // ?thread=… (a link from a stack or project page's Comments tab): open it if it's folded, and scroll to it
+  const didFocus = useRef<string | null>(null);
+  useEffect(() => {
+    const t = focusThread && didFocus.current !== `${c.sha}/${focusThread}` ? threads.find((x) => x.id === focusThread) : undefined;
+    if (!t) return;
+    didFocus.current = `${c.sha}/${t.id}`;
+    if (t.resolved) expand([t]);
+    setTimeout(() => document.getElementById(`thread-${t.id}`)?.scrollIntoView({ block: 'center' }), 50);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusThread, threads, c.sha]);
   const timeline: ({ kind: 'thread'; t: Thread } | { kind: 'fold'; threads: Thread[] })[] = [];
   for (const t of threads) {
     const folds = t.resolved && !seenOpen.current.ids.has(t.id) && !shown?.has(t.id);

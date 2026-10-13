@@ -16,7 +16,7 @@ import { tildify } from '../shared/paths';
 import { chainGroups } from '../shared/chains';
 import { ARCHIVED_TITLE, LINK_ICON } from './Projects';
 import { SIDEBAR_DEFAULT, SIDEBAR_KEY, SIDEBAR_MIN, clampSidebar, keyResize, readSidebarWidth, sidebarMax } from './sidebarWidth';
-import { HomeContext, LinksContext, ProjectContext, hashString, isTyping, linkTo, navigate, projectUrl, relativeTime, routeUrl, useLocalStorage, useRoute, useTick, useTilde, type Route } from './util';
+import { HomeContext, LinksContext, ProjectContext, hashString, isTyping, linkTo, navigate, prTab, projectUrl, relativeTime, routeUrl, useLocalStorage, useRoute, useTick, useTilde, type Route } from './util';
 
 // The first screen's data, asked for all at once as the page loads, rather than each request waiting for the one
 // before it (the reviewer, the project list, the project, the PR): App takes these promises on its first refresh.
@@ -122,7 +122,7 @@ export function App() {
     // `/<project>` alone is the project's homepage
     if (route.sha || route.stack !== null || parts.length === 1 || !project || project.slug !== activeSlug) return;
     const first = route.repo ? flat.find((x) => x.repo === route.repo) : flat[0];
-    if (first) navigate(routeUrl(project.slug, first.repo, first.sha.slice(0, 8), route.tab), true);
+    if (first) navigate(routeUrl(project.slug, first.repo, first.sha.slice(0, 8), prTab(route.tab)), true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list, project, route, flat, activeSlug]);
 
@@ -611,7 +611,7 @@ const SHOW_FILES_VIEWED = false;
 function CommitItem({ project, repo, c, route, followOn }: { project: string; repo: string; c: CommitSummary; route: Route; followOn?: boolean }) {
   const active = route.repo === repo && !!route.sha && c.sha.startsWith(route.sha.toLowerCase());
   const allViewed = c.filesChanged > 0 && c.viewedCount >= c.filesChanged;
-  const url = routeUrl(project, repo, c.short, route.tab);
+  const url = routeUrl(project, repo, c.short, prTab(route.tab));
   const branch = c.branch ?? null;
   const note = branchNote(branch);
   return (

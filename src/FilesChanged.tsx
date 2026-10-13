@@ -86,10 +86,12 @@ export interface FilesChangedProps {
   newThread: (d: Draft, body: string) => Promise<unknown>;
   setViewed: (path: string, viewed: boolean) => Promise<unknown>;
   focusFile: string | null;
+  /** ?thread=… with ?file=…: open that thread and scroll to it rather than to the top of its file */
+  focusThread?: string | null;
   onFocusFile: (path: string | null) => void;
 }
 
-export function FilesChanged({ files: gitOrder, review, actions, newThread, setViewed, focusFile, onFocusFile }: FilesChangedProps) {
+export function FilesChanged({ files: gitOrder, review, actions, newThread, setViewed, focusFile, focusThread, onFocusFile }: FilesChangedProps) {
   // show the cards in the same order as the tree (directories first), like GitHub, so n / p follow it
   const files = useMemo(() => treeOrder(buildTree(gitOrder)), [gitOrder]);
   const [diffStyle, setDiffStyle] = useLocalStorage<'split' | 'unified'>('lr.diffStyle', 'unified');
@@ -115,7 +117,7 @@ export function FilesChanged({ files: gitOrder, review, actions, newThread, setV
     return m;
   }, [review.threads]);
 
-  const scrollTo = useCallback((path: string) => {
+  const scrollTo = useCallback((path: string, thread?: string) => {
     setOpenState((s) => (s[path] === false ? { ...s, [path]: true } : s));
     // Cards above may still be lazy placeholders that grow once they render near the viewport, so keep
     // the target pinned under the toolbar for a moment while layout settles (stop if the user scrolls).
@@ -126,10 +128,12 @@ export function FilesChanged({ files: gitOrder, review, actions, newThread, setV
     window.addEventListener('wheel', stop, { once: true, passive: true });
     window.addEventListener('keydown', stop, { once: true });
     const pin = () => {
-      const el = document.getElementById(fileAnchor(path));
+      // a thread: once its card has rendered it (until then, its file's header)
+      const at = thread ? document.getElementById(`thread-${thread}`) : null;
+      const el = at ?? document.getElementById(fileAnchor(path));
       if (!el || userScrolled) return;
-      const off = el.getBoundingClientRect().top - (STICKY_TOP + 8);
-      if (Math.abs(off) > 1) { el.scrollIntoView({ block: 'start' }); stable = 0; } else stable++;
+      const off = el.getBoundingClientRect().top - (at ? Math.max(STICKY_TOP + 8, (window.innerHeight - el.offsetHeight) / 2) : STICKY_TOP + 8);
+      if (Math.abs(off) > 1) { if (at) window.scrollBy(0, off); else el.scrollIntoView({ block: 'start' }); stable = 0; } else stable++;
       if (++frames < 90 && stable < 12) requestAnimationFrame(pin);
       else { window.removeEventListener('wheel', stop); window.removeEventListener('keydown', stop); }
     };
@@ -139,11 +143,15 @@ export function FilesChanged({ files: gitOrder, review, actions, newThread, setV
   // ?file=… deep link
   const didFocus = useRef<string | null>(null);
   useEffect(() => {
-    if (focusFile && didFocus.current !== focusFile && files.some((f) => f.path === focusFile)) {
-      didFocus.current = focusFile;
-      setTimeout(() => scrollTo(focusFile), 50);
+    const key = `${focusFile}#${focusThread ?? ''}`;
+    if (focusFile && didFocus.current !== key && files.some((f) => f.path === focusFile)) {
+      didFocus.current = key;
+      const thread = focusThread && review.threads.some((t) => t.id === focusThread) ? focusThread : undefined;
+      if (thread) setFolds((s) => setFolded(s, thread, false));
+      setTimeout(() => scrollTo(focusFile, thread), 50);
     }
-  }, [focusFile, files, scrollTo]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusFile, focusThread, files, scrollTo]);
 
   const setAll = (open: boolean) => setOpenState(Object.fromEntries(files.map((f) => [f.path, open])));
 

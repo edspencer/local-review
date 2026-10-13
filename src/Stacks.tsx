@@ -19,7 +19,7 @@ export function stackTally(commits: CommitSummary[]) {
 
 /** A link to a stack's page (keeping the Stack tab if that's where you are). */
 export function StackLink({ project, repo, group, tab = 'conversation', className, title, style, children }: { project: string; repo: string; group: StackGroup; tab?: Route['tab']; className?: string; title?: string; style?: React.CSSProperties; children: React.ReactNode }) {
-  const url = stackUrl(project, repo, stackRef(group), tab === 'stack' ? 'stack' : 'conversation');
+  const url = stackUrl(project, repo, stackRef(group), tab === 'stack' || tab === 'comments' ? tab : 'conversation');
   return (
     <a href={url} className={className} title={title} style={style} onClick={linkTo(url)}>
       {children}
