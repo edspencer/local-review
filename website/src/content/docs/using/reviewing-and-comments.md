@@ -34,6 +34,9 @@ parent.
 - **Across old and new lines:** a range that mixes deleted and added lines in the unified view keeps both ends exactly
   ("Comment on lines -12 to +15", stored with `start_side`). If one end is an unchanged line, it's saved on one side.
 
+What you type in a comment form is kept as a [draft](/using/editing-pr-text/#drafts): reload, and the form opens
+again on the same lines. So are replies, and edits of your comments, here and on the Conversation tab.
+
 Threads render under their (last) line, with **Reply** and **Resolve** / **Unresolve**, and their header names the
 file and line (`ClassCard.tsx:44-46` for a range; a range across old and new lines also says "Comment on lines -12 to
 +15"). A range's lines are tinted, more strongly while you hover the thread. A thread whose line isn't in a shown hunk
@@ -55,7 +58,8 @@ shows the original lines. See [Following rebases](/concepts/following-rebases/).
 
 The Conversation tab holds the PR's general threads (those without a file and line), with the same Reply and Resolve.
 Outdated threads show there too, with an "Outdated" label and their original code. Resolved threads fold, as on
-GitHub: each run of them becomes one **N resolved conversations** row that opens them again.
+GitHub: each run of them becomes one **N resolved conversations** row that opens them again (except a thread with a
+draft reply in it, which stays open). The **Add a comment** box keeps a [draft](/using/editing-pr-text/#drafts) too.
 
 ## Comments for the GitHub PR
 

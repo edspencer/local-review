@@ -3,14 +3,13 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { PrInfo } from './api';
 import { MarkdownEditor, Octicon } from './Comments';
+import { ChangedElsewhere, DraftNotice, useReconcile, type TextDraft } from './DraftNotices';
+import { useDraftHold, type DraftStatus } from './useDrafts';
 import { normBody, normTitle, titleAndBody } from './prText';
 import { useTilde } from './util';
 
 /** An edit in progress: `base` is the value the editor started from (or last reconciled with), `text` the draft. */
-export interface PrDraft {
-  base: string;
-  text: string;
-}
+export type PrDraft = TextDraft;
 
 export type PrChange = { title?: string | null; body?: string | null; status?: 'draft' | 'ready' | null };
 
@@ -135,40 +134,26 @@ export function EditedMarker({ what, original, onRevert, align = 'left' }: { wha
   );
 }
 
-/** Notice inside an editor when the saved value changed under an unsaved draft (e.g. an agent edited the prs/ file). */
-function ChangedElsewhere({ what, onLoad, onKeep }: { what: string; onLoad: () => void; onKeep: () => void }) {
-  return (
-    <div className="flash flash-warn changed-elsewhere" role="status">
-      This {what} was changed elsewhere. <button type="button" className="btn-link" onClick={onLoad}>Load it</button> (discards your draft) ·{' '}
-      <button type="button" className="btn-link" onClick={onKeep}>Keep mine</button>
-    </div>
-  );
+/** What every draft editor takes besides its text: how its draft stands (DraftNotice), and its key (to hold it while typing). */
+export interface DraftProps {
+  status?: DraftStatus;
+  draftKey?: string | null;
 }
 
-/** Keeps a draft in step with the saved value: an untouched draft follows it; a touched one shows a notice. */
-function useReconcile(draft: PrDraft, current: string, setDraft: (d: PrDraft) => void, norm: (s: string) => string) {
-  const dirty = norm(draft.text) !== norm(draft.base);
-  const changed = norm(current) !== norm(draft.base);
-  useEffect(() => {
-    if (changed && !dirty) setDraft({ base: current, text: current });
-  });
-  // our own save racing its SSE echo: the saved value already equals the draft
-  const conflict = changed && dirty && norm(current) !== norm(draft.text);
-  return {
-    conflict,
-    load: () => setDraft({ base: current, text: current }),
-    keep: () => setDraft({ ...draft, base: current }),
-  };
-}
-
-/** The PR title in edit mode: an input with Save / Cancel (Enter saves, Esc cancels). */
-export function TitleEditor({ pr, draft, setDraft, onSave, onCancel }: { pr: PrInfo; draft: PrDraft; setDraft: (d: PrDraft) => void; onSave: (title: string) => Promise<unknown>; onCancel: () => void }) {
+/** The PR title in edit mode: an input with Save / Cancel (Enter saves, Esc cancels, asking first if changed). */
+export function TitleEditor({ pr, draft, setDraft, onSave, onCancel, status, draftKey = null }: { pr: PrInfo; draft: PrDraft; setDraft: (d: PrDraft) => void; onSave: (title: string) => Promise<unknown>; onCancel: () => void } & DraftProps) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const { conflict, load, keep } = useReconcile(draft, pr.title, setDraft, normTitle);
+  const { conflict, load, keep } = useReconcile(draft, pr.title, setDraft, normTitle, status?.restored && onCancel);
+  const hold = useDraftHold(draftKey);
   const ref = useRef<HTMLInputElement>(null);
   const tilde = useTilde();
-  useEffect(() => { ref.current?.focus(); ref.current?.select(); }, []);
+  // a draft restored on load doesn't take the focus (there may be several on the page)
+  useEffect(() => { if (!status?.restored) { ref.current?.focus(); ref.current?.select(); } }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const cancel = () => {
+    if (normTitle(draft.text) !== normTitle(draft.base) && !confirm('Discard your changes to the title?')) return;
+    onCancel();
+  };
   const save = async () => {
     if (busy || !normTitle(draft.text)) return;
     setBusy(true);
@@ -176,7 +161,7 @@ export function TitleEditor({ pr, draft, setDraft, onSave, onCancel }: { pr: PrI
     try { await onSave(draft.text); } catch (e) { setErr((e as Error).message); setBusy(false); }
   };
   return (
-    <div className="pr-title-edit">
+    <div className="pr-title-edit" {...hold}>
       <form className="pr-title-edit-row" onSubmit={(e) => { e.preventDefault(); save(); }}>
         <input
           ref={ref}
@@ -185,11 +170,12 @@ export function TitleEditor({ pr, draft, setDraft, onSave, onCancel }: { pr: PrI
           value={draft.text}
           disabled={busy}
           onChange={(e) => setDraft({ ...draft, text: e.target.value })}
-          onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onCancel(); } }}
+          onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); cancel(); } }}
         />
         <button type="submit" className="btn btn-sm" disabled={busy || !normTitle(draft.text)}>{busy ? 'Saving…' : 'Save'}</button>
-        <button type="button" className="btn-link" onClick={onCancel} disabled={busy}>Cancel</button>
+        <button type="button" className="btn-link" onClick={cancel} disabled={busy}>Cancel</button>
       </form>
+      <DraftNotice status={status} onDiscard={onCancel} />
       {conflict && <ChangedElsewhere what="title" onLoad={load} onKeep={keep} />}
       {err && <div className="flash flash-error">{err}</div>}
       <div className="pr-title-edit-hint muted">
@@ -204,10 +190,10 @@ export function TitleEditor({ pr, draft, setDraft, onSave, onCancel }: { pr: PrI
  * small toolbar, Save / Cancel, ⌘↵ saves, Esc cancels (asking first if changed). `current` is the saved value,
  * so a change on disk while editing shows the "changed elsewhere" notice.
  */
-export function MarkdownFieldEditor({ current, what, placeholder, draft, setDraft, onSave, onCancel, className = 'pr-body-editor' }: { current: string; what: string; placeholder: string; draft: PrDraft; setDraft: (d: PrDraft) => void; onSave: (text: string) => Promise<unknown>; onCancel: () => void; className?: string }) {
+export function MarkdownFieldEditor({ current, what, placeholder, draft, setDraft, onSave, onCancel, className = 'pr-body-editor', status, draftKey = null }: { current: string; what: string; placeholder: string; draft: PrDraft; setDraft: (d: PrDraft) => void; onSave: (text: string) => Promise<unknown>; onCancel: () => void; className?: string } & DraftProps) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const { conflict, load, keep } = useReconcile(draft, current, setDraft, normBody);
+  const { conflict, load, keep } = useReconcile(draft, current, setDraft, normBody, status?.restored && onCancel);
   const cancel = () => {
     if (normBody(draft.text) !== normBody(draft.base) && !confirm(`Discard your changes to the ${what}?`)) return;
     onCancel();
@@ -227,20 +213,26 @@ export function MarkdownFieldEditor({ current, what, placeholder, draft, setDraf
       onCancel={cancel}
       placeholder={placeholder}
       submitLabel="Save"
-      autoFocus
+      autoFocus={!status?.restored}
       compact
       toolbar
       images
       busy={busy}
       error={err}
-      notice={conflict ? <ChangedElsewhere what={what} onLoad={load} onKeep={keep} /> : undefined}
+      holdKey={draftKey}
+      notice={
+        <>
+          <DraftNotice status={status} onDiscard={onCancel} />
+          {conflict && <ChangedElsewhere what={what} onLoad={load} onKeep={keep} />}
+        </>
+      }
     />
   );
 }
 
 /** The PR description in edit mode. */
-export function BodyEditor({ pr, draft, setDraft, onSave, onCancel }: { pr: PrInfo; draft: PrDraft; setDraft: (d: PrDraft) => void; onSave: (body: string) => Promise<unknown>; onCancel: () => void }) {
-  return <MarkdownFieldEditor current={pr.body} what="description" placeholder="Add a description" draft={draft} setDraft={setDraft} onSave={onSave} onCancel={onCancel} />;
+export function BodyEditor({ pr, draft, setDraft, onSave, onCancel, status, draftKey }: { pr: PrInfo; draft: PrDraft; setDraft: (d: PrDraft) => void; onSave: (body: string) => Promise<unknown>; onCancel: () => void } & DraftProps) {
+  return <MarkdownFieldEditor current={pr.body} what="description" placeholder="Add a description" draft={draft} setDraft={setDraft} onSave={onSave} onCancel={onCancel} status={status} draftKey={draftKey} />;
 }
 
 /** The "…" menu in the description's header. */

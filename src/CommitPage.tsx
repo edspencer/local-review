@@ -6,6 +6,8 @@ import { Avatar, AuthorLabel, CommentForm, CommentView, Markdown, Octicon, Publi
 import { FilesChanged, StatusIcon, type Draft } from './FilesChanged';
 import { BodyEditor, CopyButton, DescriptionMenu, EditIconButton, EditedMarker, FULL_BODY_TIP, TitleEditor, type PrChange, type PrDraft } from './PrEdit';
 import { fullPrBody, normBody, normTitle } from './prText';
+import { DraftDot } from './DraftNotices';
+import { DraftScopeContext, draftStore, useDraftMarkers, useScopedId, useTextDraft, type DraftScope, type DraftStatus } from './useDrafts';
 import { ContextBoxes } from './ProjectText';
 import { Crumbs, StackLink } from './Stacks';
 import { FollowOnBadge, ReadinessBadge, ReadinessControl } from './Readiness';
@@ -135,20 +137,31 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
     [here, fullSha, receive, onChanged],
   );
 
-  // PR title / description edits in progress, per commit (so a draft survives switching tabs or commits)
-  const [titleDrafts, setTitleDrafts] = useState<Record<string, PrDraft>>({});
-  const [bodyDrafts, setBodyDrafts] = useState<Record<string, PrDraft>>({});
-  const titleDraft = fullSha ? titleDrafts[fullSha] : undefined;
-  const bodyDraft = fullSha ? bodyDrafts[fullSha] : undefined;
-  const setDraftFor = (set: typeof setTitleDrafts, sha: string) => (d: PrDraft | null) =>
-    set((m) => { const n = { ...m }; if (d) n[sha] = d; else delete n[sha]; return n; });
-  const dirty = Object.values(titleDrafts).some((d) => normTitle(d.text) !== normTitle(d.base)) || Object.values(bodyDrafts).some((d) => normBody(d.text) !== normBody(d.base));
+  // Drafts (useDrafts.tsx): the title and description being edited, and every comment box on the page, are kept per
+  // commit in localStorage as you type, so they survive switching tabs or PRs, and reloads.
+  const scope: DraftScope | null = useMemo(
+    () => (data ? { project: data.project, repo: data.repo, sha: data.commit.sha, patchId: data.review.patch_id, subject: data.commit.subject } : null),
+    [data?.project, data?.repo, data?.commit.sha, data?.review.patch_id, data?.commit.subject], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const title = useTextDraft(scope && { kind: 'title', ...scope });
+  const body = useTextDraft(scope && { kind: 'body', ...scope });
+  const markers = useDraftMarkers();
+
+  // After a rebase: drafts written on the commit this one replaced come over to it (by patch-id or subject, like
+  // review files do), inline ones to where their line is now. Only from commits that are gone from the repo's range.
+  const liveShas = repoData?.name === data?.repo ? repoData?.commits.map((x) => x.sha).join(' ') : undefined;
   useEffect(() => {
-    if (!dirty) return;
-    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty]);
+    if (!data || !repoData || !liveShas) return;
+    const live = new Set(liveShas.split(' '));
+    if (!live.has(data.commit.sha)) return; // the sidebar's data is behind
+    const files = new Map(data.commit.files.map((f) => [f.path, f]));
+    draftStore.adopt(
+      { project: data.project, repo: data.repo, sha: data.commit.sha, patchId: data.review.patch_id, subject: data.commit.subject },
+      live,
+      repoData.commits.map((x) => x.subject),
+      (path, side) => (side === 'left' ? files.get(path)?.oldContent : files.get(path)?.newContent),
+    );
+  }, [data?.commit.sha, liveShas]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const savePr = useCallback(
     async (change: PrChange): Promise<PrInfo> => {
@@ -163,13 +176,13 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
   const saveTitle = async (pr: PrInfo, text: string) => {
     const t = normTitle(text);
     if (t !== pr.title) await savePr({ title: t === normTitle(pr.commit_subject) ? null : t });
-    setDraftFor(setTitleDrafts, fullSha!)(null);
+    title.setDraft(null);
   };
   /** Save the description draft; one equal to the commit body clears the override. */
   const saveBody = async (pr: PrInfo, text: string) => {
     const b = normBody(text);
     if (b !== normBody(pr.body) || (pr.body_source === 'override' && b === normBody(pr.commit_body))) await savePr({ body: b === normBody(pr.commit_body) ? null : b });
-    setDraftFor(setBodyDrafts, fullSha!)(null);
+    body.setDraft(null);
   };
 
   const actions: ThreadActions = useMemo(
@@ -220,17 +233,20 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
   };
 
   return (
+    <DraftScopeContext.Provider value={scope}>
     <div className="page" aria-busy={loading || undefined}>
       {loading && <TopProgress />}
       <Crumbs project={loc.project} title={projectTitle} repo={loc.repo} group={group} pr={data.index + 1} />
       <div className="pr-header">
-        {titleDraft ? (
+        {title.draft ? (
           <TitleEditor
             pr={data.pr}
-            draft={titleDraft}
-            setDraft={setDraftFor(setTitleDrafts, c.sha)}
+            draft={title.draft}
+            setDraft={title.setDraft}
             onSave={(t) => saveTitle(data.pr, t)}
-            onCancel={() => setDraftFor(setTitleDrafts, c.sha)(null)}
+            onCancel={() => title.setDraft(null)}
+            status={title.status}
+            draftKey={title.key}
           />
         ) : (
           <div className="pr-title-row">
@@ -240,7 +256,7 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
             </h1>
             <div className="pr-nav">
               <CopyButton text={data.pr.title} label="Copy title" />
-              <button className="btn btn-sm" title="Edit the PR title (saved locally, the commit is unchanged)" onClick={() => setDraftFor(setTitleDrafts, c.sha)({ base: data.pr.title, text: data.pr.title })}>Edit</button>
+              <button className="btn btn-sm" title="Edit the PR title (saved locally, the commit is unchanged)" onClick={() => title.setDraft({ base: data.pr.title, text: data.pr.title })}>Edit</button>
               <span className="pr-nav-sep" aria-hidden="true" />
               <button className="btn btn-sm" disabled={!data.prev} onClick={() => goTo(data.prev)} {...hoverTo(data.prev)} title={`Previous commit in the project (k)${data.prev && data.prev.repo !== loc.repo ? ` · ${data.prev.repo}` : ''}`}>← Prev</button>
               <button className="btn btn-sm" disabled={!data.next} onClick={() => goTo(data.next)} {...hoverTo(data.next)} title={`Next commit in the project (j)${data.next && data.next.repo !== loc.repo ? ` · ${data.next.repo}` : ''}`}>Next →</button>
@@ -285,9 +301,11 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
       <div className="tabnav">
         <button className={`tabnav-tab ${tab === 'conversation' ? 'selected' : ''}`} onClick={() => go('conversation')}>
           💬 Conversation <span className="Counter">{review.threads.length}</span>
+          {markers.has(`conv:${data.project}/${data.repo}/${c.sha}`) && <DraftDot />}
         </button>
         <button className={`tabnav-tab ${tab === 'files' ? 'selected' : ''}`} onClick={() => go('files')}>
           ± Files changed <span className="Counter">{c.files.length}</span>
+          {markers.has(`files:${data.project}/${data.repo}/${c.sha}`) && <DraftDot />}
         </button>
         <button className={`tabnav-tab ${tab === 'stack' ? 'selected' : ''}`} onClick={() => go('stack')} title="A picture of the PR stacks with this PR highlighted, to copy or download">
           ▤ Stack
@@ -312,8 +330,10 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
           desc={{
             fullBody: fullPrBody({ intro: projectIntro, stackNote: group?.description, body: data.pr.body }),
             pr: data.pr,
-            draft: bodyDraft,
-            setDraft: setDraftFor(setBodyDrafts, c.sha),
+            draft: body.draft,
+            setDraft: body.setDraft,
+            status: body.status,
+            draftKey: body.key,
             onSave: (b) => saveBody(data.pr, b),
             onRevert: () => savePr({ body: null }),
           }}
@@ -331,6 +351,7 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
         />
       )}
     </div>
+    </DraftScopeContext.Provider>
   );
 }
 
@@ -405,6 +426,8 @@ function StackStepper({ loc, group, commits, current, tab, next }: { loc: Loc; g
 interface DescProps {
   pr: PrInfo;
   draft?: PrDraft;
+  status?: DraftStatus;
+  draftKey?: string | null;
   setDraft: (d: PrDraft | null) => void;
   onSave: (body: string) => Promise<unknown>;
   onRevert: () => Promise<unknown>;
@@ -433,7 +456,9 @@ function DescriptionHeader({ pr, draft, setDraft, onRevert, fullBody }: DescProp
 }
 
 function Conversation({ data, loc, review, actions, onNew, desc, context, focusThread }: { data: CommitResponse; loc: Loc; review: Review; actions: ThreadActions; onNew: (body: string, publish: boolean) => Promise<unknown>; desc: DescProps; context: React.ReactNode; focusThread: string | null }) {
-  const { pr, draft, setDraft, onSave } = desc;
+  const { pr, draft, setDraft, onSave, status, draftKey } = desc;
+  const newCommentId = useScopedId('comment');
+  const markers = useDraftMarkers();
   const c = data.commit;
   const tilde = useTilde();
   const filesByPath = useMemo(() => new Map(c.files.map((f) => [f.path, f])), [c.files]);
@@ -464,7 +489,8 @@ function Conversation({ data, loc, review, actions, onNew, desc, context, focusT
   }, [focusThread, threads, c.sha]);
   const timeline: ({ kind: 'thread'; t: Thread } | { kind: 'fold'; threads: Thread[] })[] = [];
   for (const t of threads) {
-    const folds = t.resolved && !seenOpen.current.ids.has(t.id) && !shown?.has(t.id);
+    // (nor does one with a draft in it: a reply or an edit in progress)
+    const folds = t.resolved && !seenOpen.current.ids.has(t.id) && !shown?.has(t.id) && !markers.has(`thread:${data.project}/${data.repo}/${c.sha}/${t.id}`);
     const last = timeline[timeline.length - 1];
     if (!folds) timeline.push({ kind: 'thread', t });
     else if (last?.kind === 'fold') last.threads.push(t);
@@ -507,7 +533,7 @@ function Conversation({ data, loc, review, actions, onNew, desc, context, focusT
               <DescriptionHeader {...desc} />
             </div>
             {draft ? (
-              <BodyEditor pr={pr} draft={draft} setDraft={setDraft} onSave={onSave} onCancel={() => setDraft(null)} />
+              <BodyEditor pr={pr} draft={draft} setDraft={setDraft} onSave={onSave} onCancel={() => setDraft(null)} status={status} draftKey={draftKey} />
             ) : (
               <div className="timeline-comment-body">
                 <Markdown text={pr.body} />
@@ -539,7 +565,7 @@ function Conversation({ data, loc, review, actions, onNew, desc, context, focusT
           <Avatar author={reviewer.id} size={40} />
           <div className="timeline-comment">
             <div className="comment-header"><strong>Add a comment</strong></div>
-            <CommentForm onSubmit={onNew} publishable />
+            <CommentForm draftId={newCommentId} onSubmit={onNew} publishable />
           </div>
         </div>
         <p className="yaml-hint muted">
@@ -632,7 +658,7 @@ function GeneralThread({ t, actions }: { t: Thread; actions: ThreadActions }) {
     <div className={`timeline-item ${t.resolved ? 'is-resolved' : ''} ${t.publish ? 'is-publish' : ''}`} id={`thread-${t.id}`}>
       <Avatar author={first.author} size={40} />
       <div className="general-thread">
-        <CommentView c={first} variant="timeline" badge={<PublishLabel thread={t} />} onEdit={(b) => actions.edit(t.id, first.id, b)} onDelete={() => actions.remove(t.id, first.id)} />
+        <CommentView c={first} threadId={t.id} variant="timeline" badge={<PublishLabel thread={t} />} onEdit={(b) => actions.edit(t.id, first.id, b)} onDelete={() => actions.remove(t.id, first.id)} />
         <div className="general-replies">
           <ThreadView thread={{ ...t, comments: rest }} actions={actions} marker={false} />
         </div>

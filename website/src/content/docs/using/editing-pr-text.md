@@ -20,9 +20,43 @@ buttons then give you exactly the text the real GitHub PR should have, project c
   commit's version and has **Revert to commit message**.
 - **If the file changes while you edit** (an agent rewrote the description): an untouched editor just follows it; one
   with your changes keeps them and offers **Load it** / **Keep mine**.
-- **Drafts** survive switching tabs and commits, but not a reload (the browser warns before you leave).
+- **Drafts** are kept as you type, so they survive switching tabs and commits, a reload, or closing the browser. See
+  [Drafts](#drafts).
 
 An agent can do the same by writing `title:` / `body:` into the prs file, or with `PUT …/pr`; the UI shows it live.
+
+## Drafts
+
+Every text box keeps what you type, as GitHub's do: the PR title and description, the project intro and stack notes,
+a new comment, a reply, an inline comment (on a line or a range), and an edit of one of your comments.
+
+- **Kept as you type**, a moment after you stop. Reload, close the tab or come back tomorrow, and the editor is open
+  again with your text (an inline comment's form on the same line in Files changed), under a line saying **Restored an
+  unsaved draft from 10:42**, with **Discard**.
+- **Cleared** once it's saved, when you cancel or discard it, or when the saved text comes to say the same (saved from
+  another tab, say). A save that fails keeps the draft. An editor you opened but didn't change leaves nothing behind.
+- **If the saved text changed meanwhile** (an agent rewrote the description in the [prs file](/reference/pr-files/),
+  or the intro in `project.yaml`), neither version is overwritten: the editor says it was changed elsewhere and offers
+  **Load it** (theirs; your draft goes) or **Keep mine**.
+- **A small amber dot** marks where drafts are waiting: on a PR's row in the sidebar and on its Conversation or Files
+  changed tab, on a stack's title, and on the project page link (for the intro).
+- **Two tabs on the same page** share their drafts: what you type in one shows up in the other, except in a box you're
+  typing in there. The last one written wins.
+- **After a rebase**, a draft on a commit that's gone moves to the commit that took its place, matched the way review
+  files are (the same patch-id, else the same subject if no other commit has it: [Following
+  rebases](/concepts/following-rebases/)), and an inline one moves to where its line is now. Its notice says which
+  commit it was written on. A draft whose PR has gone without a successor is kept until it expires, in case it comes
+  back.
+- **Housekeeping:** a draft nobody has touched for 30 days is dropped, and all of them together are kept under about a
+  million characters, the oldest going first.
+- **No "Leave site?" prompt** while your drafts are kept, since they come back anyway. If the browser can't keep one
+  (its storage is full or turned off), the editor says so, and only then does leaving the page ask first.
+
+:::note[Drafts stay in your browser]
+A draft is never sent anywhere until you save it, not even to the Local Review server. It's in this browser's
+localStorage, for this address (`http://localhost:5622`; a server on another port has its own), not in
+`~/.local-review`, so another browser doesn't see it, and clearing the site's data in the browser removes it.
+:::
 
 ## Images
 

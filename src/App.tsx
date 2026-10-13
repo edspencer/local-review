@@ -10,6 +10,8 @@ import { StackLink, stackLabel, stackTally } from './Stacks';
 import { stackRef } from '../shared/stackRef';
 import { FOLLOW_ON_TIP, FollowOnBadge, ReadinessBadge } from './Readiness';
 import { TextDraftsProvider, repoAggregate } from './ProjectText';
+import { DraftDot } from './DraftNotices';
+import { useDraftMarkers } from './useDrafts';
 import { ExamplesMenuItem, ExamplesStrip, Welcome } from './Welcome';
 import { Projects } from './Projects';
 import { tildify } from '../shared/paths';
@@ -41,6 +43,8 @@ export function App() {
   const [live, setLive] = useState(false);
   const [closedRepos, setClosedRepos] = useLocalStorage<string[]>('lr.closedRepos', []);
   const [notice, setNotice] = useState<string | null>(null);
+  // where there are unsaved drafts (kept in this browser): a dot on that PR, stack or the project page's link
+  const drafts = useDraftMarkers();
   useTick();
 
   const isProject = (slug: string | null) => !!slug && !!list?.projects.some((p) => p.slug === slug);
@@ -238,6 +242,7 @@ export function App() {
               >
                 <svg className="octicon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d={PROJECT_ICON} /></svg>
                 <span className="sidebar-project-title">{project.title}</span>
+                {drafts.has(`intro:${project.slug}`) && <DraftDot title="Unsaved draft of the project intro (kept in this browser)" />}
                 <span className="sidebar-project-hint">Project page</span>
               </a>
             )}
@@ -264,6 +269,7 @@ export function App() {
                 project={project}
                 repo={r}
                 route={route}
+                drafts={drafts}
                 closed={closedRepos.includes(`${project.slug}/${r.name}`) && route.repo !== r.name}
                 toggle={() => {
                   const k = `${project.slug}/${r.name}`;
@@ -507,7 +513,7 @@ const APPS_ICON = 'M1.5 3.25c0-.966.784-1.75 1.75-1.75h2.5c.966 0 1.75.784 1.75 
 // octicon project-16 (the sidebar's link to the project page)
 const PROJECT_ICON = 'M1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75 1.75 0 0 1 0 14.25V1.75C0 .784.784 0 1.75 0ZM1.5 1.75v12.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V1.75a.25.25 0 0 0-.25-.25H1.75a.25.25 0 0 0-.25.25ZM11.75 3a.75.75 0 0 1 .75.75v7.5a.75.75 0 0 1-1.5 0v-7.5a.75.75 0 0 1 .75-.75Zm-8.25.75a.75.75 0 0 1 1.5 0v5.5a.75.75 0 0 1-1.5 0ZM8 3a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 3Z';
 
-function RepoSection({ project, repo: r, route, closed, toggle }: { project: ProjectData; repo: RepoData; route: Route; closed: boolean; toggle: () => void }) {
+function RepoSection({ project, repo: r, route, drafts, closed, toggle }: { project: ProjectData; repo: RepoData; route: Route; drafts: ReadonlySet<string>; closed: boolean; toggle: () => void }) {
   const open = r.commits.reduce((a, c) => a + c.unresolved, 0);
   // the viewed count leaves follow-on stacks out (like every aggregate, shared/totals.ts) and mentions them beside it;
   // merged PRs are history, so they're left out too (and the count is hidden when nothing else is left)
@@ -576,12 +582,13 @@ function RepoSection({ project, repo: r, route, closed, toggle }: { project: Pro
               <fieldset className={`pr-stack ${g.implicit === 'unstacked' ? 'unstacked' : ''} ${g.follow_on ? 'follow-on' : ''} ${route.repo === r.name && route.stack === stackRef(g) ? 'is-current' : ''}`} style={{ ['--stack' as string]: stackColor(g.color) }}>
                 <legend title={`${g.warning ? `${g.warning}\n` : ''}${g.shas.length} commit${g.shas.length === 1 ? '' : 's'}${g.follow_on ? `\n${FOLLOW_ON_TIP}` : ''}\nOpen the stack page: its note and its picture`}>
                   <StackLink project={project.slug} repo={r.name} group={g} tab={route.tab} className="pr-stack-link">{stackLabel(g)}</StackLink>
+                  {g.number !== null && drafts.has(`stack:${project.slug}/${r.name}/${g.number}`) && <DraftDot title="Unsaved draft of the stack note (kept in this browser)" />}
                   {g.follow_on && <FollowOnBadge />}
                 </legend>
                 <ol className="commit-list">
                   {g.shas.map((sha) => {
                     const c = bySha.get(sha);
-                    return c ? <CommitItem key={sha} project={project.slug} repo={r.name} c={c} route={route} followOn={!!g.follow_on} /> : null;
+                    return c ? <CommitItem key={sha} project={project.slug} repo={r.name} c={c} route={route} followOn={!!g.follow_on} draft={drafts.has(`pr:${project.slug}/${r.name}/${c.sha}`)} /> : null;
                   })}
                 </ol>
                 <StackTally commits={g.shas.map((s) => bySha.get(s)).filter((c): c is CommitSummary => !!c)} />
@@ -608,7 +615,7 @@ const EYE = 'M8 2c1.981 0 3.671.992 4.933 2.078 1.27 1.091 2.187 2.345 2.637 3.0
 /** The files-viewed bar and count on each sidebar row. Off for now; flip to bring it back. */
 const SHOW_FILES_VIEWED = false;
 
-function CommitItem({ project, repo, c, route, followOn }: { project: string; repo: string; c: CommitSummary; route: Route; followOn?: boolean }) {
+function CommitItem({ project, repo, c, route, followOn, draft }: { project: string; repo: string; c: CommitSummary; route: Route; followOn?: boolean; draft?: boolean }) {
   const active = route.repo === repo && !!route.sha && c.sha.startsWith(route.sha.toLowerCase());
   const allViewed = c.filesChanged > 0 && c.viewedCount >= c.filesChanged;
   const url = routeUrl(project, repo, c.short, prTab(route.tab));
@@ -627,6 +634,7 @@ function CommitItem({ project, repo, c, route, followOn }: { project: string; re
         <span className="commit-main">
           <span className="commit-line">
             <span className="commit-subject">{c.title}</span>
+            {draft && <DraftDot />}
             <ReadinessBadge status={c.status} progress={c.progress} github={c.github} />
           </span>
           <span className="commit-sub">

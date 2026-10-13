@@ -6,7 +6,9 @@ description: The ~/.local-review directory, its layout, automatic snapshots and 
 Everything you create (projects, PR title and description overrides, review comments, Viewed marks) lives in plain
 files in a dot-directory in your home, like `~/.claude`. It is never in the repos you review and never in Local
 Review's own install, so Local Review can be updated or reinstalled without touching anyone's reviews. It isn't
-version-controlled; [snapshots](#snapshots) cover that.
+version-controlled; [snapshots](#snapshots) cover that. The one thing that isn't here is text you haven't saved yet:
+[drafts](/using/editing-pr-text/#drafts) are kept in the browser's localStorage, and never sent anywhere until you save
+them.
 
 ```text
 ~/.local-review/                        # or $LOCAL_REVIEW_HOME
