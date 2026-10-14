@@ -184,7 +184,6 @@ function Groups({ groups }: { groups: ProjectSummary[][] }) {
  * the ones that build on it, headed by the first one's title.
  */
 function ProjectChain({ chain }: { chain: ProjectSummary[] }) {
-  const titleOf = (slug: string | null) => chain.find((p) => p.slug === slug)?.title ?? slug;
   return (
     <section className="project-chain" aria-label={`${chain.length} linked projects`}>
       <h3 className="project-chain-head">
@@ -192,9 +191,8 @@ function ProjectChain({ chain }: { chain: ProjectSummary[] }) {
         {chain[0].title} <span className="muted">· {chain.length} linked projects, each building on the one before</span>
       </h3>
       <ol className="project-chain-list">
-        {chain.map((p, i) => (
+        {chain.map((p) => (
           <li key={p.slug} className="project-chain-step">
-            <span className="project-chain-step-label">{i + 1} · {i === 0 ? 'first' : <>builds on <strong>{titleOf(p.after)}</strong></>}</span>
             <ProjectCard p={p} />
           </li>
         ))}

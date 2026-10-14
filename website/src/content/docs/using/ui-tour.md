@@ -47,8 +47,8 @@ commit ranges, and the [PR stacks](/concepts/pr-stacks/) they split into ([Proje
   published, ready, draft), the same as readiness badges with counts, the open threads, and the **last activity**: the
   newest comment, commit, merge or edit to any of the project's files (a Viewed mark, a title, an agent's YAML).
 - **Linked projects** ([`after:`](/concepts/linked-projects/)) share one box spanning the row: "*first title* · N
-  linked projects, each building on the one before", then their cards in order, labelled `1 · FIRST`, `2 · BUILDS ON
-  …`, with arrows between them. The successor's thumbnail starts with the predecessor's stacks in grey.
+  linked projects, each building on the one before", then their cards in order,
+  with arrows between them. The successor's thumbnail starts with the predecessor's stacks in grey.
 - **Sections:** **Active**; **Examples**, once you have projects of your own besides the
   [example projects](/reference/cli/#local-review-examples-remove), with **Remove example projects** beside the heading
   (on the Active heading if the examples are all you have); and **Archived**, collapsed (it opens by itself while the
