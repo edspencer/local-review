@@ -7,9 +7,7 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
-## Coming in 0.10.0: hidden projects
-
-Not released yet.
+## 0.10.0: hidden projects
 
 - **`hidden: true` keeps a project off the root page.** Add it to a `project.yaml` and the project is left off the
   root page (and its counts) and out of the project switcher, without deleting or moving anything: for a parked
