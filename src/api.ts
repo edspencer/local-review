@@ -119,6 +119,8 @@ export interface ProjectData {
 export interface ProjectLink {
   slug: string;
   title: string;
+  /** a successor with `hidden: true` (the UI leaves it out) */
+  hidden?: boolean;
 }
 
 export interface ProjectSummary {
@@ -138,6 +140,8 @@ export interface ProjectSummary {
   archived: boolean;
   /** one of the example projects (`example: true`, server/examples.ts) */
   example: boolean;
+  /** `hidden: true` in project.yaml: kept off the root page and the switcher (shared/chains.ts visibleProjects) */
+  hidden: boolean;
   unresolved: number;
   /** the newest write to any of the project's files */
   modified: string;

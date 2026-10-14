@@ -45,6 +45,7 @@ export interface ProjectConfig {
   repos: RepoConfig[];
   error?: string;
   example?: boolean; // `example: true`: one of the example projects (server/examples.ts); the UI labels it and offers to remove it
+  hidden?: boolean; // `hidden: true`: kept off the root page, the switcher and linked projects' "Next" links; its URL still opens it
   after?: string; // `after: <slug>`: the project this one builds on (linked projects; see resolveLink)
   warnings: string[]; // project-level problems that aren't errors (a bad `after:`)
 }
@@ -110,6 +111,7 @@ export function parseProject(slug: string, dir: string, raw: string): ProjectCon
   out.title = text(doc.title)?.trim() || slug;
   out.description = text(doc.description) ?? null;
   if (flag(doc.example)) out.example = true;
+  if (flag(doc.hidden)) out.hidden = true;
   if (doc.after != null) {
     const a = text(doc.after)?.trim();
     if (a && SAFE_NAME.test(a)) out.after = a;
@@ -340,12 +342,12 @@ export function linkedRepos(cfg: ProjectConfig, pred = resolveLink(cfg).pred): R
   });
 }
 
-/** Each successor project of `slug`: the projects whose valid `after:` names it, by title. */
-export function successorsOf(slug: string): { slug: string; title: string }[] {
+/** Each successor project of `slug`: the projects whose valid `after:` names it, by title; `hidden` if it's hidden. */
+export function successorsOf(slug: string): { slug: string; title: string; hidden?: true }[] {
   return listProjectSlugs()
     .map((s) => (s === slug ? null : projectConfig(s)?.cfg ?? null))
     .filter((c): c is ProjectConfig => !!c && c.after === slug && resolveLink(c).pred?.slug === slug)
-    .map((c) => ({ slug: c.slug, title: c.title }))
+    .map((c) => (c.hidden ? { slug: c.slug, title: c.title, hidden: true as const } : { slug: c.slug, title: c.title }))
     .sort((a, b) => a.title.localeCompare(b.title));
 }
 

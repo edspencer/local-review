@@ -116,7 +116,7 @@ const TALLY: PrStatus[] = ['draft', 'ready', 'published', 'merged'];
  * walk the chain and see whether what this one builds on is ready to go up.
  */
 export function LinkedBar({ summaries }: { summaries?: ProjectSummary[] }) {
-  const { after, next } = useContext(LinksContext);
+  const { after, next, hiddenNext } = useContext(LinksContext);
   if (!after && !next.length) return null;
   const tally = (slug: string) => {
     const s = summaries?.find((p) => p.slug === slug);
@@ -148,7 +148,7 @@ export function LinkedBar({ summaries }: { summaries?: ProjectSummary[] }) {
             <span className="muted">Next:</span> <strong>{n.title}</strong> {tally(n.slug)} →
           </a>
         ))
-      ) : (
+      ) : hiddenNext ? null : (
         <span className="muted">The last of its linked projects</span>
       )}
     </nav>

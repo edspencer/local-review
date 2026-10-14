@@ -15,7 +15,7 @@ import { useDraftMarkers } from './useDrafts';
 import { ExamplesMenuItem, ExamplesStrip, Welcome } from './Welcome';
 import { Projects } from './Projects';
 import { tildify } from '../shared/paths';
-import { chainGroups } from '../shared/chains';
+import { chainGroups, visibleProjects } from '../shared/chains';
 import { ARCHIVED_TITLE, LINK_ICON } from './Projects';
 import { SIDEBAR_DEFAULT, SIDEBAR_KEY, SIDEBAR_MIN, clampSidebar, keyResize, readSidebarWidth, sidebarMax } from './sidebarWidth';
 import { HomeContext, LinksContext, ProjectContext, hashString, isTyping, linkTo, navigate, prTab, projectUrl, relativeTime, routeUrl, useLocalStorage, useRoute, useTick, useTilde, type Route } from './util';
@@ -187,7 +187,7 @@ export function App() {
     ? list && list.projects.length > 0 ? '/: filter projects' : null
     : onCommit ? ['j / k: next / prev commit', route.tab === 'files' && 'n / p: next / prev file'].filter(Boolean).join(' · ') : null;
   // linked projects (`after:`): what the breadcrumbs, the project page's bar and the stack pictures need
-  const links = useMemo(() => ({ after: project?.after ?? null, next: project?.next ?? [], buildsOn: !!project?.repos.some((r) => r.startsAfter) }), [project]);
+  const links = useMemo(() => ({ after: project?.after ?? null, next: project?.next.filter((n) => !n.hidden) ?? [], hiddenNext: !!project?.next.some((n) => n.hidden), buildsOn: !!project?.repos.some((r) => r.startsAfter) }), [project]);
   const isExample = !!list?.projects.find((p) => p.slug === activeSlug)?.example;
   const exampleCount = list?.projects.filter((p) => p.example).length ?? 0;
   const examplesAdded = (slug: string) => {
@@ -246,7 +246,7 @@ export function App() {
                 <span className="sidebar-project-hint">Project page</span>
               </a>
             )}
-            {project && (project.after || project.next.length > 0) && (
+            {project && (project.after || links.next.length > 0) && (
               <div className="sidebar-links">
                 {project.after && (
                   <a href={projectUrl(project.after.slug)} onClick={linkTo(projectUrl(project.after.slug))} title={`${project.title} builds on ${project.after.title} (project.yaml after:)`}>
@@ -254,7 +254,7 @@ export function App() {
                     <span className="muted">Builds on</span> <span className="sidebar-links-title">{project.after.title}</span>
                   </a>
                 )}
-                {project.next.map((n) => (
+                {links.next.map((n) => (
                   <a key={n.slug} href={projectUrl(n.slug)} onClick={linkTo(projectUrl(n.slug))} title={`${n.title} builds on ${project.title}`}>
                     <svg className="octicon" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d={LINK_ICON} /></svg>
                     <span className="muted">Next</span> <span className="sidebar-links-title">{n.title}</span> →
@@ -438,19 +438,21 @@ function ProjectSwitcher({ list, current, title, onExamplesAdded, onExamplesRemo
   }, [open]);
   // a plain link when there's nothing to switch to; but the menu also offers the example projects, so it's a menu
   // whenever they aren't there yet
-  if (current && list.projects.length < 2 && list.examples === 'present')
+  // hidden projects (`hidden: true`) aren't listed, except the open one
+  const shown = visibleProjects(list.projects, current);
+  if (current && shown.length < 2 && list.examples === 'present')
     return (
       <a className="header-project" href={`/${encodeURIComponent(current)}`} title={`Project: ${current} (overview)`} onClick={(e) => { e.preventDefault(); navigate(`/${encodeURIComponent(current)}`); }}>
         {title}
       </a>
     );
   // linked projects stay together, each successor right after the one it builds on (indented)
-  const sorted = chainGroups(list.projects.slice().sort((a, b) => b.activity.at.localeCompare(a.activity.at))).flat();
+  const sorted = chainGroups(shown.slice().sort((a, b) => b.activity.at.localeCompare(a.activity.at))).flat();
   // archived projects (everything landed) go in their own section, collapsed unless the open one is archived
   const active = sorted.filter((p) => !p.archived);
   const archived = sorted.filter((p) => p.archived);
   const showArchived = archivedOpen || archived.some((p) => p.slug === current);
-  const linked = (p: ProjectSummary) => !!p.after && list.projects.some((x) => x.slug === p.after);
+  const linked = (p: ProjectSummary) => !!p.after && shown.some((x) => x.slug === p.after);
   const item = (p: ProjectSummary) => (
     <li key={p.slug} className={linked(p) ? 'is-successor' : ''}>
       <a
@@ -461,7 +463,7 @@ function ProjectSwitcher({ list, current, title, onExamplesAdded, onExamplesRemo
         onClick={(e) => { e.preventDefault(); setOpen(false); navigate(`/${encodeURIComponent(p.slug)}`); }}
       >
         <span className="project-menu-title">
-          {linked(p) && <span className="project-menu-after" title={`Builds on ${list.projects.find((x) => x.slug === p.after)?.title}`}>↳ </span>}
+          {linked(p) && <span className="project-menu-after" title={`Builds on ${shown.find((x) => x.slug === p.after)?.title}`}>↳ </span>}
           {p.title}{p.example && <span className="example-tag">Example</span>}
         </span>
         <span className="project-menu-meta">
@@ -484,7 +486,7 @@ function ProjectSwitcher({ list, current, title, onExamplesAdded, onExamplesRemo
             <a href="/" role="option" aria-selected={current === null} className={`project-menu-all ${current === null ? 'current' : ''}`} onClick={(e) => { e.preventDefault(); setOpen(false); navigate('/'); }}>
               <svg className="octicon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d={APPS_ICON} /></svg>
               <span className="project-menu-title">All projects</span>
-              <span className="project-menu-count">{list.projects.length}</span>
+              <span className="project-menu-count">{list.projects.filter((p) => !p.hidden).length}</span>
             </a>
           </li>
           {active.map(item)}

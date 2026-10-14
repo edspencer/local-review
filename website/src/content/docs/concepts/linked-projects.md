@@ -86,6 +86,21 @@ predecessor has merged and the successor is rebased, the first PR goes onto the 
 
 ![The successor's stack picture with the predecessor's stack drawn first, greyed out, above its own two stacks](../../../assets/shots/crop-linked-stack-picture.png "Show Calendar feed: the stack it builds on, greyed, above the successor's own.")
 
+## Hidden projects
+
+A project with [`hidden: true`](/reference/project-yaml/#top-level) in its `project.yaml` is left off the root page
+and the project switcher, but it stays linked: a successor's range still starts where it ends, and its URL still
+opens it. Where it was, the UI closes the chain over it:
+
+- **Last in the chain:** the chain card shows the others. Its predecessor's project page and sidebar leave out the
+  "Next" link to it, and don't call the predecessor the last of its linked projects either.
+- **In the middle** (`a`, then hidden `b`, then `c`): the chain card shows `a` then `c`, and `c` is labelled as
+  building on `a`, the nearest project shown. On `c`'s own page, "← Builds on" still names `b`, since that's where its
+  range starts.
+- **First:** the next project shown starts the chain card. A chain with a single project left is a plain card.
+
+Remove the line (or set `hidden: false`) to bring it back; nothing else changed.
+
 ## Splitting a project
 
 To split an existing project into two linked ones: make one branch per project, create the new project with

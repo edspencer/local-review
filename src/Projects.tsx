@@ -1,13 +1,13 @@
 // `/`: the root page, every project as a card (a thumbnail of its stacks, its totals, readiness and last activity),
-// most recently active first, in Active / Examples / Archived sections. With no projects at all, App shows the
-// first-run page (Welcome.tsx) instead.
+// most recently active first, in Active / Examples / Archived sections. Hidden ones (project.yaml `hidden: true`) are
+// left out, and their counts with them. With no projects at all, App shows the first-run page (Welcome.tsx) instead.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, type ProjectSummary, type ProjectsResponse } from './api';
 import { ReadinessBadge } from './Readiness';
 import { CopyLine } from './Welcome';
 import { STATUS_LABEL, type PrStatus } from '../shared/readiness';
 import { num, plural, summary } from '../shared/totals';
-import { chainGroups } from '../shared/chains';
+import { chainGroups, visibleProjects } from '../shared/chains';
 import { isTyping, linkTo, projectUrl, relativeTime, useLocalStorage, useTilde } from './util';
 
 type Sort = 'recent' | 'title' | 'size' | 'open';
@@ -60,24 +60,26 @@ export function Projects({ list, onExamplesAdded, onExamplesRemoved }: { list: P
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // hidden projects are left out; a chain closes over one (shared/chains.ts)
+  const projects = useMemo(() => visibleProjects(list.projects), [list.projects]);
   // linked projects (`after:`) stay together, in chain order, as one group: shown if any of them matches the filter,
   // sorted by their most recently active member (or the first one's title, their total size, their open threads)
   const shown = useMemo(() => {
     const cmp = COMPARE[COMPARE[sort] ? sort : 'recent'];
     const lead = (g: ProjectSummary[]) => (sort === 'recent' ? g.slice().sort(byRecent)[0] : sort === 'title' ? g[0] : { ...g[0], commitCount: g.reduce((a, p) => a + size(p), 0), followOnCount: 0, mergedCount: 0, unresolved: g.reduce((a, p) => a + p.unresolved, 0), activity: g.slice().sort(byRecent)[0].activity });
-    return chainGroups(list.projects)
+    return chainGroups(projects)
       .filter((g) => g.some((p) => matchesFilter(p, query)))
       .sort((a, b) => cmp(lead(a), lead(b)));
-  }, [list.projects, query, sort]);
+  }, [projects, query, sort]);
   // the examples get their own section once you have projects of your own; archived ones (everything landed) go last.
   // A chain is archived only once all of it is, and an example chain only if all of it is examples.
-  const own = list.projects.some((p) => !p.example);
+  const own = projects.some((p) => !p.example);
   const archived = shown.filter((g) => g.every((p) => p.archived));
   const examples = own ? shown.filter((g) => !g.every((p) => p.archived) && g.every((p) => p.example)) : [];
   const active = shown.filter((g) => !archived.includes(g) && !examples.includes(g));
   const count = (gs: ProjectSummary[][]) => gs.reduce((a, g) => a + g.length, 0);
   const showArchived = archivedOpen || (!!query && archived.length > 0);
-  const n = list.projects.length;
+  const n = projects.length;
 
   return (
     <div className="page projects-page">
@@ -86,7 +88,7 @@ export function Projects({ list, onExamplesAdded, onExamplesRemoved }: { list: P
         <p className="projects-lede">
           A project is one piece of work: its repos, their commit ranges, and the PR stacks they split into.{' '}
           <span className="muted">
-            {plural(n, 'project')} in <code title={list.projectsDir}>{tilde(list.projectsDir)}</code>
+            {n || !list.projects.length ? plural(n, 'project') : plural(list.projects.length, 'hidden project')} in <code title={list.projectsDir}>{tilde(list.projectsDir)}</code>
           </span>
         </p>
       </div>
@@ -113,7 +115,12 @@ export function Projects({ list, onExamplesAdded, onExamplesRemoved }: { list: P
         </span>
       </div>
 
-      {shown.length === 0 && (
+      {n === 0 && (
+        <div className="blankslate">
+          Every project here is hidden (<code>hidden: true</code> in its <code>project.yaml</code>). Open one at its URL, or remove that line to bring it back.
+        </div>
+      )}
+      {n > 0 && shown.length === 0 && (
         <div className="blankslate">
           No project matches <strong>{query}</strong>. <button className="btn-link" onClick={() => setQuery('')}>Clear the filter</button>
         </div>
@@ -122,7 +129,7 @@ export function Projects({ list, onExamplesAdded, onExamplesRemoved }: { list: P
         <Section title="Active" count={count(active)} groups={active} extra={
             !own && list.examples === 'present' ? (
               <>
-                <RemoveExamples count={list.projects.length} onRemoved={onExamplesRemoved} />
+                <RemoveExamples count={list.projects.filter((p) => p.example).length} onRemoved={onExamplesRemoved} />
                 {!!list.newExamples?.length && <AddExamples removed={false} count={list.newExamples.length} onAdded={onExamplesAdded} inline />}
               </>
             ) : undefined

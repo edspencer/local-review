@@ -220,3 +220,42 @@ describe('linked projects: the predecessor’s stacks in the picture', () => {
     assert.match(thumb, /<g class="s-gray" opacity="0\.45">/);
   });
 });
+
+describe('linked projects: `hidden: true`', () => {
+  test('a hidden project still links both ways (ranges unchanged), but is marked as a hidden successor', async () => {
+    const { r } = tower();
+    writeProject('t10-part-1', { title: 'Part 1', hidden: true, repos: [{ name: 'svc', path: r.dir, branch: 'me/part-1', base: 'main' }] });
+    writeProject('t10-part-2', { title: 'Part 2', hidden: 'yes', after: 't10-part-1', repos: [{ name: 'svc', path: r.dir, branch: 'me/part-2', base: 'main' }] });
+    assert.equal(P.loadProjectConfig('t10-part-1')!.hidden, true);
+    assert.equal(P.parseProject('x', '/x', 'title: X\nhidden: false\n').hidden, undefined);
+    assert.equal(P.parseProject('x', '/x', 'title: X\n').hidden, undefined);
+    const p2 = (await P.loadProject('t10-part-2'))!;
+    assert.deepEqual(subjects(p2), ['Add the cache', 'Use the cache']); // still starts where hidden part 1 ends
+    assert.deepEqual(p2.after, { slug: 't10-part-1', title: 'Part 1' });
+    assert.deepEqual(p2.warnings, []);
+    // part 2 is hidden: marked, so part 1's page leaves out its "Next" link
+    assert.deepEqual(P.successorsOf('t10-part-1'), [{ slug: 't10-part-2', title: 'Part 2', hidden: true }]);
+  });
+
+  test('visibleProjects: hidden ones left out, a chain closes over them, the open one is kept', async () => {
+    const { chainGroups, visibleProjects } = await import('../shared/chains.ts');
+    const ps = [
+      { slug: 'a', after: null },
+      { slug: 'b', after: 'a', hidden: true },
+      { slug: 'c', after: 'b' },
+      { slug: 'd', after: 'c', hidden: true },
+      { slug: 'x', after: null, hidden: true },
+      { slug: 'y', after: 'x' },
+      { slug: 'z', after: null },
+    ];
+    const slugs = (gs: { slug: string }[][]) => gs.map((g) => g.map((p) => p.slug));
+    const v = visibleProjects(ps);
+    assert.deepEqual(v.map((p) => [p.slug, p.after]), [['a', null], ['c', 'a'], ['y', null], ['z', null]]);
+    assert.deepEqual(slugs(chainGroups(v)), [['a', 'c'], ['y'], ['z']]);
+    assert.equal(v[0], ps[0], 'an unchanged project is the same object');
+    // `keep`: the open project is listed even though it's hidden, where it is in its chain
+    const k = visibleProjects(ps, 'b');
+    assert.deepEqual(slugs(chainGroups(k)), [['a', 'b', 'c'], ['y'], ['z']]);
+    assert.deepEqual(visibleProjects([{ slug: 'a', after: null, hidden: true }]), []);
+  });
+});

@@ -54,6 +54,12 @@ describe('llms.txt', () => {
     assert.throws(() => guideSection('## A\n\n### B\n', 'A'), /can't have subheadings/);
   });
 
+  test('a hidden project is still listed (its slug is taken), marked hidden', () => {
+    const t = llmsTxt({ ...live, live: { ...live.live!, projects: [{ slug: 'parked', title: 'Parked', hidden: true, repos: [] }, { slug: 'shown', title: 'Shown', repos: [] }] } });
+    assert.ok(t.includes('- `parked`: Parked (hidden: `hidden: true`, so not on the root page), http://localhost:5050/parked'));
+    assert.ok(t.includes('- `shown`: Shown, http://localhost:5050/shown'));
+  });
+
   test('the docs site copy says to read the local one; the local one has the live facts and its own URLs', () => {
     const s = llmsTxt(site);
     assert.match(s, /docs site's copy/);

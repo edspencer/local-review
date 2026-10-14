@@ -9,6 +9,7 @@ title: My feature
 description: |                        # optional: the project intro (Markdown), editable in the UI too.
   One or two paragraphs of context for the whole effort. "Copy full PR body" puts it at the top of
   every PR's body, followed by the stack note and then the PR's own description.
+# hidden: true                       # optional: keep it off the root page and the project switcher (its URL still works)
 repos:
   - path: ~/code/my-service           # a local clone; it is only ever read, never modified
     # name: my-service                # optional, default: the path's basename (used in URLs and dir names)
