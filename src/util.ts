@@ -163,14 +163,16 @@ export const ProjectContext = createContext<string | null>(null);
 /**
  * The project on screen's links (project.yaml `after:`): the project it builds on, the ones that build on it, and
  * whether any of its repos starts where the predecessor's range ends (then the stack picture can show that one's
- * stacks too, greyed out).
+ * stacks too, greyed out). `next` leaves out hidden successors (project.yaml `hidden: true`); `hiddenNext` says there
+ * were some, so the page doesn't call this one the last of its chain.
  */
 export interface ProjectLinks {
   after: { slug: string; title: string } | null;
   next: { slug: string; title: string }[];
+  hiddenNext: boolean;
   buildsOn: boolean;
 }
-export const LinksContext = createContext<ProjectLinks>({ after: null, next: [], buildsOn: false });
+export const LinksContext = createContext<ProjectLinks>({ after: null, next: [], hiddenNext: false, buildsOn: false });
 
 // ---------- paths ----------
 /** The server's home directory (from /api/projects), so paths under it can be shown as `~/…`. */

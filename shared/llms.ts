@@ -17,7 +17,7 @@ export interface LiveFacts {
   home: string;
   projectsDir: string;
   reviewer: string;
-  projects: { slug: string; title: string; repos: { name: string; path: string; branch: string | null }[] }[];
+  projects: { slug: string; title: string; hidden?: boolean; repos: { name: string; path: string; branch: string | null }[] }[];
 }
 
 export interface LlmsInput {
@@ -77,7 +77,8 @@ function liveFacts(i: LlmsInput, f: LiveFacts): string {
     ? f.projects
         .map((p) => {
           const repos = p.repos.map((r) => `${code(r.name)} (${code(r.path)}${r.branch ? `, ${code(r.branch)}` : ''})`).join(', ');
-          return `  - ${code(p.slug)}: ${p.title}, ${i.url}/${p.slug}${repos ? `; repos ${repos}` : ''}`;
+          // a hidden project's slug is taken all the same, and its URL opens it
+          return `  - ${code(p.slug)}: ${p.title}${p.hidden ? ' (hidden: `hidden: true`, so not on the root page)' : ''}, ${i.url}/${p.slug}${repos ? `; repos ${repos}` : ''}`;
         })
         .join('\n')
     : '  - none yet';

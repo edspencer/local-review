@@ -56,6 +56,9 @@ commit ranges, and the [PR stacks](/concepts/pr-stacks/) they split into ([Proje
   projects** after you removed them), and **Add the new example project** when an update ships one you don't have.
 - **Filter** (press `/`; Esc clears it) matches the title, slug, repo names and branch names; **Sort** by recent
   activity, title, size or open threads (remembered). The `npx local-review init <slug>` line starts a new project.
+- **Hidden projects** ([`hidden: true`](/reference/project-yaml/#top-level) in `project.yaml`) aren't on the root
+  page or in the switcher, or in their counts; a [chain](/concepts/linked-projects/#hidden-projects) closes over one.
+  Their URLs still open them. If every project is hidden, the root page says so.
 - With no projects yet, `/` is the [first-run welcome page](/getting-started/quickstart/) instead, with the
   example projects one click away.
 

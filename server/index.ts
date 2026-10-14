@@ -318,6 +318,8 @@ async function projectSummary(slug: string) {
     readiness,
     archived,
     example: !!p.cfg.example,
+    // `hidden: true`: left off the root page and the switcher (shared/chains.ts visibleProjects); still served
+    hidden: !!p.cfg.hidden,
     // linked projects: the predecessor's slug (a valid `after:`); `next` (its successors) is filled in by the list
     after: p.after?.slug ?? null,
     next: [] as string[],
@@ -789,7 +791,7 @@ const VERSION: string = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json
 function llmsInput(c: Context): LlmsInput {
   const projects = listProjectSlugs().map((slug) => {
     const cfg = loadProjectConfig(slug);
-    return { slug, title: cfg?.title ?? slug, repos: (cfg?.repos ?? []).map((r) => ({ name: r.name, path: r.path, branch: r.branch ?? r.to ?? null })) };
+    return { slug, title: cfg?.title ?? slug, hidden: !!cfg?.hidden, repos: (cfg?.repos ?? []).map((r) => ({ name: r.name, path: r.path, branch: r.branch ?? r.to ?? null })) };
   });
   return {
     guide: fs.readFileSync(AGENT_GUIDE, 'utf8'),

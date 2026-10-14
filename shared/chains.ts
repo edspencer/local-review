@@ -44,3 +44,24 @@ export function chainGroups<T extends Linkable>(ps: T[]): T[][] {
   }
   return groups;
 }
+
+/**
+ * The projects to show (project.yaml `hidden: true` ones left out, but `keep`, the open one, always shown), each
+ * with `after` pointing at its nearest shown predecessor, so a chain closes over a hidden project in its middle (a →
+ * b, hidden → c: c builds on a) and one whose predecessors are all hidden starts its chain. The links themselves are
+ * unchanged on the server: this is only what the lists show. Order is kept.
+ */
+export function visibleProjects<T extends Linkable & { hidden?: boolean }>(ps: T[], keep?: string | null): T[] {
+  const bySlug = new Map(ps.map((p) => [p.slug, p]));
+  const shown = (p: T) => !p.hidden || p.slug === keep;
+  return ps.filter(shown).map((p) => {
+    const seen = new Set<string>([p.slug]);
+    let a = p.after ? bySlug.get(p.after) : undefined;
+    while (a && !shown(a) && !seen.has(a.slug)) {
+      seen.add(a.slug);
+      a = a.after ? bySlug.get(a.after) : undefined;
+    }
+    const after = a && shown(a) && a.slug !== p.slug ? a.slug : null;
+    return after === p.after ? p : { ...p, after };
+  });
+}

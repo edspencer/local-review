@@ -7,6 +7,16 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
+## Coming in 0.10.0: hidden projects
+
+Not released yet.
+
+- **`hidden: true` keeps a project off the root page.** Add it to a `project.yaml` and the project is left off the
+  root page (and its counts) and out of the project switcher, without deleting or moving anything: for a parked
+  experiment, or a demo of linked projects that leaves the last one out. Its URL still opens it, and `after:` links
+  to and from it still hold, so no range changes. In a chain, the other projects stay together and the card closes
+  over the hidden one. See [Hidden projects](/concepts/linked-projects/#hidden-projects).
+
 ## 0.9.0: every thread in one place, comments for GitHub, and drafts that survive a reload
 
 - **A Comments tab on the project and stack pages.** Every comment thread on every PR there, including PRs that aren't
