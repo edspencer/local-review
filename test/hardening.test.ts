@@ -152,6 +152,19 @@ describe('read-only git wrapper', () => {
     assert.throws(() => G.sha40('HEAD'));
   });
 
+  test('a git call that never finishes times out instead of hanging its callers', async () => {
+    const repo = changeRepo();
+    G.setGitTimeout(0); // fires before any git can exit: stands in for a child stuck in the kernel
+    try {
+      await assert.rejects(G.git(repo.dir, ['rev-parse', 'HEAD']), /timed out/);
+      await assert.rejects(G.gitBuffer(repo.dir, ['show', 'HEAD:f.txt']), /timed out/);
+      await assert.rejects(G.gitWithInput(repo.dir, ['cat-file', '--batch-check'], 'HEAD\n'), /timed out/);
+    } finally {
+      G.setGitTimeout(G.GIT_TIMEOUT_MS);
+    }
+    assert.match(await G.git(repo.dir, ['rev-parse', 'HEAD']), /^[0-9a-f]{40}\n$/);
+  });
+
   test('reading a stack leaves the repo (.git and work tree) byte-for-byte untouched, even with a dirty index', async () => {
     const repo = changeRepo();
     repo.write('f.txt', 'dirty work tree\n'); // index now stale vs the work tree: a refreshing command would rewrite it
