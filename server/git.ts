@@ -36,7 +36,8 @@ const BASE_ARGS = [
 const FORBIDDEN_ARG = /^--(output|output-directory|no-index|ext-diff|textconv|filters|exec|upload-pack|receive-pack)(=|$)/;
 
 export class GitError extends Error {
-  constructor(message: string, public stderr = '') {
+  /** git's exit status, when it ran and failed (e.g. `merge-base --is-ancestor`: 1 is "no", 128 an unknown object) */
+  constructor(message: string, public stderr = '', public exitCode?: number) {
     super(message);
   }
 }
@@ -84,7 +85,7 @@ export function git(repo: string, args: string[], opts: { maxBuffer?: number } =
       argv,
       { env: ENV, maxBuffer: opts.maxBuffer ?? 64 * 1024 * 1024, encoding: 'utf8' },
       (err, stdout, stderr) => {
-        if (err) reject(new GitError(`git ${args.join(' ')} failed: ${String(stderr || err.message).trim()}`, String(stderr)));
+        if (err) reject(new GitError(`git ${args.join(' ')} failed: ${String(stderr || err.message).trim()}`, String(stderr), typeof err.code === 'number' ? err.code : undefined));
         else resolve(stdout);
       },
     );

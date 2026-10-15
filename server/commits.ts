@@ -1,5 +1,6 @@
 import fs from 'node:fs';
-import { EMPTY_TREE, git, gitBufferWithInput, gitWithInput, isSafeRef, isSha, SAFE_REF_RULE, safeRef, sha40 } from './git.js';
+import { diskGet, diskSet } from './diskcache.js';
+import { EMPTY_TREE, git, GitError, gitBufferWithInput, gitWithInput, isSafeRef, isSha, SAFE_REF_RULE, safeRef, sha40 } from './git.js';
 
 export interface CommitSummary {
   sha: string;
@@ -85,7 +86,7 @@ export interface FileWithContents extends FileChange {
   tooLarge?: boolean;
 }
 
-// ---- caches keyed by immutable data (commit shas) ----
+// ---- caches keyed by immutable data (commit shas); the definite answers are also kept on disk (diskcache.ts) ----
 const summaryCache = new Map<string, Omit<CommitSummary, 'sha' | 'short'>>(); // repo\0sha
 const patchIdCache = new Map<string, string | null>();
 const filesCache = new Map<string, FileChange[]>();
@@ -160,9 +161,10 @@ export async function headOf(cfg: RepoRange): Promise<string | null> {
 async function revList(repo: string, from: string | null, to: string): Promise<string[]> {
   const range = from ? `${sha40(from)}..${sha40(to)}` : sha40(to);
   const key = `${repo}\0${range}`;
-  const hit = revListCache.get(key);
-  if (hit) return hit;
+  const hit = revListCache.get(key) ?? diskGet<string[]>(repo, 'rev-list', range);
+  if (hit) return remember(revListCache, key, hit, 500);
   const shas = (await git(repo, ['rev-list', '--reverse', '--end-of-options', range])).split('\n').filter(Boolean);
+  diskSet(repo, 'rev-list', range, shas);
   return remember(revListCache, key, shas, 500);
 }
 
@@ -170,6 +172,8 @@ export async function summarize(repo: string, sha: string): Promise<Omit<CommitS
   const key = repo + '\0' + sha;
   const hit = summaryCache.get(key);
   if (hit) return hit;
+  const stored = diskGet<Omit<CommitSummary, 'sha' | 'short'>>(repo, 'summary', sha);
+  if (stored) return remember(summaryCache, key, stored);
   const meta = await git(repo, ['show', '-s', `--format=%P${SEP}%s${SEP}%an${SEP}%ae${SEP}%aI${SEP}%(trailers:key=Change-Id,valueonly,separator=%x2C)`, sha40(sha)]);
   const [parents, subject, author, authorEmail, date, changeIds] = meta.trim().split(SEP);
   const parent = parents.split(' ').filter(Boolean)[0] ?? null;
@@ -185,8 +189,8 @@ export async function summarize(repo: string, sha: string): Promise<Omit<CommitS
     deletions: files.reduce((a, f) => a + f.deletions, 0),
     filesChanged: files.length,
   };
-  summaryCache.set(key, s);
-  return s;
+  diskSet(repo, 'summary', sha, s);
+  return remember(summaryCache, key, s);
 }
 
 /**
@@ -254,14 +258,15 @@ const present = (repo: string, shas: (string | undefined)[]) => resolveCommits(r
 /** merge-base of two commits (null: none): immutable, so cached. */
 async function mergeBaseOf(repo: string, a: string, b: string): Promise<string | null> {
   const key = `${repo}\0${a}\0${b}`;
-  const hit = mergeBaseCache.get(key);
-  if (hit !== undefined) return hit;
+  const hit = mergeBaseCache.get(key) ?? diskGet<string>(repo, 'merge-base', `${a}\0${b}`);
+  if (hit !== undefined) return remember(mergeBaseCache, key, hit);
   let mb: string | null;
   try {
     mb = (await git(repo, ['merge-base', '--end-of-options', sha40(a), sha40(b)])).trim() || null;
   } catch {
     mb = null;
   }
+  if (mb) diskSet(repo, 'merge-base', `${a}\0${b}`, mb); // not "none": the objects may just not be fetched yet
   return remember(mergeBaseCache, key, mb);
 }
 
@@ -337,6 +342,12 @@ export async function changedFiles(repo: string, sha: string, parent: string | n
   const key = repo + '\0' + sha + '\0' + (parent ?? '');
   const hit = filesCache.get(key);
   if (hit) return hit;
+  const diskKey = `${sha}\0${parent ?? ''}`;
+  const stored = diskGet<{ files: FileChange[]; blobs: [string, string][] }>(repo, 'files', diskKey);
+  if (stored && stored.blobs?.length === stored.files?.length) {
+    stored.files.forEach((f, i) => blobsOf.set(f, { old: stored.blobs[i][0], new: stored.blobs[i][1] }));
+    return remember(filesCache, key, stored.files);
+  }
   const from = parent ? sha40(parent) : EMPTY_TREE;
   sha40(sha);
   const [rawOut, numOut] = await Promise.all([
@@ -385,8 +396,8 @@ export async function changedFiles(repo: string, sha: string, parent: string | n
       f.binary = s.bin;
     }
   }
-  filesCache.set(key, files);
-  return files;
+  diskSet(repo, 'files', diskKey, { files, blobs: files.map((f) => [blobsOf.get(f)!.old, blobsOf.get(f)!.new]) });
+  return remember(filesCache, key, files);
 }
 
 const MAX_BLOB = 2 * 1024 * 1024;
@@ -538,14 +549,17 @@ const ancestorCache = new Map<string, boolean>(); // repo\0sha\0head
 /** Is `sha` an ancestor of (or equal to) `head`? False if either is unknown to the repo. */
 export async function isAncestor(repo: string, sha: string, head: string): Promise<boolean> {
   const key = `${repo}\0${sha}\0${head}`;
-  const hit = ancestorCache.get(key);
-  if (hit !== undefined) return hit;
+  const hit = ancestorCache.get(key) ?? diskGet<boolean>(repo, 'ancestor', `${sha}\0${head}`);
+  if (hit !== undefined) return remember(ancestorCache, key, hit);
   let yes = false;
   try {
     await git(repo, ['merge-base', '--is-ancestor', '--end-of-options', sha40(sha), sha40(head)]);
     yes = true;
-  } catch {
+    diskSet(repo, 'ancestor', `${sha}\0${head}`, true);
+  } catch (e) {
     yes = false;
+    // exit 1 is a definite "no"; anything else (128: an object not fetched yet) may change, so isn't kept
+    if (e instanceof GitError && e.exitCode === 1) diskSet(repo, 'ancestor', `${sha}\0${head}`, false);
   }
   if (ancestorCache.size > 5000) ancestorCache.clear();
   ancestorCache.set(key, yes);
@@ -556,6 +570,8 @@ export async function isAncestor(repo: string, sha: string, head: string): Promi
 export async function patchId(repo: string, sha: string): Promise<string | null> {
   const key = repo + '\0' + sha;
   if (patchIdCache.has(key)) return patchIdCache.get(key)!;
+  const stored = diskGet<string>(repo, 'patch-id', sha);
+  if (stored) return remember(patchIdCache, key, stored);
   let id: string | null = null;
   try {
     const s = await summarize(repo, sha);
@@ -565,6 +581,6 @@ export async function patchId(repo: string, sha: string): Promise<string | null>
   } catch {
     id = null;
   }
-  patchIdCache.set(key, id);
-  return id;
+  if (id) diskSet(repo, 'patch-id', sha, id);
+  return remember(patchIdCache, key, id);
 }

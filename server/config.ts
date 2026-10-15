@@ -36,6 +36,7 @@ export function expandHome(p: string) {
  *   projects/<slug>/{project.yaml, prs/, reviews/, assets/}   (assets/: images, server/assets.ts)
  *   backups/<ISO timestamp>/   automatic snapshots of projects/ (server/backups.ts)
  *   examples/orchard-<id>/     the example projects' repos, if you added them (server/examples.ts)
+ *   cache/<hash>.json          what git said about each repo's commits, so a restart needn't ask again (server/diskcache.ts)
  */
 export const HOME = path.resolve(expandHome(process.env.LOCAL_REVIEW_HOME || path.join(os.homedir(), '.local-review')));
 /**
@@ -47,6 +48,12 @@ export const PROJECTS_DIR = projectsOverride ? path.resolve(expandHome(projectsO
 /** The example projects' git repos (server/examples.ts): created by Local Review, never anyone's work. */
 export const EXAMPLES_DIR = path.join(HOME, 'examples');
 export const BACKUPS_DIR: string | null = !projectsOverride || process.env.LOCAL_REVIEW_HOME ? path.join(HOME, 'backups') : null;
+/**
+ * What git said about commits (server/diskcache.ts), kept across restarts. Disposable: delete it any time. Off, like
+ * snapshots, when only the projects dir is overridden, and under the test runner unless a test sets its own home.
+ */
+export const CACHE_DIR: string | null =
+  process.env.LOCAL_REVIEW_HOME || (!projectsOverride && !process.env.NODE_TEST_CONTEXT) ? path.join(HOME, 'cache') : null;
 /** The default port. The one place it's set: the CLI's help, the startup line and `npm run dev` all derive from it. */
 export { DEFAULT_PORT } from './port.js';
 /** A port number from the command line or $PORT: an integer 0–65535 (0 picks any free port), else null. */
