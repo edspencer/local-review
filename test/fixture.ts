@@ -1,9 +1,21 @@
 // Throwaway git repos under the OS temp dir for the review-store tests. These are the only repos the
 // tests ever write to; reviewed repos are never touched.
-import { execFileSync } from 'node:child_process';
+import { execFileSync, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+
+/**
+ * Stop a server started by a test and wait until it has exited: it may still be writing (the disk cache flushes on
+ * SIGTERM), so delete its data home only after this.
+ */
+export function stopServer(server: ChildProcess | undefined): Promise<void> {
+  if (!server || server.exitCode !== null || server.signalCode !== null) return Promise.resolve();
+  return new Promise((res) => {
+    server.once('exit', () => res());
+    server.kill();
+  });
+}
 
 export function tmpDir(prefix: string) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));

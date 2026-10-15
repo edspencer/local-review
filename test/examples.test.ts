@@ -10,7 +10,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
-import { tmpDir } from './fixture.ts';
+import { stopServer, tmpDir } from './fixture.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SLUGS = ['example-waitlists', 'example-calendar-feed', 'example-calendar-reminders', 'example-webhook-retries'];
@@ -149,8 +149,8 @@ describe('the example projects, through the server', () => {
   before(async () => {
     ({ url, server } = await serve(s));
   });
-  after(() => {
-    server?.kill();
+  after(async () => {
+    await stopServer(server);
     fs.rmSync(s.home, { recursive: true, force: true });
   });
 
@@ -192,8 +192,8 @@ describe('adding the example projects without blocking the server', () => {
   before(async () => {
     ({ url, server } = await serve(s));
   });
-  after(() => {
-    server?.kill();
+  after(async () => {
+    await stopServer(server);
     fs.rmSync(s.home, { recursive: true, force: true });
   });
 
@@ -273,8 +273,8 @@ describe('two processes adding the examples at once', () => {
 describe('an update that ships a new example project', () => {
   const s = sandbox();
   let server: ChildProcess | undefined;
-  after(() => {
-    server?.kill();
+  after(async () => {
+    await stopServer(server);
     fs.rmSync(s.home, { recursive: true, force: true });
   });
 

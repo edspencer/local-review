@@ -58,7 +58,12 @@ function flush(r: RepoFile) {
   if (!r.dirty) return;
   r.dirty = false;
   try {
-    fs.mkdirSync(path.dirname(r.file), { recursive: true });
+    // make cache/ in the data home, but never the home itself: if that's been deleted, don't bring it back
+    const cacheDir = path.dirname(r.file);
+    if (!fs.existsSync(cacheDir)) {
+      if (!fs.existsSync(path.dirname(cacheDir))) return;
+      fs.mkdirSync(cacheDir);
+    }
     atomicWrite(r.file, JSON.stringify({ version: VERSION, repo: r.path, entries: Object.fromEntries(r.entries) }));
   } catch {
     /* a cache: next time, then */

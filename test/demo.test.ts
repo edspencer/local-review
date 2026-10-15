@@ -10,6 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { check, seed, type Manifest } from '../demo/seed.ts';
+import { stopServer } from './fixture.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -51,8 +52,8 @@ describe('the seeded demo, through the server', () => {
     }
     throw new Error('server did not start');
   });
-  after(() => {
-    server?.kill();
+  after(async () => {
+    await stopServer(server);
     fs.rmSync(out, { recursive: true, force: true });
   });
 

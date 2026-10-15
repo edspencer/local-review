@@ -15,6 +15,7 @@ const home = path.join(dir, 'home');
 const log = path.join(dir, 'git.log');
 const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
 fs.mkdirSync(path.join(dir, 'bin'));
+fs.mkdirSync(home); // the cache makes cache/ in an existing data home, never the home itself
 fs.writeFileSync(
   path.join(dir, 'bin', 'git'),
   `#!/bin/sh\nsub=""; skip=""\nfor a in "$@"; do\n  if [ -n "$skip" ]; then skip=""; continue; fi\n  case "$a" in -C|-c) skip=1 ;; -*) ;; *) sub="$a"; break ;; esac\ndone\necho "$sub" >> '${log}'\nexec '${realGit}' "$@"\n`,
@@ -50,13 +51,24 @@ console.log(JSON.stringify({ commits: info.commits, details, ids, anc }));
 `,
 );
 
-function run(cfg: object): { out: any; git: string[] } {
+function run(cfg: object, lrHome = home): { out: any; git: string[] } {
   fs.writeFileSync(log, '');
-  const env: NodeJS.ProcessEnv = { ...process.env, LOCAL_REVIEW_HOME: home, PATH: `${path.join(dir, 'bin')}${path.delimiter}${process.env.PATH}` };
+  const env: NodeJS.ProcessEnv = { ...process.env, LOCAL_REVIEW_HOME: lrHome, PATH: `${path.join(dir, 'bin')}${path.delimiter}${process.env.PATH}` };
   delete env.LOCAL_REVIEW_PROJECTS_DIR;
   const stdout = execFileSync(process.execPath, ['--import', 'tsx', script, JSON.stringify(cfg)], { cwd: ROOT, env, encoding: 'utf8' });
   return { out: JSON.parse(stdout.trim().split('\n').at(-1)!), git: fs.readFileSync(log, 'utf8').split('\n').filter(Boolean) };
 }
+
+test("no data home: nothing is written (a deleted home isn't brought back)", () => {
+  const repo = Repo.create();
+  repos.push(repo);
+  repo.commit('Initial', { 'README.md': 'x\n' });
+  repo.git('checkout', '-q', '-b', 'feature');
+  repo.commit('One', { 'a.txt': 'a\n' });
+  const gone = path.join(dir, 'no-such-home');
+  run({ name: 'r', path: repo.dir, branch: 'feature', base: 'main' }, gone);
+  assert.equal(fs.existsSync(gone), false);
+});
 
 test('a restart reads commits from disk: same results, only the refs asked of git; a damaged file is rebuilt', () => {
   const repo = Repo.create();

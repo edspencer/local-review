@@ -154,11 +154,14 @@ describe('read-only git wrapper', () => {
 
   test('a git call that never finishes times out instead of hanging its callers', async () => {
     const repo = changeRepo();
-    G.setGitTimeout(0); // fires before any git can exit: stands in for a child stuck in the kernel
+    // git() and gitBuffer() leave the child's stdin open, so `cat-file --batch-check` with no input waits forever:
+    // a real hang, standing in for a child stuck in the kernel (a 0 ms timeout would race a fast git instead)
+    G.setGitTimeout(300);
     try {
-      await assert.rejects(G.git(repo.dir, ['rev-parse', 'HEAD']), /timed out/);
-      await assert.rejects(G.gitBuffer(repo.dir, ['show', 'HEAD:f.txt']), /timed out/);
-      await assert.rejects(G.gitWithInput(repo.dir, ['cat-file', '--batch-check'], 'HEAD\n'), /timed out/);
+      const t0 = Date.now();
+      await assert.rejects(G.git(repo.dir, ['cat-file', '--batch-check']), /timed out/);
+      await assert.rejects(G.gitBuffer(repo.dir, ['cat-file', '--batch-check']), /timed out/);
+      assert.ok(Date.now() - t0 < 5000, 'rejected at the deadline, not whenever git gives up');
     } finally {
       G.setGitTimeout(G.GIT_TIMEOUT_MS);
     }
