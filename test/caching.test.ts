@@ -3,7 +3,7 @@
 // server still pushes (and then serves) every change an agent or a rebase makes.
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -16,6 +16,7 @@ process.env.LOCAL_REVIEW_PROJECTS_DIR = PROJECTS;
 const P = await import('../server/projects.ts');
 const S = await import('../server/commits.ts');
 const ST = await import('../server/stamps.ts');
+const RF = await import('../server/reffiles.ts');
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repos: Repo[] = [];
@@ -74,7 +75,7 @@ describe('loadProject cache', () => {
     assert.notEqual(p3, p2);
     assert.equal(await P.loadProject('cache'), p3);
 
-    // the branch moves: a new commit is in the range straight away (no poll running: git is read every time)
+    // the branch moves: a new commit is in the range straight away (no poll running: the ref files are checked every time)
     const d = repo.commit('More docs', { 'd.txt': 'd\n' });
     const p4 = (await P.loadProject('cache'))!;
     assert.notEqual(p4, p3);
@@ -129,6 +130,101 @@ describe('loadProject cache', () => {
     const gone = await ST.repoState({ name: 'g', path: path.join(PROJECTS, 'no-such-repo'), branch: 'x' });
     assert.equal(gone.stamp, 'missing');
   });
+
+  test("the poll doesn't ask git again while the ref files are unchanged, and does once they move", async () => {
+    const { repo } = stackRepo();
+    const cfg = { name: 'r', path: repo.dir, branch: 'feature', base: 'main' };
+    const s1 = await ST.repoState(cfg, { fresh: true });
+    repo.write('scratch.txt', 'work in progress\n');
+    repo.git('add', 'scratch.txt'); // editing and staging don't touch refs
+    assert.equal(await ST.repoState(cfg, { fresh: true }), s1, 'the same state: git not read again');
+    assert.equal(await ST.repoState(cfg), s1);
+    repo.git('commit', '-q', '-m', 'Scratch');
+    const s2 = await ST.repoState(cfg, { fresh: true });
+    assert.notEqual(s2, s1);
+    assert.equal(s2.refs.head, repo.git('rev-parse', 'feature'));
+    assert.equal(await ST.repoState(cfg, { fresh: true }), s2);
+  });
+});
+
+// ---------------------------------------------------------------- ref files (reffiles.ts)
+describe('ref-file stamp', () => {
+  test('changes with every kind of ref change, not with edits or staging', () => {
+    const { repo, a } = stackRepo();
+    let last = RF.refFilesStamp(repo.dir);
+    assert.ok(last);
+    const changed = (what: string, act: () => void) => {
+      act();
+      const now = RF.refFilesStamp(repo.dir);
+      assert.notEqual(now, last, `${what} should change the stamp`);
+      last = now;
+    };
+    const same = (what: string, act: () => void) => {
+      act();
+      assert.equal(RF.refFilesStamp(repo.dir), last, `${what} should not change the stamp`);
+    };
+    same('an edit', () => repo.write('a.txt', 'edited\n'));
+    same('staging', () => repo.git('add', 'a.txt'));
+    changed('a commit', () => repo.git('commit', '-q', '-m', 'Edit a'));
+    changed('an amend', () => repo.git('commit', '-q', '--amend', '-m', 'Edit a, reworded'));
+    changed('a new nested branch', () => repo.git('branch', 'me/feat/x', a));
+    changed('moving it', () => repo.git('branch', '-f', 'me/feat/x', 'feature'));
+    changed('a tag', () => repo.git('tag', 'v1', a));
+    changed('a fetch moving a remote-tracking ref', () => repo.git('update-ref', 'refs/remotes/origin/main', a));
+    changed('origin/HEAD', () => repo.git('symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main'));
+    changed('pack-refs', () => repo.git('pack-refs', '--all'));
+    changed('a packed ref moving', () => repo.git('update-ref', 'refs/heads/me/feat/x', a));
+    changed('a checkout', () => repo.git('checkout', '-q', 'main'));
+    changed('a branch deleted', () => repo.git('branch', '-D', 'me/feat/x'));
+    changed('a reset', () => repo.git('reset', '-q', '--hard', a));
+  });
+
+  test("a fetch that moves nothing doesn't change it (editors auto-fetch every minute or so); one that moves a branch does", () => {
+    const { repo: upstream } = stackRepo();
+    const clone = newRepo();
+    clone.git('remote', 'add', 'origin', upstream.dir);
+    clone.git('fetch', '-q', 'origin');
+    clone.git('pack-refs', '--all'); // fetches then rewrite packed-refs too
+    const s1 = RF.refFilesStamp(clone.dir);
+    for (let i = 0; i < 3; i++) {
+      clone.git('fetch', '-q', '--prune', 'origin');
+      assert.equal(RF.refFilesStamp(clone.dir), s1, `no-op fetch ${i + 1}`);
+    }
+    fs.writeFileSync(path.join(clone.dir, '.git', 'refs', 'heads', 'x.lock'), ''); // a write in progress
+    assert.equal(RF.refFilesStamp(clone.dir), s1, 'a lock file');
+    fs.rmSync(path.join(clone.dir, '.git', 'refs', 'heads', 'x.lock'));
+    upstream.commit('Upstream moves');
+    clone.git('fetch', '-q', 'origin');
+    assert.notEqual(RF.refFilesStamp(clone.dir), s1);
+  });
+
+  test('a linked worktree sees the shared refs; a bare repo works; not a repo is null', () => {
+    const { repo, a } = stackRepo();
+    const wt = path.join(tmpDir('lr-test-wt-'), 'wt');
+    repo.git('worktree', 'add', '-q', '-b', 'side', wt, a);
+    try {
+      const dirs = RF.gitDirs(wt)!;
+      assert.equal(fs.realpathSync(dirs.commonDir), fs.realpathSync(path.join(repo.dir, '.git')));
+      const s1 = RF.refFilesStamp(wt);
+      assert.ok(s1);
+      repo.commit('In the main checkout'); // moves `feature`, a ref the worktree shares
+      assert.notEqual(RF.refFilesStamp(wt), s1);
+      const s2 = RF.refFilesStamp(wt);
+      new Repo(wt).commit('In the worktree'); // its own HEAD's branch
+      assert.notEqual(RF.refFilesStamp(wt), s2);
+    } finally {
+      fs.rmSync(path.dirname(wt), { recursive: true, force: true });
+    }
+    const bare = tmpDir('lr-test-bare-');
+    try {
+      repo.git('clone', '-q', '--bare', repo.dir, bare);
+      assert.ok(RF.refFilesStamp(bare));
+    } finally {
+      fs.rmSync(bare, { recursive: true, force: true });
+    }
+    assert.equal(RF.refFilesStamp(PROJECTS), null);
+    assert.equal(RF.refFilesStamp(path.join(PROJECTS, 'no-such-dir')), null);
+  });
 });
 
 // ---------------------------------------------------------------- refs and file contents
@@ -179,6 +275,89 @@ describe('git reads', () => {
 });
 
 // ---------------------------------------------------------------- the live server
+async function startServer(env: NodeJS.ProcessEnv = {}): Promise<{ server: ChildProcess; port: number }> {
+  const port = await new Promise<number>((res) => {
+    const s = net.createServer().listen(0, '127.0.0.1', () => {
+      const p = (s.address() as net.AddressInfo).port;
+      s.close(() => res(p));
+    });
+  });
+  const server = spawn(process.execPath, ['--import', 'tsx', path.join(ROOT, 'server/cli.ts'), 'serve'], {
+    env: { ...process.env, PORT: String(port), LOCAL_REVIEW_DEV: '1', LOCAL_REVIEW_PROJECTS_DIR: PROJECTS, ...env },
+    stdio: 'ignore',
+  });
+  for (let i = 0; i < 100; i++) {
+    try {
+      if ((await fetch(`http://127.0.0.1:${port}/api/health`)).ok) break;
+    } catch { /* not up yet */ }
+    await new Promise((res) => setTimeout(res, 100));
+  }
+  return { server, port };
+}
+
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+describe('live server: the branch poll is quiet', () => {
+  // the server's git is a wrapper that logs each call's subcommand, then runs the real git
+  const dir = tmpDir('lr-test-gitcount-');
+  const log = path.join(dir, 'log');
+  const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+  let server: ChildProcess;
+  let port = 0;
+  before(async () => {
+    fs.mkdirSync(path.join(dir, 'bin'));
+    fs.writeFileSync(
+      path.join(dir, 'bin', 'git'),
+      `#!/bin/sh\nsub=""; skip=""\nfor a in "$@"; do\n  if [ -n "$skip" ]; then skip=""; continue; fi\n  case "$a" in -C|-c) skip=1 ;; -*) ;; *) sub="$a"; break ;; esac\ndone\necho "$sub" >> '${log}'\nexec '${realGit}' "$@"\n`,
+      { mode: 0o755 },
+    );
+    fs.writeFileSync(log, '');
+    fs.mkdirSync(path.join(dir, 'projects'));
+    ({ server, port } = await startServer({
+      PATH: `${path.join(dir, 'bin')}${path.delimiter}${process.env.PATH}`,
+      LOCAL_REVIEW_PROJECTS_DIR: path.join(dir, 'projects'), // just this test's project
+    }));
+  });
+  after(() => {
+    server?.kill();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  // `git config --get user.name` at start isn't the poll
+  const launches = () => fs.readFileSync(log, 'utf8').split('\n').filter((s) => s && s !== 'config').length;
+
+  test('no git with no browser connected; one round when one connects; none while idle; git again once a branch moves', async () => {
+    const { repo } = stackRepo();
+    fs.mkdirSync(path.join(dir, 'projects', 'quiet'));
+    fs.writeFileSync(path.join(dir, 'projects', 'quiet', 'project.yaml'), YAML.stringify({ repos: [{ path: repo.dir, branch: 'feature', base: 'main', name: 'r' }] }));
+    await sleep(2500); // a poll interval and then some
+    assert.equal(launches(), 0, 'nobody listening: no poll');
+
+    const es = new AbortController();
+    const res = await fetch(`http://127.0.0.1:${port}/api/events`, { signal: es.signal });
+    const events: any[] = [];
+    (async () => {
+      const dec = new TextDecoder();
+      try {
+        for await (const chunk of res.body as any) for (const m of dec.decode(chunk).matchAll(/^data: (.*)$/gm)) events.push(JSON.parse(m[1]));
+      } catch { /* aborted */ }
+    })();
+    try {
+      await sleep(1000);
+      const first = launches();
+      assert.equal(first, 2, 'the first round reads the range once: cat-file and for-each-ref');
+      await sleep(2500);
+      assert.equal(launches(), first, 'idle rounds: the ref files are unchanged, so no git');
+
+      repo.commit('Moves the branch');
+      for (let i = 0; i < 60 && !events.some((e) => e.type === 'project' && e.reason === 'head'); i++) await sleep(100);
+      assert.ok(events.some((e) => e.type === 'project' && e.reason === 'head'), 'the new commit is still pushed');
+      assert.ok(launches() > first, 'git ran for the change');
+    } finally {
+      es.abort();
+    }
+  });
+});
+
 describe('live server: changes are pushed and then served fresh', () => {
   let server: ChildProcess;
   let port = 0;
@@ -188,22 +367,7 @@ describe('live server: changes are pushed and then served fresh', () => {
   before(async () => {
     r = stackRepo();
     writeProject('live', { title: 'Live', repos: [{ path: r.repo.dir, branch: 'feature', base: 'main', name: 'r', stacks: [{ title: 'One', starts_at: 'Add parser' }] }] });
-    port = await new Promise<number>((res) => {
-      const s = net.createServer().listen(0, '127.0.0.1', () => {
-        const p = (s.address() as net.AddressInfo).port;
-        s.close(() => res(p));
-      });
-    });
-    server = spawn(process.execPath, ['--import', 'tsx', path.join(ROOT, 'server/cli.ts'), 'serve'], {
-      env: { ...process.env, PORT: String(port), LOCAL_REVIEW_DEV: '1', LOCAL_REVIEW_PROJECTS_DIR: PROJECTS },
-      stdio: 'ignore',
-    });
-    for (let i = 0; i < 100; i++) {
-      try {
-        if ((await fetch(`http://127.0.0.1:${port}/api/health`)).ok) break;
-      } catch { /* not up yet */ }
-      await new Promise((res) => setTimeout(res, 100));
-    }
+    ({ server, port } = await startServer());
     // listen to the event stream like the browser does
     es = new AbortController();
     const res = await fetch(`http://127.0.0.1:${port}/api/events`, { signal: es.signal });

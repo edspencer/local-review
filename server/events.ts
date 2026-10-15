@@ -14,9 +14,12 @@ export type ServerEvent =
 
 type Listener = (e: ServerEvent) => void;
 const listeners = new Set<Listener>();
+let onFirstListener: (() => void) | null = null;
 
+/** Listen for changes (the browser's event stream). The branch poll only runs while someone is. */
 export function subscribe(l: Listener) {
   listeners.add(l);
+  if (listeners.size === 1) onFirstListener?.();
   return () => listeners.delete(l);
 }
 
@@ -73,26 +76,30 @@ export function startWatchers() {
     .on('error', (err) => console.error('[watch projects]', err));
 
   // poll each range's git state (stamps.ts: its end, base and branches) so new / amended / rebased commits, a moved
-  // base and new branch tags show up; requests use what the poll read (trustPolled) rather than asking git again
+  // base and new branch tags show up; requests use what the poll read (trustPolled) rather than asking git again.
+  // A round only runs git for repos whose ref files changed (reffiles.ts), and no round runs while no browser is
+  // listening: a request then checks for itself.
   const seen = new Map<string, { stamp: string; head: string | null }>();
-  const poll = () =>
-    Promise.all(
+  const poll = () => {
+    const files = new Map<string, string | null>(); // each repo's ref files, stat'd once this round
+    return Promise.all(
       listProjectSlugs().flatMap((slug) =>
         (() => {
           const cfg = loadProjectConfig(slug);
           return cfg ? linkedRepos(cfg) : [];
         })().map(async (r) => {
           const key = `${slug}\0${r.name}\0${r.path}\0${r.to ?? r.branch}\0${r.from ?? ''}\0${r.base ?? ''}\0${r.after ?? ''}`;
-          const s = await repoState(r, { fresh: true });
+          const s = await repoState(r, { fresh: true, files });
           const was = seen.get(key);
           if (was && was.stamp !== s.stamp) emit({ type: 'project', project: slug, reason: was.head !== s.refs.head ? 'head' : 'refs', repo: r.name });
           seen.set(key, { stamp: s.stamp, head: s.refs.head });
         }),
       ),
     );
+  };
   let polling = false;
   const tick = async () => {
-    if (polling) return; // a slow round (many repos) doesn't stack up
+    if (polling || !listeners.size) return; // a slow round (many repos) doesn't stack up; nobody's watching
     polling = true;
     try {
       await poll();
@@ -102,9 +109,10 @@ export function startWatchers() {
       polling = false;
     }
   };
+  onFirstListener = () => void tick(); // a browser (re)connecting catches up at once, not a round later
   tick();
   setInterval(tick, POLL_MS).unref();
-  // a poll round can be late or slow; past this, a request reads git itself
+  // a poll round can be late or slow; past this, a request checks for itself (the ref files, then git if they moved)
   trustPolled(POLL_MS * 2 + 1000);
 }
 

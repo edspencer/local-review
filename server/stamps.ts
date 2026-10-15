@@ -6,16 +6,18 @@
 // - a directory's stat (name, mtime, size, inode of each entry): prs/<repo>/, reviews/<repo>/. (project.yaml is
 //   compared by its text: projects.ts.)
 //
-// The directory stamps are taken on every request (a few stats). The git state costs a process or two, so while the
-// server runs, the branch-head poll (events.ts) re-reads every range's state every few seconds and requests use that
-// (trustPolled); a change it sees is also pushed to the browser. Without the poll (tests, CLI commands) every read
-// checks git.
+// The directory stamps are taken on every request (a few stats). The git state costs two processes, so it's only read
+// again when the repo's ref files change (reffiles.ts: a few stats, no git), or when it's RECHECK_MS old (a safety net
+// for a change those stats somehow missed). While the server runs, the branch-head poll (events.ts) checks every
+// range every few seconds and requests use what it saw (trustPolled); a change it sees is also pushed to the browser.
+// Without the poll (tests, CLI commands) every read checks the ref files.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { REF_LIST_ARGS, emptyRefIndex, parseRefs, type RefIndex } from './branches.js';
 import { rangeEnd, resolveRange, type RangeRefs, type RepoRange } from './commits.js';
 import { git } from './git.js';
+import { refFilesStamp } from './reffiles.js';
 
 export interface RepoState {
   refs: RangeRefs; // what the range's refs point at
@@ -24,40 +26,79 @@ export interface RepoState {
   at: number; // when git was read (Date.now())
 }
 
-const states = new Map<string, { state?: RepoState; pending?: Promise<RepoState> }>();
+/** How long a range's git state stands, while its ref files are unchanged, before git is asked again anyway. */
+export const RECHECK_MS = 10 * 60_000;
+
+interface Entry {
+  state?: RepoState;
+  files?: string | null; // the ref-file stamp taken just before `state` was read
+  checked?: number; // when `state` was last known current (read, or its ref files seen unchanged)
+  pending?: Promise<RepoState>;
+}
+const states = new Map<string, Entry>();
 let trustMs = 0;
 
-/** Let reads use a range's git state for up to `ms` after it was read (the poll keeps it fresher than that). */
+/** Let reads use a range's git state for up to `ms` after it was last checked (the poll keeps it fresher than that). */
 export function trustPolled(ms: number) {
   trustMs = ms;
 }
 
 const rangeKey = (cfg: RepoRange) => [cfg.path, rangeEnd(cfg), cfg.from ?? '', cfg.base ?? '', cfg.after ?? ''].join('\0');
 
-async function readState(cfg: RepoRange): Promise<RepoState> {
+// The branch listing is the repo's, not the range's: ranges in one repo share it while the ref files are unchanged.
+const listings = new Map<string, { files: string; at: number; p: Promise<string> }>();
+
+function refListing(repo: string, files: string | null): Promise<string> {
+  const now = Date.now();
+  const hit = files === null ? undefined : listings.get(repo);
+  if (hit && hit.files === files && now - hit.at < RECHECK_MS) return hit.p;
+  const p: Promise<string> = git(repo, REF_LIST_ARGS).catch(() => {
+    if (listings.get(repo)?.p === p) listings.delete(repo); // a failed read isn't kept
+    return '';
+  });
+  if (files !== null) listings.set(repo, { files, at: now, p });
+  return p;
+}
+
+async function readState(cfg: RepoRange, files: string | null): Promise<RepoState> {
   const at = Date.now();
   if (!fs.existsSync(cfg.path)) return { refs: { head: null, from: null, base: null }, refIndex: emptyRefIndex(), stamp: 'missing', at };
-  const [refs, listing] = await Promise.all([
-    resolveRange(cfg),
-    git(cfg.path, REF_LIST_ARGS).catch(() => ''),
-  ]);
+  const [refs, listing] = await Promise.all([resolveRange(cfg), refListing(cfg.path, files)]);
   const stamp = crypto.createHash('sha1').update(JSON.stringify(refs)).update('\0').update(listing).digest('hex');
   return { refs, refIndex: parseRefs(listing), stamp, at };
 }
 
 /**
- * A range's git state: the polled one if it's recent enough (see trustPolled), else read now. `fresh` always reads
- * (the poll). Concurrent reads of one range share a single git call.
+ * A range's git state: the polled one if it was checked recently enough (see trustPolled), the last one read if the
+ * repo's ref files haven't changed since (and it's under RECHECK_MS old), else read from git now. `fresh` (the poll)
+ * skips the first of those. Concurrent reads of one range share a single git call. `files` lets one poll round stat
+ * each repo's ref files once for all its ranges.
  */
-export function repoState(cfg: RepoRange, opts: { fresh?: boolean } = {}): Promise<RepoState> {
+export function repoState(cfg: RepoRange, opts: { fresh?: boolean; files?: Map<string, string | null> } = {}): Promise<RepoState> {
   const k = rangeKey(cfg);
   let e = states.get(k);
   if (!e) states.set(k, (e = {}));
-  if (!opts.fresh && e.state && Date.now() - e.state.at < trustMs) return Promise.resolve(e.state);
+  const now = Date.now();
+  if (!opts.fresh && e.state && now - (e.checked ?? 0) < trustMs) return Promise.resolve(e.state);
   if (e.pending) return e.pending;
+  // stamped before git runs, so a change made while it reads is seen next time
+  let files = opts.files?.get(cfg.path);
+  if (files === undefined) {
+    files = refFilesStamp(cfg.path);
+    opts.files?.set(cfg.path, files);
+  }
+  if (e.state && files !== null && files === e.files && now - e.state.at < RECHECK_MS) {
+    e.checked = now;
+    return Promise.resolve(e.state);
+  }
   const entry = e;
-  const p = readState(cfg).then((s) => {
-    if (!entry.state || entry.state.at <= s.at) entry.state = s;
+  const stampedFiles = files;
+  const p = readState(cfg, files).then((s) => {
+    if (!entry.state || entry.state.at <= s.at) {
+      entry.state = s;
+      entry.files = stampedFiles;
+      entry.checked = s.at;
+    }
     return s;
   });
   entry.pending = p;

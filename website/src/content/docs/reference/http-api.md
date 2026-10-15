@@ -85,8 +85,9 @@ The SVG is 680px wide; the PNG is drawn at 2x (1360px).
 
 ### Events
 
-`GET /api/events` is a Server-Sent Events stream. The server watches `~/.local-review/projects/` and polls each
-repo's branches every 2 seconds. It sends an `event: hello` first, then each change as an `event: change` whose data
+`GET /api/events` is a Server-Sent Events stream. The server watches `~/.local-review/projects/` and, while at least
+one stream is open, polls each repo's branches every 2 seconds (running git only when the repo's ref files change; see
+[Projects and repos](/concepts/projects-and-repos/)). It sends an `event: hello` first, then each change as an `event: change` whose data
 is one of these (so listen with `addEventListener('change', …)`; `onmessage` sees nothing), and a comment line every
 25 seconds to keep the connection open:
 
