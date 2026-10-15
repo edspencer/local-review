@@ -1,5 +1,11 @@
 # local-review
 
+## 0.10.3
+
+### Patch Changes
+
+- [#56](https://github.com/edspencer/local-review/pull/56) [`2452c81`](https://github.com/edspencer/local-review/commit/2452c819263089b14630569fcf9d229314fec000) Thanks [@edspencer](https://github.com/edspencer)! - The first page load after a restart is much faster. What git says about each commit (subject, author, changed files, merge-bases, ancestry, patch-ids) is now kept in `~/.local-review/cache/`, so a restart needs a couple of dozen git processes rather than several per commit: 403 down to 27 on a 13-range setup. The cache is disposable: delete it any time.
+
 ## 0.10.2
 
 ### Patch Changes
