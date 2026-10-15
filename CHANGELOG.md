@@ -1,5 +1,11 @@
 # local-review
 
+## 0.10.1
+
+### Patch Changes
+
+- [#50](https://github.com/edspencer/local-review/pull/50) [`7554fa7`](https://github.com/edspencer/local-review/commit/7554fa70a6c98e2124d939bd71f8e6bea0f60b3c) Thanks [@edspencer](https://github.com/edspencer)! - The root page's linked projects no longer label each card `1 · FIRST`, `2 · BUILDS ON …`: the arrows already show the order.
+
 ## 0.10.0
 
 ### Minor Changes
