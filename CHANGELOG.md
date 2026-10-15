@@ -1,5 +1,13 @@
 # local-review
 
+## 0.10.2
+
+### Patch Changes
+
+- [#52](https://github.com/edspencer/local-review/pull/52) [`fdfdb59`](https://github.com/edspencer/local-review/commit/fdfdb59f8b2498c760cfb5f7ce40e30030fc51d2) Thanks [@edspencer](https://github.com/edspencer)! - A git call that never finishes no longer hangs the server. Each one now times out after 60 seconds, so a git process stuck in the system (seen with endpoint-security agents on macOS) costs one failed read and the next poll recovers, instead of every project page hanging until restart.
+
+- [#54](https://github.com/edspencer/local-review/pull/54) [`49a7d80`](https://github.com/edspencer/local-review/commit/49a7d806cc848d397db302c110ef09e575df58c8) Thanks [@edspencer](https://github.com/edspencer)! - The branch poll is now nearly free. It used to run two git processes per repo range every 2 seconds, tens of thousands an hour with a dozen ranges, which an endpoint-security agent checking every program launch turns into constant CPU use. It now checks the files git keeps refs in and runs git only when a ref may have moved (an editor's background fetch that moves nothing doesn't count), plus once every 10 minutes as a safety net. It also shares each repo's branch list between its ranges, and doesn't run at all while no browser has a page open.
+
 ## 0.10.1
 
 ### Patch Changes
