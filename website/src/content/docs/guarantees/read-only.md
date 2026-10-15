@@ -25,6 +25,11 @@ All git access to the repos you review goes through one module, `server/git.ts`,
   `..`; after `--end-of-options`, or one per line on the stdin of `git cat-file --batch-check`) and full 40-hex shas that git itself returned. A landed PR's shas from
   its prs file are used only after git has resolved them as commits (`<sha>^{commit}`).
 
+One thing reads a reviewed repo without git: to tell whether any branch has moved, the branch poll
+(`server/reffiles.ts`) **stats** the files git keeps refs in (`.git/HEAD`, `packed-refs`, everything under `refs/`, and
+`reftable/` if the repo uses it) and reads `.git` / `commondir` to find them in a worktree. It never opens anything
+for writing, and runs git (through `server/git.ts`) only when those change.
+
 Two other git calls exist, and neither touches a repo you review:
 
 - **Who you are.** To name the reviewer, the server runs `git config --get user.name` once at start (see

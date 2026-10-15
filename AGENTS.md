@@ -10,7 +10,8 @@ The human-facing version, with setup, CI and pull request expectations, is [CONT
   keep it that way. The only other git calls are `server/reviewer.ts`'s `git config --get user.name` (it only reads)
   and the example projects' `git init` / `fast-import` / checkout into the new repos they create under
   `~/.local-review/examples/` (`demo/lib/gitworld.ts`), which are then only read through `git.ts` too. Don't add
-  more.
+  more. The branch poll's `server/reffiles.ts` isn't git access: it only stats a repo's ref files, to skip running
+  git when no branch has moved.
 - **It must look clearly *not GitHub* at a glance**, through at least one deliberate visual difference (docs: "The
   header: deliberately not GitHub" in `website/src/content/docs/using/ui-tour.md`), even though it otherwise mirrors
   GitHub's PR view.

@@ -53,7 +53,10 @@ differently.)
 Nothing needs a restart:
 
 - each repo's branches (its range end, its base and every other branch) are polled every 2 seconds, so a new commit, an
-  amend, a rebase, the base moving or a new branch shows up on its own;
+  amend, a rebase, the base moving or a new branch shows up on its own. The poll is cheap: it looks at the files git
+  keeps refs in (`HEAD`, `packed-refs`, `refs/`) and only runs git when one of them has changed (and every 10 minutes
+  regardless, as a safety net), so an idle repo costs no git processes at all. It only runs while a browser has a page
+  open; with none, a request checks for itself;
 - every file under `~/.local-review/projects/` is watched, and edits push a refresh to the browser. What the server
   works out from them is kept only while the files are unchanged, so the next request always reads an edit.
 
