@@ -24,6 +24,8 @@ them.
     2026-10-09T08-45-12Z/               # automatic snapshots: a plain copy of projects/ at that time (UTC)
   examples/                             # only if you added the example projects
     orchard-<id>/                       # their git repos and a manifest.json (made by Local Review; see below)
+  cache/
+    <hash>.json                         # what git said about each repo's commits (disposable; see below)
 ```
 
 | File | Written by | Reference |
@@ -37,6 +39,12 @@ them.
 Every file under `projects/` is watched, and what the server works out from them (and from the repos' branches,
 polled every 2 seconds) is only kept while they're unchanged, so edits from an agent or an editor show up in the
 browser within about a second, with no restart.
+
+**`cache/`** holds one file per repo with what git said about its commits: each commit's subject, author and changed
+files, merge-bases, ancestry and patch-ids. A commit's sha fixes all of that, so the entries never go stale, and after a
+restart the first page load asks git only where the branches point (a couple of dozen git processes, rather than
+several per commit). It's not your data and isn't in snapshots: delete it any time, and it's rebuilt as pages load.
+It's off when only `LOCAL_REVIEW_PROJECTS_DIR` is set (like snapshots).
 
 **Set-aside files.** Local Review never deletes a file; when one has to go out of the way, it's renamed to a `.bak`,
 which nothing reads:
