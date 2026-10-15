@@ -1,6 +1,6 @@
 // Read-only git access. Every call goes through execFile (no shell) with `git -C <repo>`,
 // and only a fixed allow-list of read-only subcommands may be run.
-import { execFile, spawn } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 
 const READ_ONLY = new Set([
   'log', 'show', 'diff', 'rev-list', 'rev-parse', 'merge-base', 'patch-id',
@@ -41,6 +41,32 @@ export class GitError extends Error {
   }
 }
 
+// How long one git call may take. Callers share in-flight reads (stamps.ts), so a call that never finished would hang
+// every request behind it until restart. That happens: a child stuck in the kernel (forked, never exec'd, e.g. held
+// up by an endpoint-security agent) never exits and never closes its pipes, so 'close' never fires.
+export const GIT_TIMEOUT_MS = 60_000;
+let timeoutMs = GIT_TIMEOUT_MS;
+
+/** Change the per-call timeout (tests). */
+export function setGitTimeout(ms: number) {
+  timeoutMs = ms;
+}
+
+/**
+ * Reject if the child hasn't closed within the timeout. This rejects directly rather than via 'close' (which a stuck
+ * child never sends), kills the child and closes our ends of its pipes.
+ */
+function deadline(child: ChildProcess, args: string[], reject: (e: GitError) => void) {
+  const timer = setTimeout(() => {
+    child.kill('SIGKILL');
+    for (const s of [child.stdin, child.stdout, child.stderr]) s?.destroy();
+    reject(new GitError(`git ${args[0]} timed out after ${timeoutMs} ms`));
+  }, timeoutMs);
+  timer.unref();
+  child.once('close', () => clearTimeout(timer));
+  child.once('error', () => clearTimeout(timer));
+}
+
 function check(repo: string, args: string[]): string[] {
   const sub = args[0];
   if (!READ_ONLY.has(sub)) throw new GitError(`refusing to run non-read-only git command: ${sub}`);
@@ -53,7 +79,7 @@ function check(repo: string, args: string[]): string[] {
 export function git(repo: string, args: string[], opts: { maxBuffer?: number } = {}): Promise<string> {
   return new Promise((resolve, reject) => {
     const argv = check(repo, args); // a throw here rejects the promise
-    execFile(
+    const child = execFile(
       'git',
       argv,
       { env: ENV, maxBuffer: opts.maxBuffer ?? 64 * 1024 * 1024, encoding: 'utf8' },
@@ -62,6 +88,7 @@ export function git(repo: string, args: string[], opts: { maxBuffer?: number } =
         else resolve(stdout);
       },
     );
+    deadline(child, args, reject);
   });
 }
 
@@ -69,7 +96,7 @@ export function git(repo: string, args: string[], opts: { maxBuffer?: number } =
 export function gitBuffer(repo: string, args: string[]): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const argv = check(repo, args); // a throw here rejects the promise
-    execFile(
+    const child = execFile(
       'git',
       argv,
       { env: ENV, maxBuffer: 64 * 1024 * 1024, encoding: 'buffer' },
@@ -78,6 +105,7 @@ export function gitBuffer(repo: string, args: string[]): Promise<Buffer> {
         else resolve(stdout);
       },
     );
+    deadline(child, args, reject);
   });
 }
 
@@ -91,6 +119,7 @@ export function gitBufferWithInput(repo: string, args: string[], input: string):
   return new Promise((resolve, reject) => {
     const argv = check(repo, args); // a throw here rejects the promise
     const child = spawn('git', argv, { env: ENV, stdio: ['pipe', 'pipe', 'pipe'] });
+    deadline(child, args, reject);
     const out: Buffer[] = [];
     let err = '';
     child.stdout.on('data', (d: Buffer) => out.push(d));
