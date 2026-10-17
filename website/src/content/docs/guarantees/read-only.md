@@ -23,7 +23,9 @@ All git access to the repos you review goes through one module, `server/git.ts`,
   checking;
 - only passes refs from `project.yaml` (checked: letters, digits and `. _ / @ { } ^ ~ + -` only, no leading `-`, no
   `..`; after `--end-of-options`, or one per line on the stdin of `git cat-file --batch-check`) and full 40-hex shas that git itself returned. A landed PR's shas from
-  its prs file are used only after git has resolved them as commits (`<sha>^{commit}`).
+  its prs file are used only after git has resolved them as commits (`<sha>^{commit}`);
+- kills any git call that hasn't finished within **60 seconds**, so a git process stuck in the system can't hang the
+  server. The commands are read-only, so a killed one changes nothing.
 
 One thing reads a reviewed repo without git: to tell whether any branch has moved, the branch poll
 (`server/reffiles.ts`) **stats** the files git keeps refs in (`.git/HEAD`, `packed-refs`, everything under `refs/`, and

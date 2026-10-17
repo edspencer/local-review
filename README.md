@@ -29,10 +29,13 @@ GitHub stacked PRs.
 - **Every effort in view.** The root page shows each project as a card with a thumbnail of its stacks, and work that
   builds on other work is [linked](https://local-review.edspencer.net/concepts/linked-projects/) to it, in order.
 - **Your agent answers in the review.** Comments are plain YAML files that any coding agent can read and reply to; the
-  replies show up in your browser live, and threads follow their code through amends and rebases.
+  replies show up in your browser live, and threads follow their code through amends and rebases. A stack's or
+  project's **Comments** tab gathers every thread on its PRs in one list, and what you type is kept as a draft until
+  you send it.
 - **Publish when it's ready.** `local-review plan` prints each PR's branch, base, title and body, and your agent opens
-  the stack as [GitHub native stacked PRs](https://local-review.edspencer.net/agents/publishing-stacked-prs/). It
-  works in front of any [stacking tool](https://local-review.edspencer.net/concepts/stacking-tools/).
+  the stack as [GitHub native stacked PRs](https://local-review.edspencer.net/agents/publishing-stacked-prs/), posting
+  the comments you marked [for the GitHub PR](https://local-review.edspencer.net/using/reviewing-and-comments/#comments-for-the-github-pr).
+  It works in front of any [stacking tool](https://local-review.edspencer.net/concepts/stacking-tools/).
 - **Safe to point at your work.** It never modifies your repos, never talks to GitHub, never deletes your review, and
   only listens on localhost.
 
@@ -107,7 +110,8 @@ To hand a reviewed project to your agent, paste the
 **https://local-review.edspencer.net**
 
 - **Getting started:** [Quickstart](https://local-review.edspencer.net/getting-started/quickstart/) ·
-  [Installation](https://local-review.edspencer.net/getting-started/installation/)
+  [Installation](https://local-review.edspencer.net/getting-started/installation/) ·
+  [Run it as a service](https://local-review.edspencer.net/getting-started/service/)
 - **Concepts:** [Projects & repos](https://local-review.edspencer.net/concepts/projects-and-repos/) ·
   [PR stacks](https://local-review.edspencer.net/concepts/pr-stacks/) ·
   [Readiness](https://local-review.edspencer.net/concepts/readiness/) ·
@@ -117,8 +121,12 @@ To hand a reviewed project to your agent, paste the
   [Following rebases](https://local-review.edspencer.net/concepts/following-rebases/)
 - **Using it:** [A tour of the UI](https://local-review.edspencer.net/using/ui-tour/) ·
   [Reviewing & comments](https://local-review.edspencer.net/using/reviewing-and-comments/) ·
+  [Editing PR text](https://local-review.edspencer.net/using/editing-pr-text/) ·
   [Stack pictures](https://local-review.edspencer.net/using/stack-pictures/) ·
   [Keyboard shortcuts](https://local-review.edspencer.net/using/keyboard-shortcuts/)
+- **For agents:** [Agent guide](https://local-review.edspencer.net/agents/agent-guide/) ·
+  [llms.txt](https://local-review.edspencer.net/agents/llms-txt/) ·
+  [Publishing stacked PRs](https://local-review.edspencer.net/agents/publishing-stacked-prs/)
 - **Reference:** [CLI](https://local-review.edspencer.net/reference/cli/) ·
   [project.yaml](https://local-review.edspencer.net/reference/project-yaml/) ·
   [Comment files](https://local-review.edspencer.net/reference/comment-files/) ·

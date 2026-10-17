@@ -239,6 +239,12 @@ async function takeShot(browser: Browser, shot: Shot, m: Manifest, base: string)
       else if ('press' in a) await page.keyboard.press(a.press);
       else if ('waitFor' in a) await page.locator(a.waitFor).first().waitFor({ state: 'visible', timeout: 15_000 });
       else if ('wait' in a) await page.waitForTimeout(a.wait);
+      else if ('fill' in a) await page.locator(a.fill).first().fill(a.text);
+      else if ('reload' in a) {
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.addStyleTag({ content: STILL_CSS });
+        await settle(page);
+      }
       else if ('scrollTo' in a)
         await page
           .locator(a.scrollTo)

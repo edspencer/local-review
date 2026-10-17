@@ -42,7 +42,7 @@ One fetch has what an agent needs to create a project:
   comment files, the HTTP API, the CLI).
 
 The local copy adds **live facts**: the URL and version it's serving, the data directory and projects directory, the
-reviewer's id, and the existing projects (slug, title, repos with their paths and branches), so the agent can pick a
+reviewer's id, and the existing projects (slug, title, repos with their paths and branches; [hidden](/concepts/linked-projects/#hidden-projects) ones are listed too, and marked), so the agent can pick a
 slug that isn't taken and spot a project that already covers the branch. Its URLs use the host and port the agent
 reached it on, so `--port`, `PORT` and `npm run dev` all work.
 

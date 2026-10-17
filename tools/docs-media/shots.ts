@@ -9,6 +9,8 @@ import fs from 'node:fs';
 // storage:   localStorage entries set before the app loads (UI preferences, e.g. the diff style)
 // compose:   instead of a route, a page built from earlier shots and the seed's own files or CLI output (see
 //            ComposeContext), for the landing page's two-part pictures; capture crops it like any other page
+// fill/reload: type into a text box, and reload the page, e.g. to show a draft coming back (drafts are real: the app
+//            keeps them in localStorage as you type)
 // rig:       serve something other than the demo seed (RIGS below): an empty data home, the example projects, or a
 //            copy of the seed with a staged change. Each is a throwaway copy in the temp dir, never demo/out
 
@@ -18,7 +20,9 @@ export type Action =
   | { scrollTo: string; block?: 'start' | 'center' | 'end'; offset?: number }
   | { press: string }
   | { waitFor: string }
-  | { wait: number };
+  | { wait: number }
+  | { fill: string; text: string } // type into a text box (a draft is kept a moment after the last keystroke)
+  | { reload: true }; // reload the page (storage set by `storage` is set again first)
 
 export interface Crop {
   selector: string | string[]; // several: the box around all of them (each one's first match)
@@ -385,6 +389,20 @@ export const SHOTS: Shot[] = [
     capture: { selector: '.file-card .thread.is-publish', pad: { top: 60, right: 12, bottom: 12, left: 12 } },
   },
   {
+    name: 'crop-draft-restored',
+    doc: 'Docs "Editing PR text", drafts: a new comment typed, then the page reloaded: the box comes back with its text, "Restored an unsaved draft" and Discard. Typed by the rig, and the draft is kept by the app itself.',
+    route: PROMOTE,
+    actions: [
+      { scrollTo: '.new-comment', block: 'center' },
+      { fill: '.new-comment textarea', text: 'Before this goes up: does the offer email go out inside the cancel transaction, or after it commits?' },
+      { wait: 900 }, // the draft is written 400 ms after the last keystroke
+      { reload: true },
+      { waitFor: '.new-comment .draft-notice' },
+      { scrollTo: '.new-comment', block: 'center' },
+    ],
+    capture: { selector: '.new-comment', pad: 12 },
+  },
+  {
     name: 'crop-folded-threads',
     doc: 'Docs "Comments in the diff": in Files changed, the outdated thread (above the diff) and the resolved one (in it) folded to one row each.',
     route: `${PROMOTE}?tab=files&file=internal/booking/promote.go`,
@@ -423,6 +441,14 @@ export const SHOTS: Shot[] = [
   },
   // ------------------------------------------------------------------------------------------- landing page
   // The media column there is ~700 CSS px wide, so these are framed to sit at about 1:1 in it.
+  {
+    name: 'landing-comments',
+    doc: 'Landing page FEATURES: a stack\'s Comments tab, filtered to the threads marked For the GitHub PR (the tabs, the All / Open / For GitHub buttons and the first thread).',
+    route: '/waitlists/orchard-api/stacks/3-automatic-promotion?tab=comments',
+    viewport: { width: 1080, height: 1000 },
+    actions: [{ waitFor: '.comments-tab-item' }, { click: '.comments-filter .is-publish' }, { waitFor: '.comments-tab-item.is-publish' }],
+    capture: { selector: ['.tabnav', '.comments-tab-item.is-publish'], pad: 12 },
+  },
   {
     name: 'landing-root',
     doc: 'Landing "Keep every effort in view": two linked projects\' cards on the root page, framed for the ~700px media column.',

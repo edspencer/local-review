@@ -107,7 +107,8 @@ Errors are JSON, `{"error": "…"}`, with a status code:
 
 - **400**: a malformed request: not JSON, a missing `body`, a `status` other than `draft`/`ready`/`null`, a sha that
   isn't hex or an ambiguous short one, a bad `author`, `path`, `line` or `start_side`, a branch name git wouldn't
-  accept, a malformed `github`, a bad stack number or ref, a text over its size limit, an empty upload.
+  accept, a malformed `github`, a `publish` that isn't a boolean or a malformed `published`, a bad stack number or ref,
+  `?stack=` without `?repo=`, a text over its size limit, an empty upload.
 - **403**: a `Host` (or, on a write, an `Origin`) that isn't localhost (see
   [Localhost security](/guarantees/localhost-security/)); or editing or deleting a comment that isn't the reviewer's.
 - **404**: no such project, repo, stack, asset, thread or comment, or a sha that isn't in the repo's range (it may have been

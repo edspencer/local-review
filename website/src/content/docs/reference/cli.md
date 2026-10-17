@@ -286,7 +286,7 @@ local-review service uninstall | status [--json] | restart
 
 Runs Local Review in the background, started at login and restarted if it exits: a launchd LaunchAgent on macOS
 (`~/Library/LaunchAgents/local-review.server.plist`), a systemd user unit on Linux
-(`~/.config/systemd/user/local-review-server.service`). Not on Windows: there it says so and does nothing. The whole
+(`~/.config/systemd/user/local-review-server.service`, or under `$XDG_CONFIG_HOME`). Not on Windows: there it says so and does nothing. The whole
 story, with the generated file: [Run it as a service](/getting-started/service/).
 
 | Command | |
