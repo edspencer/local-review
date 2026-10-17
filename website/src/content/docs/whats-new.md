@@ -7,6 +7,18 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
+## Coming in 0.11.0: run it as a service
+
+Not released yet.
+
+- **`local-review service install` keeps it running.** After `npm i -g local-review`, it installs Local Review as a
+  launchd LaunchAgent on macOS or a systemd user unit on Linux, so the UI is on `http://localhost:5622` from login
+  onwards and comes back if it exits. `service status`, `service restart` and `service uninstall` do what they say;
+  uninstall removes the service's file and nothing in `~/.local-review`. It runs the installed `local-review` with
+  absolute paths and a `PATH` that finds git, still on 127.0.0.1 only, and refuses to run from npx's cache, which npm
+  can delete at any time. Upgrading is `npm i -g local-review@latest`, then `local-review service restart`. Not on
+  Windows. See [Run it as a service](/getting-started/service/).
+
 ## 0.10.0: hidden projects
 
 - **`hidden: true` keeps a project off the root page.** Add it to a `project.yaml` and the project is left off the

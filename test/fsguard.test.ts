@@ -1,6 +1,6 @@
 // A static guard: no server code may delete, truncate, overwrite or rename files except the few reviewed call
 // sites below (temp-file cleanup and no-clobber renames in safefs.ts, snapshot copying and pruning in
-// backups.ts). If this fails, you've added a way to lose data: route it through server/safefs.ts instead, or
+// backups.ts, and `local-review service uninstall` removing its own LaunchAgent / systemd unit in service/manager.ts). If this fails, you've added a way to lose data: route it through server/safefs.ts instead, or
 // (after careful review) update ALLOWED with a comment saying why it can't destroy anything.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -40,6 +40,11 @@ const ALLOWED: Record<string, Record<string, number>> = {
     rename: 1, // a complete snapshot copy into its fresh name
     copy: 1, // the snapshot copy itself (errorOnExist, force: false)
   },
+  'service/manager.ts': {
+    // `service uninstall` removing the service's own generated definition (local-review.server.plist /
+    // local-review-server.service), outside the data home, after checking its name and directory (checked below)
+    unlink: 1,
+  },
 };
 
 function serverFiles(dir: string): string[] {
@@ -76,6 +81,17 @@ test("the one writeFile is a temp file opened with 'wx', and the prune is guarde
   const backups = stripComments(fs.readFileSync(path.join(SERVER, 'backups.ts'), 'utf8'));
   assert.match(backups, /const target = assertPrunable\(backupsDir, n, projectsDir\);\s*fs\.rmSync\(target, \{ recursive: true \}\);/);
   assert.doesNotMatch(backups, /force:\s*true/);
+});
+
+test("the service's one unlink removes only its own definition file", () => {
+  const src = stripComments(fs.readFileSync(path.join(SERVER, 'service', 'manager.ts'), 'utf8'));
+  // the name pattern is exactly the two definition files, anchored
+  assert.match(src, /export const SERVICE_FILE = \/\^local-review\[\.-\]server\\\.\(\?:plist\|service\)\$\/;/);
+  // and the unlink is reached only past the check of the name and the directory
+  assert.match(
+    src,
+    /export function removeServiceFile\(file: string, dir: string\) \{\s*if \(!SERVICE_FILE\.test\(path\.basename\(file\)\) \|\| path\.dirname\(path\.resolve\(file\)\) !== path\.resolve\(dir\)\)\s*throw new Error\([^;]*;\s*try \{\s*fs\.unlinkSync\(file\);/,
+  );
 });
 
 test('the guard catches the patterns it is meant to', () => {

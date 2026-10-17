@@ -26,6 +26,8 @@ them.
     orchard-<id>/                       # their git repos and a manifest.json (made by Local Review; see below)
   cache/
     <hash>.json                         # what git said about each repo's commits (disposable; see below)
+  logs/                                 # only if you run it as a service
+    server.out.log, server.err.log      # the service's output (see below)
 ```
 
 | File | Written by | Reference |
@@ -45,6 +47,12 @@ files, merge-bases, ancestry and patch-ids. A commit's sha fixes all of that, so
 restart the first page load asks git only where the branches point (a couple of dozen git processes, rather than
 several per commit). It's not your data and isn't in snapshots: delete it any time, and it's rebuilt as pages load.
 It's off when only `LOCAL_REVIEW_PROJECTS_DIR` is set (like snapshots).
+
+**`logs/`** is there only if you [run Local Review as a service](/getting-started/service/): launchd or systemd appends
+its output to `server.out.log` and `server.err.log`. Local Review writes little (a line when it starts, a note per
+snapshot, and errors), so they aren't rotated; empty or delete them whenever you like. `local-review service uninstall`
+leaves them, like everything else here. The service's own file isn't here: it's in `~/Library/LaunchAgents` or
+`~/.config/systemd/user`.
 
 **Set-aside files.** Local Review never deletes a file; when one has to go out of the way, it's renamed to a `.bak`,
 which nothing reads:

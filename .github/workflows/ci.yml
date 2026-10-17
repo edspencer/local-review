@@ -43,6 +43,37 @@ jobs:
       - name: Smoke-test the npm package
         run: npm run smoke:pack
 
+  # `local-review service …` against the REAL service manager: launchd's gui/<uid> domain on the macOS runner,
+  # systemd's user instance on the Ubuntu runner (lingering turned on so there is one). scripts/service-real.mjs packs
+  # and installs the package, then installs, kills, restarts and uninstalls the service. It writes into the runner's
+  # real LaunchAgents / systemd user directory, which is why it runs only here.
+  service:
+    name: Service (real ${{ matrix.os == 'macos-latest' && 'launchd' || 'systemd' }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Start a systemd user instance (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo loginctl enable-linger "$USER"
+          for i in $(seq 1 20); do [ -S "/run/user/$(id -u)/bus" ] && break; sleep 0.5; done
+          echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus" >> "$GITHUB_ENV"
+      - name: The service lifecycle, for real
+        env:
+          LOCAL_REVIEW_REAL_SERVICE: '1'
+        run: node scripts/service-real.mjs
+
   website:
     name: Docs site build
     runs-on: ubuntu-latest
@@ -83,7 +114,7 @@ jobs:
   ci-passed:
     name: CI passed
     if: always()
-    needs: [test, website]
+    needs: [test, service, website]
     runs-on: ubuntu-latest
     steps:
       - name: Require every job to have passed

@@ -5,8 +5,8 @@ description: Every local-review command and flag.
 
 One command, `local-review`, does everything: with no arguments it serves the UI, and its subcommands create
 projects, add images, print a project's publishing plan, move review data between projects, add or hide the example
-projects and print the agent guide. Run it with `npx local-review …`, or install it once with `npm i -g local-review`
-and run `local-review …`.
+projects, run it as a service and print the agent guide. Run it with `npx local-review …`, or install it once with
+`npm i -g local-review` and run `local-review …`.
 
 ```sh
 npx local-review                          # serve the UI on http://localhost:5622
@@ -17,6 +17,7 @@ npx local-review plan my-feature --stack 1 --format json
 npx local-review move my-feature my-follow-up my-service --stack 3   # after splitting a project
 npx local-review examples                 # add the example projects (remove: `examples remove`)
 npx local-review guide                    # print the guide for agents
+local-review service install              # after `npm i -g local-review`: run it at every login
 ```
 
 ## `local-review --help`
@@ -29,6 +30,8 @@ Usage: local-review [serve] [--port <n>] [--quiet]
        local-review asset url <project> <name> <url>
        local-review move <from> <to> <repo> (<sha>… | --stack <n>) [--to-repo <name>] [--dry-run]
        local-review examples [remove]
+       local-review service install [--port <n>] [--dry-run] [--from-checkout]
+       local-review service uninstall | status [--json] | restart
        local-review guide
        local-review --version | --help
 
@@ -73,6 +76,22 @@ Usage: local-review [serve] [--port <n>] [--quiet]
           restores removed ones and leaves existing ones alone.
   examples remove
           Hide the example projects again. Nothing is deleted: each one's project.yaml is renamed to a .bak.
+  service install
+          Run Local Review in the background, started at login and restarted if it exits: a LaunchAgent on
+          macOS, a systemd user unit on Linux. The service runs this installed local-review with this shell's
+          Node, and a PATH that must find git, still on 127.0.0.1 only. Running it again rewrites it, keeping
+          the port, LOCAL_REVIEW_HOME and LOCAL_REVIEW_USER it was installed with unless you give new ones.
+          Refuses to run from npx's cache (`npm i -g local-review` first) or a source checkout.
+          --port <n>       the port (default 5622; $PORT isn't used here)
+          --dry-run        print the service file it would write; write nothing, start nothing
+          --from-checkout  run a source checkout's build (dist/) as the service, on purpose
+  service uninstall
+          Stop the service and remove its file. Your data (and its logs/) stays where it is.
+  service status
+          Whether it's installed, loaded and running, on which port, and what it runs.
+          --json           as JSON
+  service restart
+          Restart it, e.g. after `npm i -g local-review@latest`.
   guide   Print the guide for agents using Local Review to get their work reviewed (AGENT-GUIDE.md).
 
 Data: $LOCAL_REVIEW_HOME/projects (default ~/.local-review/projects). Agents: run `local-review guide`.
@@ -258,6 +277,34 @@ Then: check both project.yaml files: each repo's range (…) and its stacks' sta
 - The snapshot is skipped when nothing changed since the newest one, and when snapshots are off (see
   [Snapshots](/reference/data-directory/#snapshots)).
 
+## `local-review service`
+
+```text
+local-review service install [--port <n>] [--dry-run] [--from-checkout]
+local-review service uninstall | status [--json] | restart
+```
+
+Runs Local Review in the background, started at login and restarted if it exits: a launchd LaunchAgent on macOS
+(`~/Library/LaunchAgents/local-review.server.plist`), a systemd user unit on Linux
+(`~/.config/systemd/user/local-review-server.service`). Not on Windows: there it says so and does nothing. The whole
+story, with the generated file: [Run it as a service](/getting-started/service/).
+
+| Command | |
+| --- | --- |
+| `service install` | Write the service's file and start it, then wait for it to answer. It runs this `local-review` and this Node, by absolute path, with a `PATH` that must find git, on 127.0.0.1 only. Running it again rewrites the file, restarting the service only if it changed, and keeps the port, `LOCAL_REVIEW_HOME` and `LOCAL_REVIEW_USER` it was installed with unless you give new ones. |
+| `service status` | Whether it's installed, loaded and running, its port, and the Node and `local-review` it runs, with a warning if either has gone. `--json` for scripts. |
+| `service restart` | Restart it, e.g. after `npm i -g local-review@latest`. |
+| `service uninstall` | Stop it and remove its file. Nothing else: the data home, `logs/` included, is untouched. |
+
+| Option (`install`) | |
+| --- | --- |
+| `--port <n>` | The port, 1–65535. Default: the one it was installed with, else 5622. `PORT` isn't used. |
+| `--dry-run` | Print the file it would write, and do nothing else. |
+| `--from-checkout` | Allow a source checkout's build (`dist/`) to be the service. Without it, a checkout is refused. |
+
+It refuses to install from npx's cache (or pnpm dlx's, bunx's, yarn dlx's), which can be deleted at any time, and
+says what to do instead: `npm i -g local-review`, then `local-review service install`.
+
 ## `local-review guide`
 
 Prints the [agent guide](/agents/agent-guide/) (`AGENT-GUIDE.md`, which ships in the package), so an agent reads the
@@ -272,7 +319,7 @@ version that matches the Local Review it is driving, without a checkout.
 | Code | When |
 | --- | --- |
 | `0` | Success. |
-| `1` | An error, printed as `local-review: <message>` (no such project, the port is in use, `init`'s file exists, a file that isn't an image, a `move` that would replace a file, …). |
+| `1` | An error, printed as `local-review: <message>` (no such project, the port is in use, `init`'s file exists, a file that isn't an image, a `move` that would replace a file, a `service install` refused or not answering, …). |
 | `2` | Bad usage (an unknown command or option, a missing argument, a bad project or asset name, a URL `asset url` can't use): the message, then the usage. |
 
 ## Environment

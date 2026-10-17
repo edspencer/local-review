@@ -9,7 +9,7 @@ thinks you are.
 | Variable | Default | What it does |
 | --- | --- | --- |
 | `LOCAL_REVIEW_HOME` | `~/.local-review` | The [data directory](/reference/data-directory/): `projects/`, `backups/` and `examples/` all move. `~` is expanded. |
-| `PORT` | `5622` | The port `local-review` serves on. `--port` wins over it. Also used in the URL `init` prints. |
+| `PORT` | `5622` | The port `local-review` serves on. `--port` wins over it. Also used in the URL `init` prints. Not used by `service install`. |
 | `LOCAL_REVIEW_USER` | `git config user.name`, else `$USER` | Who you are: your comments are stored under this name's id. See [The reviewer](#local_review_user-the-reviewer). |
 | `NO_COLOR`, `FORCE_COLOR` | colour on a terminal | The startup banner's colours. See [Colour](#colour-no_color-and-force_color). |
 | `LOCAL_REVIEW_PROJECTS_DIR` | `$LOCAL_REVIEW_HOME/projects` | Moves only `projects/`. For the tests; it turns automatic snapshots off unless `LOCAL_REVIEW_HOME` is set too. |
@@ -29,6 +29,18 @@ Snapshots then go to `/tmp/lr-demo/backups/`. Everything under it is described i
 
 `PORT=5050 npx local-review` is the same as `npx local-review --port 5050`; if both are given, `--port` wins. `serve`
 rejects a value that isn't an integer from 0 to 65535 rather than silently using the default.
+
+`local-review service install` ignores `PORT`, so a `PORT` exported for something else can't end up in the service:
+give it `--port <n>` instead.
+
+## A service's environment
+
+A service started by launchd or systemd gets almost none of your shell's environment, so
+[`local-review service install`](/getting-started/service/) writes what Local Review needs into the service's file:
+`PATH` (cleaned up, with git on it), and `LOCAL_REVIEW_HOME` (made absolute) and `LOCAL_REVIEW_USER` if they're set
+when you install. A reinstall keeps the last two if they aren't set then; to drop one, run `local-review service
+uninstall` first. Nothing else is passed on: set the others in the service's file only if you know you need them, and
+expect `service install` to rewrite it.
 
 ## `LOCAL_REVIEW_USER`: the reviewer
 

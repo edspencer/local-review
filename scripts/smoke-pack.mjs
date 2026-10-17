@@ -1,8 +1,9 @@
 // `npm run smoke:pack`: check the npm package as a user gets it. Packs it (prepack builds it), installs the tarball
 // globally into a temp prefix, then runs the installed `local-review` from a temp directory with a throwaway HOME and
-// LOCAL_REVIEW_HOME: --version, --help, guide, init, asset add, and the server (on a free port: the startup text,
-// /llms.txt and its siblings, /api/me, /, a UI asset, the favicons, the project list, a stack PNG drawn with the
-// bundled fonts, the added image, adding and removing the example projects). Cleans up after itself. Linux and macOS.
+// LOCAL_REVIEW_HOME: --version, --help, guide, service install --dry-run, init, asset add, and the server (on a free
+// port: the startup text, /llms.txt and its siblings, /api/me, /, a UI asset, the favicons, the project list, a stack
+// PNG drawn with the bundled fonts, the added image, adding and removing the example projects). Cleans up after
+// itself. Linux and macOS.
 import { execFileSync, spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -63,6 +64,14 @@ try {
   assert.match(run('--help'), /^Usage: local-review \[serve\]/);
   assert.equal(run('guide'), fs.readFileSync(path.join(root, 'AGENT-GUIDE.md'), 'utf8'));
   fails(['frobnicate'], 2, /unknown command 'frobnicate'/);
+
+  step('service install --dry-run');
+  const homeBefore = fs.readdirSync(home);
+  const dry = run('service', 'install', '--dry-run');
+  assert.match(dry, /^Would write the (LaunchAgent|systemd user unit) .* \(--dry-run: nothing written, nothing started\):/);
+  assert.ok(dry.includes(fs.realpathSync(path.join(installed, 'dist', 'server', 'cli.js'))), `the service would run the installed CLI:\n${dry}`);
+  assert.ok(dry.includes('LOCAL_REVIEW_HOME') && dry.includes(data), 'with this data home');
+  assert.deepEqual(fs.readdirSync(home), homeBefore, 'nothing written');
 
   step('init demo');
   assert.match(run('init', 'demo'), /^Created .*demo\/project\.yaml/);
