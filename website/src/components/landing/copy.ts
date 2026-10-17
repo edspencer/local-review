@@ -10,7 +10,7 @@
  * demo test bed: see FEATURES.
  */
 
-import { REPO_URL, TAGLINE } from '../../site.mjs';
+import { LOCAL_URL, REPO_URL, TAGLINE } from '../../site.mjs';
 
 export { REPO_URL };
 
@@ -30,13 +30,18 @@ export const QUICKSTART = {
 	blurb: 'Needs Node 22+ and git. Reads your repos, never writes to them. Its first page adds example projects in one click.',
 	command: 'npx local-review',
 	link: { text: 'Set up your first project', href: '/getting-started/quickstart/' },
+	/** The line under the blurb: for when it's part of every day. */
+	keep: {
+		text: 'Using it every day? Install it once and `local-review service install` keeps it running from login.',
+		link: { text: 'Run it as a service', href: '/getting-started/service/' },
+	},
 } as const;
 
 /** The second item in the strip: a link, not a tab (see CommandTabs.astro). */
 export const SECONDARY_LINK = {
 	label: 'Other ways to install',
 	href: '/getting-started/installation/',
-	title: 'Installation: npx, a global install, or from source',
+	title: 'Installation: npx, a global install, as a service, or from source',
 } as const;
 
 /** The hero buttons, repeated in the closing section. */
@@ -71,12 +76,12 @@ export const VALUE_PROPS = [
 	{
 		icon: 'shield',
 		title: 'Local, and careful with your work',
-		body: 'Local Review never talks to GitHub and only answers on localhost. It never deletes your review, and snapshots it every hour that something changes.',
+		body: 'Local Review never talks to GitHub and only answers on localhost. It never deletes your review, snapshots it every hour that something changes, and keeps a draft of every comment and description you have not saved yet.',
 	},
 	{
 		icon: 'rocket',
 		title: 'Publish when it is right',
-		body: 'When a stack is ready, your agent opens it as GitHub stacked PRs with the titles and descriptions you approved, one stack at a time, then records what it created.',
+		body: 'When a stack is ready, your agent opens it as GitHub stacked PRs with the titles and descriptions you approved, posts the comments you marked for the real PR, and records what it created, one stack at a time.',
 	},
 ] as const;
 
@@ -120,15 +125,23 @@ export const FEATURES = [
 		},
 	},
 	{
-		title: '4. Mark it ready, then publish',
-		body: 'Mark each PR ready. The plan command prints every branch, base, title and body, and on your go-ahead your agent opens the stack on GitHub and records each PR back in Local Review.',
+		title: '4. See every thread in one place',
+		body: 'A stack’s Comments tab, and the project’s, gather the threads on all its PRs, open ones first, so nothing waits unanswered three PRs down. Tick For the GitHub PR on the comments meant for your reviewers rather than your agent.',
+		media: {
+			src: 'landing-comments',
+			alt: 'A stack’s Comments tab filtered to For GitHub: an inline thread on a line of Go from PR #8, with a teal For GitHub label, the reviewer’s comment, and its For the GitHub PR box ticked',
+		},
+	},
+	{
+		title: '5. Mark it ready, then publish',
+		body: 'Mark each PR ready. The plan command prints every branch, base, title and body, and on your go-ahead your agent opens the stack on GitHub, posts the comments you marked for it, and records each PR back in Local Review.',
 		media: {
 			src: 'landing-plan',
 			alt: 'The Draft | Ready toggle set to Ready, and below it the output of local-review plan for that PR: its commit, branch, base, status ready, title, and GitHub: not created',
 		},
 	},
 	{
-		title: '5. Keep every effort in view',
+		title: '6. Keep every effort in view',
 		body: 'The root page shows every project as a card: a thumbnail of its stacks, its size, how much is ready and when it last moved. Projects that build on each other sit together, in order.',
 		media: {
 			src: 'landing-root',
@@ -143,6 +156,10 @@ export const AGENTS = {
 	title: 'Plain files in, plain files out.',
 	body: 'There is no plugin and no API key. Local Review keeps your review in YAML files under ~/.local-review, so any coding agent that can read and write files can take part: Claude Code, Codex, or the next one.',
 	points: [
+		{
+			title: 'One URL to start from',
+			body: `Tell your agent to read \`${LOCAL_URL}/llms.txt\` and it can set up a project for you: the rules, the steps, a commented example and the projects already on your machine.`,
+		},
 		{
 			title: 'A guide written for agents',
 			body: '`local-review guide` prints the agent guide: the data model, how to answer threads, how to fix a commit mid-stack, how to publish, and what to do after merges.',

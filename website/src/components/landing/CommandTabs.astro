@@ -16,6 +16,13 @@ interface Props {
 	class?: string;
 }
 const { idPrefix, class: className } = Astro.props;
+
+/** `like this` → <code>like this</code>. The copy is ours, so no escaping beyond the basics. */
+const inlineCode = (text: string) =>
+	text
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/`([^`]+)`/g, '<code>$1</code>');
 ---
 
 <div class={`tabs ${className ?? ''}`} data-tabs>
@@ -60,6 +67,12 @@ const { idPrefix, class: className } = Astro.props;
 			{QUICKSTART.blurb}{' '}
 			<a href={QUICKSTART.link.href}>
 				{QUICKSTART.link.text} <span aria-hidden="true">→</span>
+			</a>
+		</p>
+		<p class="blurb blurb--keep">
+			<Fragment set:html={inlineCode(QUICKSTART.keep.text)} />{' '}
+			<a href={QUICKSTART.keep.link.href}>
+				{QUICKSTART.keep.link.text} <span aria-hidden="true">→</span>
 			</a>
 		</p>
 	</div>
