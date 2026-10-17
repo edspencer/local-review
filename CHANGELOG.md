@@ -1,5 +1,13 @@
 # local-review
 
+## 0.11.2
+
+### Patch Changes
+
+- [#64](https://github.com/edspencer/local-review/pull/64) [`031d186`](https://github.com/edspencer/local-review/commit/031d1862fb66bfd364c1e3bd441a6fe129c66886) Thanks [@edspencer](https://github.com/edspencer)! - Docs: the README (shown on npm) now mentions the Comments tab, comments marked for the GitHub PR, drafts and
+  `local-review service`, and links the service, editing and agent pages. `AGENT-GUIDE.md` (`local-review guide`, and
+  `/llms-full.txt`) no longer says `/` lists every project: hidden ones (`hidden: true`) aren't listed.
+
 ## 0.11.1
 
 ### Patch Changes
