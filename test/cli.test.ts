@@ -36,6 +36,34 @@ describe('local-review CLI', () => {
     assert.match(h.stdout, /^Usage: local-review \[serve\]/);
     assert.match(h.stdout, /--port <n> +the port \(default 5622, or \$PORT\)/);
     for (const cmd of ['plan', 'init', 'guide']) assert.match(h.stdout, new RegExp(`^  ${cmd} `, 'm'));
+    for (const sub of ['install', 'uninstall', 'status', 'restart']) assert.match(h.stdout, new RegExp(`^  service ${sub}$`, 'm'));
+    // the docs site's CLI reference shows it verbatim
+    const ref = fs.readFileSync(path.join(ROOT, 'website/src/content/docs/reference/cli.md'), 'utf8');
+    const block = /## `local-review --help`\n\n```text\n([\s\S]*?)```/.exec(ref)?.[1];
+    assert.equal(block, h.stdout, 'website/src/content/docs/reference/cli.md shows `local-review --help` exactly');
+  });
+
+  test('service install --dry-run from this checkout: refused without --from-checkout, else the file it would write', async () => {
+    const home = tmpDir('lr-test-cli-home-');
+    try {
+      const r = await lr(['service', 'install', '--dry-run'], { HOME: home });
+      if (process.platform !== 'darwin' && process.platform !== 'linux') return;
+      assert.equal(r.code, 1);
+      assert.match(r.stderr, /^local-review: Local Review is running from a source checkout .*add --from-checkout\.\n$/);
+      const d = await lr(['service', 'install', '--dry-run', '--from-checkout', '--port', '6123'], { HOME: home, PORT: '4000' });
+      if (!fs.existsSync(path.join(ROOT, 'dist', 'server', 'cli.js'))) {
+        assert.match(d.stderr, /build Local Review first \(npm run build\)/);
+        return;
+      }
+      assert.equal(d.code, 0, d.stderr);
+      assert.match(d.stdout, /^Would write the (LaunchAgent ~\/Library\/LaunchAgents\/local-review\.server\.plist|systemd user unit ~\/\.config\/systemd\/user\/local-review-server\.service) \(--dry-run/);
+      assert.ok(d.stdout.includes(path.join(fs.realpathSync(ROOT), 'dist', 'server', 'cli.js')));
+      assert.match(d.stdout, /6123/);
+      assert.doesNotMatch(d.stdout, /4000/, '$PORT is not the service port');
+      assert.deepEqual(fs.readdirSync(home), [], 'nothing written');
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
   });
 
   test('usage errors exit 2 with the usage', async () => {
@@ -53,6 +81,13 @@ describe('local-review CLI', () => {
       [['serve', '--format', 'md'], /serve doesn't take --format/],
       [['--port', 'nope'], /--port must be a port number/],
       [['--port', '70000'], /--port must be a port number/],
+      [['service'], /service needs one of: install, uninstall, status, restart/],
+      [['service', 'frob'], /unknown service command 'frob'; service needs one of/],
+      [['service', 'install', '--port', '0'], /--port must be a port number \(1-65535\), not '0'/],
+      [['service', 'install', '--json'], /service install doesn't take --json/],
+      [['service', 'status', '--port', '1'], /service status doesn't take --port/],
+      [['service', 'uninstall', 'x'], /unexpected argument 'x'/],
+      [['init', 'x', '--from-checkout'], /init doesn't take --from-checkout/],
     ] as const) {
       const r = await lr([...args]);
       assert.equal(r.code, 2, `${args.join(' ')}: ${r.stderr}`);

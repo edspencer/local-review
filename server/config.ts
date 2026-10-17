@@ -37,6 +37,7 @@ export function expandHome(p: string) {
  *   backups/<ISO timestamp>/   automatic snapshots of projects/ (server/backups.ts)
  *   examples/orchard-<id>/     the example projects' repos, if you added them (server/examples.ts)
  *   cache/<hash>.json          what git said about each repo's commits, so a restart needn't ask again (server/diskcache.ts)
+ *   logs/server.{out,err}.log  the service's output, if it runs as one (`local-review service install`, server/service/)
  */
 export const HOME = path.resolve(expandHome(process.env.LOCAL_REVIEW_HOME || path.join(os.homedir(), '.local-review')));
 /**

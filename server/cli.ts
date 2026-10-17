@@ -5,6 +5,7 @@
 // `examples` only ever creates (the example projects and their repos); `examples remove` renames, never deletes.
 // `asset add` only ever creates a new, content-named image file; `asset url` writes only the asset's own <name>.yaml.
 // `move` copies prs / reviews files into another project (create-only) and renames the originals to .bak.
+// `service` writes only its own LaunchAgent / systemd user unit (and makes the data home's logs/), never user data.
 import fs from 'node:fs';
 import path from 'node:path';
 import { AGENT_GUIDE, DEFAULT_PORT, EXAMPLE_PROJECT, PROJECTS_DIR, ROOT, SAFE_NAME, parsePort } from './config.js';
@@ -21,6 +22,8 @@ const USAGE = `Usage: local-review [serve] [--port <n>] [--quiet]
        local-review asset url <project> <name> <url>
        local-review move <from> <to> <repo> (<sha>… | --stack <n>) [--to-repo <name>] [--dry-run]
        local-review examples [remove]
+       local-review service install [--port <n>] [--dry-run] [--from-checkout]
+       local-review service uninstall | status [--json] | restart
        local-review guide
        local-review --version | --help
 
@@ -65,6 +68,22 @@ const USAGE = `Usage: local-review [serve] [--port <n>] [--quiet]
           restores removed ones and leaves existing ones alone.
   examples remove
           Hide the example projects again. Nothing is deleted: each one's project.yaml is renamed to a .bak.
+  service install
+          Run Local Review in the background, started at login and restarted if it exits: a LaunchAgent on
+          macOS, a systemd user unit on Linux. The service runs this installed local-review with this shell's
+          Node, and a PATH that must find git, still on 127.0.0.1 only. Running it again rewrites it, keeping
+          the port, LOCAL_REVIEW_HOME and LOCAL_REVIEW_USER it was installed with unless you give new ones.
+          Refuses to run from npx's cache (\`npm i -g local-review\` first) or a source checkout.
+          --port <n>       the port (default ${DEFAULT_PORT}; $PORT isn't used here)
+          --dry-run        print the service file it would write; write nothing, start nothing
+          --from-checkout  run a source checkout's build (dist/) as the service, on purpose
+  service uninstall
+          Stop the service and remove its file. Your data (and its logs/) stays where it is.
+  service status
+          Whether it's installed, loaded and running, on which port, and what it runs.
+          --json           as JSON
+  service restart
+          Restart it, e.g. after \`npm i -g local-review@latest\`.
   guide   Print the guide for agents using Local Review to get their work reviewed (AGENT-GUIDE.md).
 
 Data: $LOCAL_REVIEW_HOME/projects (default ~/.local-review/projects). Agents: run \`local-review guide\`.`;
@@ -83,6 +102,8 @@ function parseArgs(argv: string[]) {
     else if (a === '-v' || a === '--version') flags.version = '1';
     else if (a === '--include-follow-on') flags['include-follow-on'] = '1';
     else if (a === '--dry-run') flags['dry-run'] = '1';
+    else if (a === '--from-checkout') flags['from-checkout'] = '1';
+    else if (a === '--json') flags.json = '1';
     else if (a === '-q' || a === '--quiet') flags.quiet = '1';
     else if (a.startsWith('--')) {
       const eq = a.indexOf('=');
@@ -250,6 +271,37 @@ async function serve(flags: Record<string, string>) {
   }
 }
 
+async function service(args: string[], flags: Record<string, string>): Promise<number> {
+  const [sub, ...rest] = args;
+  const svc = await import('./service/index.js');
+  const ctx = svc.realContext(ROOT);
+  try {
+    switch (sub) {
+      case 'install': {
+        check('service install', flags, ['port', 'dry-run', 'from-checkout'], rest, 0);
+        const port = flags.port === undefined ? undefined : parsePort(flags.port);
+        if (port === null || port === 0) throw new UsageError(`--port must be a port number (1-65535), not '${flags.port}'`);
+        return await svc.install(ctx, { port, dryRun: !!flags['dry-run'], fromCheckout: !!flags['from-checkout'] });
+      }
+      case 'uninstall':
+        check('service uninstall', flags, [], rest, 0);
+        return await svc.uninstall(ctx);
+      case 'status':
+        check('service status', flags, ['json'], rest, 0);
+        return await svc.status(ctx, { json: !!flags.json });
+      case 'restart':
+        check('service restart', flags, [], rest, 0);
+        return await svc.restart(ctx);
+      default:
+        throw new UsageError(sub ? `unknown service command '${sub}'; ${svc.SERVICE_USAGE}` : svc.SERVICE_USAGE);
+    }
+  } catch (e) {
+    // a refusal or a service manager's failure is a plain error (exit 1), not a usage error
+    if (e instanceof svc.RefusalError || e instanceof svc.ServiceManagerError) throw new Error(e.message);
+    throw e;
+  }
+}
+
 /** Resolves with the exit code, or undefined while the server runs. */
 async function main(argv: string[]): Promise<number | undefined> {
   const { pos, flags } = parseArgs(argv);
@@ -287,6 +339,8 @@ async function main(argv: string[]): Promise<number | undefined> {
       check(cmd, flags, [], args, 1);
       await examples(args[0]);
       return 0;
+    case 'service':
+      return service(args, flags);
     case 'guide':
       check(cmd, flags, [], args, 0);
       process.stdout.write(fs.readFileSync(AGENT_GUIDE, 'utf8'));

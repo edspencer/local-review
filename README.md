@@ -68,6 +68,15 @@ repos:
 Then open **http://localhost:5622**. Edits are picked up live. The full walk-through is the
 [Quickstart](https://local-review.edspencer.net/getting-started/quickstart/).
 
+To keep it running in the background, started at login (a LaunchAgent on macOS, a systemd user unit on Linux):
+
+```sh
+npm i -g local-review
+local-review service install
+```
+
+See [Run it as a service](https://local-review.edspencer.net/getting-started/service/).
+
 > **Upgrading from before 0.2.0?** The default port was 5000; it's now 5622 (macOS uses 5000 for AirPlay). Update
 > bookmarks and agent prompts, or run `npx local-review --port 5000`.
 

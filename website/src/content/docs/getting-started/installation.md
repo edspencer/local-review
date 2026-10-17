@@ -1,6 +1,6 @@
 ---
 title: Installation
-description: Run Local Review with npx, install it globally, or run it from a clone.
+description: Run Local Review with npx, install it globally (and as a service that starts at login), or run it from a clone.
 ---
 
 Local Review is a Node.js app that runs on your own machine. It needs **Node.js 22 or later** and **git**, and supports
@@ -15,7 +15,8 @@ npx local-review                   # serve the UI + API on http://localhost:5622
 npx local-review init my-feature   # create a project to review
 ```
 
-`npx local-review@latest` makes sure you're on the newest release.
+`npx local-review@latest` makes sure you're on the newest release. That's the quick way to try it; to keep it running in
+the background, [install it](#install-it-globally) and [make it a service](#keep-it-running).
 
 ## Install it globally
 
@@ -25,6 +26,19 @@ local-review                       # the same commands, without npx
 ```
 
 Every command and flag: [CLI](/reference/cli/).
+
+## Keep it running
+
+Installed globally, Local Review can run in the background as a service that starts at login and is restarted if it
+exits: a launchd LaunchAgent on macOS, a systemd user unit on Linux.
+
+```sh
+npm i -g local-review
+local-review service install       # run it at every login
+```
+
+It won't install a service from npx's cache, which npm can delete at any time. Upgrading is
+`npm i -g local-review@latest`, then `local-review service restart`. More: [Run it as a service](/getting-started/service/).
 
 ## Ports
 

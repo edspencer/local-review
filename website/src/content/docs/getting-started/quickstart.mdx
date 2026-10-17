@@ -19,6 +19,10 @@ You need **Node.js 22 or newer** and **git**. Local Review runs on macOS and Lin
    <p>It serves the UI on <a href={LOCAL_URL}>{LOCAL_URL}</a>. With no projects yet, that's a welcome page that
    tells you how to create one, which is the next step. Leave it running.</p>
 
+   <p>Using it every day? Install it and let it run in the background, started at login:
+   <code>npm i -g local-review &amp;&amp; local-review service install</code>
+   (<a href="/getting-started/service/">Run it as a service</a>).</p>
+
    ![The first-run welcome page: "Look around an example" with Add the example projects, and "Review your own work" with the init command and a prompt for your coding agent](../../../assets/shots/welcome.png "What a brand-new install shows at /.")
 
    Want to look around first? **Add the example projects** on that page (or run `npx local-review examples`). They're
@@ -100,6 +104,7 @@ LOCAL_REVIEW_HOME=/tmp/lr-demo npx local-review
 
 ## Next steps
 
+- [Run it as a service](/getting-started/service/): keep it running in the background, started at login.
 - [PR stacks](/concepts/pr-stacks/): how stacks are chosen, and why they survive rebases.
 - [Works with your stacking tool](/concepts/stacking-tools/): where Local Review fits next to `gh stack`, Graphite,
   ghstack and the rest.

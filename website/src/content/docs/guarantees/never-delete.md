@@ -31,7 +31,11 @@ A test fails the build if any code gains a way around that.
   file into the other project create-only (and moves nothing if any is already there), and only then renames the
   original to `<sha>.moved-to-<project>.yaml.bak`. It takes a snapshot first (unless nothing changed since the newest
   one, or snapshots are off).
-- **The only deletion anywhere is snapshot pruning**, guarded as below.
+- **The service doesn't touch your data.** [`local-review service install`](/getting-started/service/) writes its own
+  file *outside* `~/.local-review` (a LaunchAgent in `~/Library/LaunchAgents`, or a systemd user unit in
+  `~/.config/systemd/user`) and only creates `logs/` in the data home. `local-review service uninstall` removes that
+  one file, after checking its name and directory, and nothing in `~/.local-review`, not even the logs.
+- **The only deletion in `~/.local-review` is snapshot pruning**, guarded as below.
 
 The one thing that removes your words is you: deleting your own comment in the UI removes it from the file, as you'd
 expect. The previous version is in the snapshots. (An agent's comments can't be deleted from the UI at all.)
@@ -55,6 +59,9 @@ Restoring is copying files back by hand: see [Restoring](/reference/data-directo
 All of this lives in `server/safefs.ts` and `server/backups.ts`. `test/fsguard.test.ts` statically scans
 `server/**/*.ts` (and `demo/lib`, `demo/world`: the code that builds the example projects, which is allowed none of
 these) and fails if any other code (or more code there) calls `unlink`, `rm`, `rmdir`, `truncate`,
-`writeFile`, `rename`, `copyFile`/`cp`, or shells out to `rm`/`mv`/….
+`writeFile`, `rename`, `copyFile`/`cp`, or shells out to `rm`/`mv`/…. The one other call it allows is
+`service uninstall`'s single `unlink` in `server/service/manager.ts`, and the test checks that it sits behind the check
+that the file is the service's own (`local-review.server.plist` or `local-review-server.service`, in the service
+directory).
 
 Contributors: if the guard fails on your change, route the write through `server/safefs.ts`; don't widen the test.
