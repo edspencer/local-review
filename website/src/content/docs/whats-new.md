@@ -7,9 +7,7 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
-## Coming in 0.11.0: run it as a service
-
-Not released yet.
+## 0.11.0: run it as a service
 
 - **`local-review service install` keeps it running.** After `npm i -g local-review`, it installs Local Review as a
   launchd LaunchAgent on macOS or a systemd user unit on Linux, so the UI is on `http://localhost:5622` from login
