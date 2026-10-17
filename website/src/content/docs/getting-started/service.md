@@ -96,6 +96,8 @@ start a service with almost no environment of its own:
   version manager's per-terminal directory such as fnm's `fnm_multishells/…`, not npx's or `npm run`'s, nothing
   relative and nothing that doesn't exist), then the usual system directories. Local Review runs git, so
   `service install` refuses if git isn't on it.
+- **`HOME`** is your home directory, so the data home, the logs and git's `user.name` (your reviewer id) are the
+  ones you'd get in a terminal.
 - **`LOCAL_REVIEW_HOME`** and **`LOCAL_REVIEW_USER`** are passed on if they're set when you install
   (`LOCAL_REVIEW_HOME` made absolute). Nothing else from your environment is.
 - It still listens on **127.0.0.1 only**, as `local-review` always does. There's no option to change that
@@ -116,6 +118,7 @@ Type=simple
 WorkingDirectory=/home/you/.local-review
 ExecStart=/usr/local/bin/node /usr/local/lib/node_modules/local-review/dist/server/cli.js serve --quiet --port 5622
 Environment="PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+Environment="HOME=/home/you"
 StandardOutput=append:/home/you/.local-review/logs/server.out.log
 StandardError=append:/home/you/.local-review/logs/server.err.log
 Restart=always

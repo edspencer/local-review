@@ -21,7 +21,7 @@ export interface ServiceSpec {
   /** The argv: [node, cli.js, 'serve', '--quiet', '--port', N], every path absolute and real (never a shim). */
   program: string[];
   cwd: string;
-  /** The whole environment the job gets: PATH, plus LOCAL_REVIEW_HOME / LOCAL_REVIEW_USER when they were set. */
+  /** The whole environment the job gets: PATH and HOME, plus LOCAL_REVIEW_HOME / LOCAL_REVIEW_USER when they were set. */
   env: Record<string, string>;
   /** Log files, appended to. */
   stdout: string;

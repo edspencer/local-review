@@ -131,7 +131,7 @@ export async function install(ctx: ServiceContext, flags: InstallFlags): Promise
     else if (before?.env[k]) carried[k] = before.env[k];
   }
   const home = dataHome(carried, ctx.userHome);
-  const spec = buildSpec({ cliScript, node, port, home, carried, inheritedPath: ctx.env.PATH });
+  const spec = buildSpec({ cliScript, node, port, home, carried, inheritedPath: ctx.env.PATH, userHome: ctx.userHome });
   if (!which('git', spec.env.PATH))
     throw new RefusalError(`can't find git on your PATH (${spec.env.PATH}). Local Review runs git to read your repos; install it, then run \`local-review service install\` again.`);
 

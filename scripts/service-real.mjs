@@ -147,7 +147,8 @@ try {
 
   step('service uninstall');
   const logs = path.join(data, 'logs');
-  assert.ok(fs.readFileSync(path.join(logs, 'server.out.log'), 'utf8').includes(`Local Review on http://localhost:${port}`), 'it logged its start');
+  // its start, reading the data home `service install` chose (its environment came from the service's file alone)
+  assert.ok(fs.readFileSync(path.join(logs, 'server.out.log'), 'utf8').includes(`Local Review on http://localhost:${port}  (projects: ${path.join(data, 'projects')})`), 'it logged its start');
   const dataBefore = fs.readdirSync(data).sort();
   assert.match(lr('service', 'uninstall'), /^Removed Local Review's service \(.*\)\. Your data in .* is untouched\.$/m);
   installed = false;

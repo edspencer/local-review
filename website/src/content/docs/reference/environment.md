@@ -37,7 +37,7 @@ give it `--port <n>` instead.
 
 A service started by launchd or systemd gets almost none of your shell's environment, so
 [`local-review service install`](/getting-started/service/) writes what Local Review needs into the service's file:
-`PATH` (cleaned up, with git on it), and `LOCAL_REVIEW_HOME` (made absolute) and `LOCAL_REVIEW_USER` if they're set
+`PATH` (cleaned up, with git on it), `HOME`, and `LOCAL_REVIEW_HOME` (made absolute) and `LOCAL_REVIEW_USER` if they're set
 when you install. A reinstall keeps the last two if they aren't set then; to drop one, run `local-review service
 uninstall` first. Nothing else is passed on: set the others in the service's file only if you know you need them, and
 expect `service install` to rewrite it.

@@ -168,6 +168,8 @@ export interface SpecInput {
   carried: Partial<Record<(typeof CARRIED_ENV)[number], string>>;
   /** The PATH the job's starts from. */
   inheritedPath: string | undefined;
+  /** The user's home directory: the job's HOME. */
+  userHome: string;
 }
 
 export function buildSpec(i: SpecInput): ServiceSpec {
@@ -177,7 +179,9 @@ export function buildSpec(i: SpecInput): ServiceSpec {
     description: `Local Review: the review UI on http://localhost:${i.port}`,
     program: [i.node.path, i.cliScript, 'serve', '--quiet', '--port', String(i.port)],
     cwd: i.home,
-    env: { PATH: servicePath(path.posix.dirname(i.node.path), i.inheritedPath), ...i.carried },
+    // HOME as well: launchd and systemd set one, but this makes sure the data home, the logs and git's user.name (the
+    // reviewer's id) are the ones `service install` resolved, even where the two would differ
+    env: { PATH: servicePath(path.posix.dirname(i.node.path), i.inheritedPath), HOME: i.userHome, ...i.carried },
     stdout: path.posix.join(logs, 'server.out.log'),
     stderr: path.posix.join(logs, 'server.err.log'),
     node: i.node,
