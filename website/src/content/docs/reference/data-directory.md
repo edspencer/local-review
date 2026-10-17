@@ -39,7 +39,7 @@ them.
 | `assets/<hash>.<ext>.yaml` | `local-review asset url`, an agent or you | [Images](#images) |
 
 Every file under `projects/` is watched, and what the server works out from them (and from the repos' branches,
-polled every 2 seconds) is only kept while they're unchanged, so edits from an agent or an editor show up in the
+polled every 2 seconds while a browser has a page open) is only kept while they're unchanged, so edits from an agent or an editor show up in the
 browser within about a second, with no restart.
 
 **`cache/`** holds one file per repo with what git said about its commits: each commit's subject, author and changed
@@ -52,7 +52,7 @@ It's off when only `LOCAL_REVIEW_PROJECTS_DIR` is set (like snapshots).
 its output to `server.out.log` and `server.err.log`. Local Review writes little (a line when it starts, a note per
 snapshot, and errors), so they aren't rotated; empty or delete them whenever you like. `local-review service uninstall`
 leaves them, like everything else here. The service's own file isn't here: it's in `~/Library/LaunchAgents` or
-`~/.config/systemd/user`.
+`~/.config/systemd/user` (`$XDG_CONFIG_HOME/systemd/user` if that's set).
 
 **Set-aside files.** Local Review never deletes a file; when one has to go out of the way, it's renamed to a `.bak`,
 which nothing reads:

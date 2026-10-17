@@ -50,7 +50,7 @@ Double-clicking the handle puts the default width back.
 | --- | --- |
 | Enter | Save a title. |
 | ⌘/Ctrl + Enter | Post a comment or reply; save a description, project intro or stack note. |
-| Esc | Cancel (a description editor with changes asks first). Also closes the project switcher and the **…** and **edited ▾** menus. |
+| Esc | Cancel (asking first if you changed something). Also closes the project switcher and the **…** and **edited ▾** menus. |
 | ⌘/Ctrl + B, I, K | Bold, italic, link, in an editor with a toolbar. |
 
 To select a range of lines for a comment, click one line number and **shift-click** another.

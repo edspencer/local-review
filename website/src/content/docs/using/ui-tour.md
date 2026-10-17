@@ -57,8 +57,8 @@ commit ranges, and the [PR stacks](/concepts/pr-stacks/) they split into ([Proje
 - **Filter** (press `/`; Esc clears it) matches the title, slug, repo names and branch names; **Sort** by recent
   activity, title, size or open threads (remembered). The `npx local-review init <slug>` line starts a new project.
 - **Hidden projects** ([`hidden: true`](/reference/project-yaml/#top-level) in `project.yaml`) aren't on the root
-  page or in the switcher, or in their counts; a [chain](/concepts/linked-projects/#hidden-projects) closes over one.
-  Their URLs still open them. If every project is hidden, the root page says so.
+  page or in the switcher (except while you're on one), or in their counts; a
+  [chain](/concepts/linked-projects/#hidden-projects) closes over one. Their URLs still open them. If every project is hidden, the root page says so.
 - With no projects yet, `/` is the [first-run welcome page](/getting-started/quickstart/) instead, with the
   example projects one click away.
 
@@ -184,7 +184,7 @@ the Conversation tab.)
   **For the GitHub PR** box on each thread.
 - **All / Open / For GitHub:** buttons above the list, each with its count, show every thread, only the open ones,
   or only those [marked for the GitHub PR](/using/reviewing-and-comments/#comments-for-the-github-pr). While some
-  of those aren't posted yet, a note beside the buttons says how many.
+  of those aren't posted yet, a note beside the buttons says how many (on **For GitHub** itself, its tooltip does).
 
 It's live: a reply an agent writes into a review file, or a thread resolved on a PR page, shows up here (and in the
 counter) without a reload. A review file that isn't valid YAML is named in a warning above the list, and its threads

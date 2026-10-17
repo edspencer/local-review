@@ -95,7 +95,8 @@ The arithmetic lives in `shared/totals.ts`, used by both the server and the UI, 
 
 Each stack has a page of its own, `/<project>/<repo>/stacks/<n>-<title>` (for example `…/stacks/2-joining-and-leaving`),
 opened from its title in the sidebar, its name in a PR's stepper, or the breadcrumbs. It has the stack's readiness,
-branches and size, its [note](#stack-notes) (editable there) and a picture of just that stack; **← Prev stack** and
+branches and size, its [note](#stack-notes) (editable there), a [Comments tab](/using/ui-tour/#the-comments-tab) with
+every thread on its PRs, and a picture of just that stack; **← Prev stack** and
 **Next stack →** walk the project's stacks, across repos. Unstacked commits and a repo without `stacks:` have one too
 (`…/stacks/unstacked`, `…/stacks/branch`). See [the stack page](/using/ui-tour/#the-stack-page).
 

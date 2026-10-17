@@ -11,7 +11,7 @@ buttons then give you exactly the text the real GitHub PR should have, project c
 
 ## Editing
 
-- **Title:** **Edit** beside the title turns it into an input. Enter saves, Esc cancels.
+- **Title:** **Edit** beside the title turns it into an input. Enter saves, Esc cancels (asking first if you changed it).
 - **Description:** the pencil in the description's header (or **…** → Edit) opens a **Write / Preview** editor with a
   small toolbar (bold, italic, code, link, list, quote; ⌘B / ⌘I / ⌘K), prefilled with the current description.
   ⌘/Ctrl+Enter saves, Esc cancels (asking first if you changed something).
@@ -29,6 +29,8 @@ An agent can do the same by writing `title:` / `body:` into the prs file, or wit
 
 Every text box keeps what you type, as GitHub's do: the PR title and description, the project intro and stack notes,
 a new comment, a reply, an inline comment (on a line or a range), and an edit of one of your comments.
+
+![A new comment box after a reload: "Restored an unsaved draft from 16:30" with Discard above the text, which is still there](../../../assets/shots/crop-draft-restored.png "A comment typed, then the page reloaded before it was sent. (The capture rig typed it; the app kept the draft.)")
 
 - **Kept as you type**, a moment after you stop. Reload, close the tab or come back tomorrow, and the editor is open
   again with your text (an inline comment's form on the same line in Files changed), under a line saying **Restored an

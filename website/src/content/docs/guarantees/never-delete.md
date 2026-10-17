@@ -33,8 +33,10 @@ A test fails the build if any code gains a way around that.
   one, or snapshots are off).
 - **The service doesn't touch your data.** [`local-review service install`](/getting-started/service/) writes its own
   file *outside* `~/.local-review` (a LaunchAgent in `~/Library/LaunchAgents`, or a systemd user unit in
-  `~/.config/systemd/user`) and only creates `logs/` in the data home. `local-review service uninstall` removes that
+  `~/.config/systemd/user`, or under `$XDG_CONFIG_HOME`) and only creates `logs/` in the data home. `local-review service uninstall` removes that
   one file, after checking its name and directory, and nothing in `~/.local-review`, not even the logs.
+- **`cache/` is Local Review's own, disposable data**, not yours: what git said about commits, rewritten atomically as
+  git answers come in and never snapshotted. You can delete it any time; it's rebuilt as needed.
 - **The only deletion in `~/.local-review` is snapshot pruning**, guarded as below.
 
 The one thing that removes your words is you: deleting your own comment in the UI removes it from the file, as you'd

@@ -17,13 +17,21 @@ The highlights of each release. The full list is in
   can delete at any time. Upgrading is `npm i -g local-review@latest`, then `local-review service restart`. Not on
   Windows. See [Run it as a service](/getting-started/service/).
 
-## 0.10.0: hidden projects
+## 0.10.0: hidden projects, and a lighter server
 
 - **`hidden: true` keeps a project off the root page.** Add it to a `project.yaml` and the project is left off the
   root page (and its counts) and out of the project switcher, without deleting or moving anything: for a parked
   experiment, or a demo of linked projects that leaves the last one out. Its URL still opens it, and `after:` links
   to and from it still hold, so no range changes. In a chain, the other projects stay together and the card closes
   over the hidden one. See [Hidden projects](/concepts/linked-projects/#hidden-projects).
+- **A lighter server** (0.10.2, 0.10.3). The branch poll checks the files git keeps its refs in and runs git only
+  when one may have moved (and once every 10 minutes), where it used to run two git processes per repo every 2
+  seconds; it doesn't run at all while no page is open. What git says about each commit is kept in
+  `~/.local-review/cache/`, so the first page after a restart loads in a few dozen git calls instead of hundreds. A
+  git call that never finishes times out after 60 seconds instead of hanging every page. See
+  [Where your data lives](/reference/data-directory/).
+- **Linked projects' cards** on the root page lose their `1 · FIRST`, `2 · BUILDS ON …` labels (0.10.1): the arrows
+  already show the order.
 
 ## 0.9.0: every thread in one place, comments for GitHub, and drafts that survive a reload
 

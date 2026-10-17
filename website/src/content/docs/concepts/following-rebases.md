@@ -87,7 +87,8 @@ commit's subject, and give every commit a unique one. [Stack selectors](/concept
 - **Not found** (the line was deleted or rewritten, or the file left the commit): the thread is **outdated**. The API
   returns `outdated: true` and the server writes `outdated: true`, keeping `line` as the last known location. The UI
   shows an "Outdated" label with the original code from `anchor`, in the Conversation tab and at the top of the
-  file's card (in the Conversation tab only, if the file is gone from the commit). If the code comes back in a later
+  file's card (in the Conversation tab only, if the file is gone from the commit), and in the
+  [Comments tab](/using/ui-tour/#the-comments-tab). In Files changed and the Comments tab it starts folded to one row. If the code comes back in a later
   rebase, the thread is placed again. **Threads are never dropped.**
 
 ![A thread labelled Outdated, showing the original lines it was left on, the reviewer's comment and the agent's reply](../../../assets/shots/crop-outdated-thread.png "An outdated thread: the code it was on is gone after an amend, so it shows the original lines from its anchor.")

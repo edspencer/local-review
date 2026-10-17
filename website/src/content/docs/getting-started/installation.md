@@ -33,12 +33,21 @@ Installed globally, Local Review can run in the background as a service that sta
 exits: a launchd LaunchAgent on macOS, a systemd user unit on Linux.
 
 ```sh
-npm i -g local-review
-local-review service install       # run it at every login
+local-review service install       # run it at every login (after npm i -g local-review)
 ```
 
-It won't install a service from npx's cache, which npm can delete at any time. Upgrading is
-`npm i -g local-review@latest`, then `local-review service restart`. More: [Run it as a service](/getting-started/service/).
+Stop any `local-review` you started in a terminal first: the service needs its port. It won't install a service from
+npx's cache, which npm can delete at any time. More: [Run it as a service](/getting-started/service/).
+
+## Upgrading
+
+```sh
+npm i -g local-review@latest
+local-review service restart       # if it runs as a service
+```
+
+If you've changed Node since you installed the service, see [Upgrading a service](/getting-started/service/#upgrading).
+With npx, `npx local-review@latest` fetches the newest release. Upgrading never touches your data (below).
 
 ## Ports
 

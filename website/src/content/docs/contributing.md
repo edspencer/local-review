@@ -46,7 +46,8 @@ npm run build         # dist/web (Vite) + dist/server, dist/shared (tsc)
 npm run smoke:pack    # npm pack, install the tarball into a temp prefix, run it as a user would
 ```
 
-When `website/` changes, CI also builds this site and checks every link in it (`node scripts/check-links.mjs` in
+CI also installs, restarts and uninstalls the real service on Linux and macOS (`scripts/service-real.mjs`). When
+`website/` changes, it also builds this site and checks every link in it (`node scripts/check-links.mjs` in
 `website/`).
 
 `smoke:pack` matters whenever you touch the build, `package.json` (`files`, `bin`, dependencies) or anything the CLI
@@ -93,8 +94,10 @@ server/   git.ts (read-only git), config.ts (data home, package paths), port.ts 
           projectEdit.ts (writing the intro and stack notes into project.yaml), reviews.ts (YAML store, rebase
           re-matching), prs.ts (PR title/description/branch/github/landed), landed.ts (landed PRs from
           project.yaml `landed:`), branches.ts (branch discovery + reconciliation), stamps.ts (the cache of
-          derived data, keyed on file and ref stamps), plan.ts, cli.ts (the `local-review` CLI: serve, plan, init,
-          asset, move, examples, guide), assets.ts (images), move.ts (`local-review move`), examples.ts (the
+          derived data, keyed on file and ref stamps), reffiles.ts (stats a repo's ref files, for the branch poll),
+          diskcache.ts (what git said about commits, kept in cache/), threads.ts (the Comments tab's data), plan.ts,
+          cli.ts (the `local-review` CLI: serve, plan, init, asset, move, examples, guide, service), banner.ts (the
+          startup banner), service/ (`local-review service`: launchd, systemd), assets.ts (images), move.ts (`local-review move`), examples.ts (the
           example projects), reviewer.ts (who you are), anchors.ts (line anchors + relocation), context.ts,
           events.ts (watch + SSE), index.ts (Hono), security.ts (localhost Host/Origin guard), stackviz.ts (stack
           picture and root-page thumbnails: SVG + PNG), fonts/ (bundled OFL fonts for it)
@@ -102,21 +105,28 @@ test/     npm test: projects/stacks/PR overrides, review store, anchors, git wra
           throwaway git repos, plus the PR editors' text helpers, the stack picture (aggregation, SVG, PNG
           endpoints), snapshots/pruning (backups.test.ts), branch tagging + the plan command (branches.test.ts),
           the CLI's other commands (cli.test.ts), landed PRs (landed.test.ts), linked projects (linked.test.ts),
-          move, examples, assets, the server's cache (caching.test.ts), the static never-delete guard
+          move, examples, assets, the server's cache (caching.test.ts) and git cache (diskcache.test.ts), the
+          Comments tab (threads.test.ts), threads for GitHub (publish.test.ts), drafts, thread folding, the sidebar's
+          width, llms.txt, the banner, the service (service.test.ts, with a fake manager), the static never-delete guard
           (fsguard.test.ts), the demo's lock (demo.test.ts) and the docs site's sync checks (docs.test.ts)
 src/      React UI: App (header, sidebar, SSE, j/k), Projects (the root page), Welcome (the first-run page),
           ProjectHome (/<project>), StackPage (a stack's page), CommitPage (PR header, Conversation),
-          FilesChanged (tree, cards, @pierre/diffs), Comments (threads, Markdown editor), PrEdit (PR
+          CommentsTab (the project and stack pages' Comments tab), FilesChanged (tree, cards, @pierre/diffs),
+          Comments (threads, Markdown editor), threadFold (folded threads), drafts + useDrafts + DraftNotices (drafts
+          kept in localStorage), sidebarWidth (the resizable sidebar), PrEdit (PR
           title/description editing + copy), ProjectText (the intro and stack note boxes), prText (their pure text
           helpers), StackTab (the Stack tab, copy/download), Stacks (breadcrumbs, stack links), Lightbox (the
           image viewer), commitCache + TopProgress (loading PRs ahead, the amber progress bar)
 shared/   prText.ts: the full PR body composition, used by both the UI and the plan; totals.ts: aggregate stats
           over stacks (follow-on stacks and merged PRs left out), used by the stack picture and the UI;
           readiness.ts: draft / ready / published / merged; chains.ts: linked-project chains; stackRef.ts:
-          stack page refs; assets.ts, paths.ts, repoLabel.ts
+          stack page refs; threads.ts: the Comments tab's order; llms.ts: llms.txt and llms-full.txt, for the server
+          and this site; assets.ts, paths.ts, repoLabel.ts
 demo/     the demo test bed: a made-up world (lib/, world/), also the example projects; seed.ts, shas.json (its lock)
 tools/    docs-media/: the screenshot and GIF rig for this site and the README
-scripts/  start.mjs (npm start: build what's stale, run the compiled CLI), smoke-pack.mjs (npm run smoke:pack)
+scripts/  start.mjs (npm start: build what's stale, run the compiled CLI), smoke-pack.mjs (npm run smoke:pack),
+          service-real.mjs (CI: the service against the real launchd / systemd), sync-llms.ts (npm run docs:llms),
+          whats-new-release.mjs (the release's What's new check)
 website/  this docs site (Astro + Starlight), a separate package; see website/CLAUDE.md
 dist/     npm run build: web/ (the UI), server/ + shared/ (compiled); what the npm package runs
 AGENT-GUIDE.md   the guide for agents driving Local Review from other repos (`local-review guide`)
@@ -134,7 +144,8 @@ examples/        project.example.yaml, the commented starting point `init` copie
   picture's fonts (`server/fonts/`), `examples/project.example.yaml` (for `init`), `AGENT-GUIDE.md` (for `guide`) and
   `CHANGELOG.md`.
 - **The agent guide pages on this site are generated** from `AGENT-GUIDE.md`. Edit that file, then run
-  `node scripts/sync-agent-guide.mjs` in `website/` and commit the result; `npm test` fails if you forget.
+  `node scripts/sync-agent-guide.mjs` in `website/`, then `npm run docs:llms` for `website/public/llms*.txt`, and
+  commit the results; `npm test` fails if you forget.
 
 ## License
 

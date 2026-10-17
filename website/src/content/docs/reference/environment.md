@@ -8,11 +8,12 @@ thinks you are.
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `LOCAL_REVIEW_HOME` | `~/.local-review` | The [data directory](/reference/data-directory/): `projects/`, `backups/` and `examples/` all move. `~` is expanded. |
+| `LOCAL_REVIEW_HOME` | `~/.local-review` | The [data directory](/reference/data-directory/): `projects/`, `backups/`, `examples/`, `cache/` and `logs/` all move. `~` is expanded. |
 | `PORT` | `5622` | The port `local-review` serves on. `--port` wins over it. Also used in the URL `init` prints. Not used by `service install`. |
 | `LOCAL_REVIEW_USER` | `git config user.name`, else `$USER` | Who you are: your comments are stored under this name's id. See [The reviewer](#local_review_user-the-reviewer). |
 | `NO_COLOR`, `FORCE_COLOR` | colour on a terminal | The startup banner's colours. See [Colour](#colour-no_color-and-force_color). |
-| `LOCAL_REVIEW_PROJECTS_DIR` | `$LOCAL_REVIEW_HOME/projects` | Moves only `projects/`. For the tests; it turns automatic snapshots off unless `LOCAL_REVIEW_HOME` is set too. |
+| `XDG_CONFIG_HOME` | `~/.config` | Linux only, for `service`: the systemd user unit goes in `$XDG_CONFIG_HOME/systemd/user` if it's an absolute path. |
+| `LOCAL_REVIEW_PROJECTS_DIR` | `$LOCAL_REVIEW_HOME/projects` | Moves only `projects/`. For the tests; it turns automatic snapshots and the git cache off unless `LOCAL_REVIEW_HOME` is set too. |
 
 ## `LOCAL_REVIEW_HOME`: a scratch instance
 
@@ -58,8 +59,8 @@ LOCAL_REVIEW_USER=ada npx local-review
 ## `LOCAL_REVIEW_PROJECTS_DIR`
 
 Moves just the `projects/` directory. It's meant for the test suite: it isn't a data home, so automatic
-[snapshots](/reference/data-directory/#snapshots) are **off** unless `LOCAL_REVIEW_HOME` is set as well (they then go
-to `$LOCAL_REVIEW_HOME/backups`). Prefer `LOCAL_REVIEW_HOME`.
+[snapshots](/reference/data-directory/#snapshots) and the git cache (`cache/`) are **off** unless `LOCAL_REVIEW_HOME`
+is set as well (they then go to `$LOCAL_REVIEW_HOME/backups` and `$LOCAL_REVIEW_HOME/cache`). Prefer `LOCAL_REVIEW_HOME`.
 
 ## Developing Local Review
 
