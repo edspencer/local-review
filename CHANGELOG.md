@@ -1,5 +1,12 @@
 # local-review
 
+## 0.11.1
+
+### Patch Changes
+
+- [#62](https://github.com/edspencer/local-review/pull/62) [`0beb234`](https://github.com/edspencer/local-review/commit/0beb234f8b307befb64edffb20e92156dcbffe2b) Thanks [@edspencer](https://github.com/edspencer)! - Dependency updates: `@hono/node-server` 2.1.5 (the server), and DOMPurify 3.4.17 and marked 18.1.1, which are bundled
+  into the UI and render and sanitise PR descriptions and comments.
+
 ## 0.11.0
 
 ### Minor Changes
