@@ -26,6 +26,7 @@ export interface BranchInfo {
   name: string;
   status: BranchStatus;
   points_at?: string; // full sha the recorded branch points at, when `moved`
+  follow_ups?: number; // `ok` at the PR's head, this many commits above its own (pr_model: follow-ups)
   discovered: string[]; // every branch pointing at this commit (local first, then remote; the range tip last)
 }
 
@@ -117,9 +118,10 @@ export function discoveredFor(idx: RefIndex, sha: string, tip: string | null): s
  * Reconcile what prs/<sha>.yaml records with git. Recorded name: `github.branch`, else `branch`. Then:
  * ok (exists, points here), moved (exists, points elsewhere: `points_at`), missing (not in git). With nothing
  * recorded: the best discovered branch (a local non-tip one first), status `discovered`; else null. A landed PR's
- * recorded branch is `merged`, whatever git says (never a warning).
+ * recorded branch is `merged`, whatever git says (never a warning). `followUps`: the PR's follow-up commits were
+ * folded into it (followups.ts), so its branch is `ok` at their head.
  */
-export function reconcileBranch(idx: RefIndex, sha: string, override: PrOverride | undefined, tip: string | null): BranchInfo | null {
+export function reconcileBranch(idx: RefIndex, sha: string, override: PrOverride | undefined, tip: string | null, followUps?: { head: string; count: number }): BranchInfo | null {
   const recorded = override?.github?.branch ?? override?.branch;
   // a landed PR's branch is history: it may be deleted or reused by now, and that's no problem
   if (override?.landed) return recorded ? { name: recorded, status: 'merged', discovered: [] } : null;
@@ -128,6 +130,7 @@ export function reconcileBranch(idx: RefIndex, sha: string, override: PrOverride
     const e = lookupBranch(idx, recorded);
     if (!e) return { name: recorded, status: 'missing', discovered };
     if (e.sha === sha) return { name: recorded, status: 'ok', discovered };
+    if (followUps && e.sha === followUps.head) return { name: recorded, status: 'ok', follow_ups: followUps.count, discovered: discoveredFor(idx, e.sha, tip) };
     return { name: recorded, status: 'moved', points_at: e.sha, discovered };
   }
   return discovered.length ? { name: discovered[0], status: 'discovered', discovered } : null;

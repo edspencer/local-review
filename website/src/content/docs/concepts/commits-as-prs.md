@@ -15,7 +15,7 @@ goes up as a GitHub stacked PR: one PR per commit, each on the branch of the one
 | --- | --- | --- |
 | Title | the commit subject | `title:` in its [prs file](/reference/pr-files/), or **Edit** in the UI |
 | Description | the commit body | `body:` in its prs file, or the description editor |
-| Diff | the commit against its first parent, with rename detection | — |
+| Diff | the commit against its first parent, with rename detection; with [follow-up commits](#follow-up-commits), all of them | — |
 | Number | its position in the repo, 1..n across all stacks, oldest first ("PR 3", `#3`) | — |
 | Readiness | draft until you mark it ready | see [Readiness](/concepts/readiness/) |
 | Branch | none until an agent tags one | see [Branches](/concepts/branches/) |
@@ -36,6 +36,27 @@ its full PR body.
   blur together; reviewed one at a time, each gets its own diff and conversation.
 - **Fixes land where they belong.** A comment on PR 3 is fixed in PR 3, with `git commit --fixup` and an autosquash
   rebase, and the thread follows the rewritten commit ([Following rebases](/concepts/following-rebases/)).
+
+## Follow-up commits
+
+Fixing a commit with `--fixup` rewrites it, so a published PR has to be force-pushed. To fix a published PR the
+GitHub way instead, with new commits on top of its branch that you push normally, set `pr_model: follow-ups` on the
+repo in [project.yaml](/reference/project-yaml/#repos). Then a PR is its commit **plus the commits up to its
+branch's head**:
+
+- When a PR's recorded [branch](/concepts/branches/) has moved to a later commit in the range, one descending from
+  the PR's commit, the commits in between are folded into that PR. They aren't PRs of their own, and the PRs above
+  keep their numbers.
+- The PR's diff runs from its first commit's parent to the branch head, so it includes the fixes. The header lists
+  its commits, and its branch shows as `ok`.
+- Its [prs file](/reference/pr-files/) and review file stay keyed by its first commit's sha.
+- A commit that's a PR of its own (it has a recorded `branch:` or a `github:` record) is never folded into the PR
+  below it.
+
+Restack the PRs above with `git rebase --update-refs` (agent guide:
+[follow-up commits](/agents/agent-guide/#alternative-follow-up-commits-on-a-published-pr-pr_model-follow-ups)).
+Merging the lower branch into the one above instead isn't supported yet: the merge commit would show as a PR. Without
+`pr_model`, every commit is a PR, as before.
 
 ## Shaping the commits
 

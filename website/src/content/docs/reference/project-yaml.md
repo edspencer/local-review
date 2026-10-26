@@ -61,6 +61,7 @@ The project's **slug** is its directory name (not a field): it's used in URLs, `
 | `to` | sha or ref | Instead of `branch`: the range end, inclusive. |
 | `base` | ref | The range **start**: `merge-base(base, end)`, exclusive. Default: `origin/HEAD`, else `main`, else `master`. In a project with `after:`, a repo the predecessor also has starts at the predecessor's range end instead while that's an ancestor of `end` ([linked projects](/concepts/linked-projects/#the-ranges)). |
 | `from` | sha or ref | Instead of `base`: the first commit included. Overrides `base`. |
+| `pr_model` | `follow-ups` or `commit`, optional | `follow-ups`: commits on top of a PR's branch, up to its head, are part of that PR, not PRs of their own. See [Follow-up commits](/concepts/commits-as-prs/#follow-up-commits). Default (`commit`): every commit is a PR. |
 | `landed` | list, optional | The repo's merged PRs, bottom to top: the keys (file names) of their `prs/<repo>/<sha>.yaml` files, a full sha or a unique prefix (quote prefixes). See [Landed PRs](/concepts/landed-prs/). |
 | `github_stack` | number, optional | Informational: the GitHub stack these PRs went up as. |
 | `stacks` | list, optional | Consecutive groups of the range's commits, in order, below. No `stacks:` means one stack named after the branch. |

@@ -11,6 +11,7 @@ import { normalizeSubject } from './reviews.js';
 import { loadLanded } from './landed.js';
 import { loadPrs, type LoadedPr } from './prs.js';
 import { inspectOrphan, liveCommits } from './context.js';
+import { foldFollowUps } from './followups.js';
 import type { RefIndex } from './branches.js';
 import { dirStamp, repoState, type RepoState } from './stamps.js';
 
@@ -34,6 +35,7 @@ export interface RepoConfig extends RepoRange {
   warnings: string[]; // config problems (bad colour, …)
   landed: unknown[]; // `landed:` keys of prs files (sha or prefix), bottom to top, as written; resolved in loadProject
   github_stack?: number; // the GitHub stack the repo's PRs went up as (informational only)
+  pr_model?: 'follow-ups'; // a PR is its commit plus the follow-up commits up to its branch's head (followups.ts)
 }
 
 export interface ProjectConfig {
@@ -169,6 +171,8 @@ export function parseProject(slug: string, dir: string, raw: string): ProjectCon
     if (Array.isArray(r.landed)) landed = r.landed;
     else if (r.landed != null) warnings.push('`landed` must be a list of prs file keys (sha prefixes); ignored');
     const ghStack = Number(text(r.github_stack)?.replace(/^#/, ''));
+    const model = text(r.pr_model)?.trim().toLowerCase();
+    if (model && model !== 'follow-ups' && model !== 'commit') warnings.push(`\`pr_model\` must be follow-ups or commit, not ${JSON.stringify(r.pr_model)}; ignored`);
     out.repos.push({
       index,
       name,
@@ -181,6 +185,7 @@ export function parseProject(slug: string, dir: string, raw: string): ProjectCon
       warnings,
       landed,
       ...(Number.isSafeInteger(ghStack) && ghStack > 0 ? { github_stack: ghStack } : {}),
+      ...(model === 'follow-ups' ? { pr_model: 'follow-ups' as const } : {}),
     });
   }
   return out;
@@ -418,6 +423,11 @@ async function buildProject(cfg: ProjectConfig, states: RepoState[], link: { pre
         // a frozen PR whose commit is still in the live range (frozen before the rebase) is shown once, as landed
         const keys = new Set(landed.commits.map((c) => c.sha));
         info.commits = [...landed.commits, ...info.commits.filter((c) => !keys.has(c.sha))];
+      }
+      // follow-up commits on a PR's branch are part of that PR, not PRs of their own
+      if (rc.pr_model === 'follow-ups' && !info.error && info.commits.some((c) => !c.landed)) {
+        const prs = await loadPrs(dirs.prsDir, liveCommits(rc, info), inspectOrphan(rc, info)).catch(() => new Map<string, LoadedPr>());
+        info.commits = await foldFollowUps(rc.path, info.commits, prs, states[ri].refIndex).catch(() => info.commits);
       }
       const defaultTitle = rc.branch || rangeEnd(rc) || rc.name;
       let part = partitionStacks(info.commits.map((c) => ({ sha: c.sha, subject: c.subject, title: titles.get(c.sha) })), rc.stacks, defaultTitle);

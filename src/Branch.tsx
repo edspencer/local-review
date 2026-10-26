@@ -29,6 +29,7 @@ export function branchNote(b: BranchInfo | null | undefined): string | null {
   if (b.status === 'moved') return `Branch ${b.name} has moved: it now points at ${b.points_at ? b.points_at.slice(0, 8) : 'another commit'}, not this commit${also}`;
   if (b.status === 'missing') return `Branch ${b.name} no longer exists in git${also}`;
   if (b.status === 'discovered') return `Branch ${b.name} (found in git, not recorded)${also}`;
+  if (b.follow_ups) return `Branch ${b.name} is at this PR's head, ${b.follow_ups} follow-up commit${b.follow_ups === 1 ? '' : 's'} above its first${also}`;
   if (b.status === 'merged') return `Branch ${b.name}: merged on GitHub (it may be deleted by now; that's fine)`;
   return also ? also.slice(1) : null;
 }

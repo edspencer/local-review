@@ -47,7 +47,7 @@ Hand-written files only need the fields they set.
 
 | Field | Notes |
 | --- | --- |
-| `commit`, `patch_id`, `change_id`, `subject`, `previous_commits`, `matched_by` | Server-maintained, as in [comment files](/reference/comment-files/#file-fields), used to [follow the commit across rebases](/concepts/following-rebases/). For a landed PR, `subject:` is its stored subject, which [stack selectors](/concepts/pr-stacks/#how-starts_at-picks-a-commit) match. |
+| `commit`, `patch_id`, `change_id`, `subject`, `previous_commits`, `matched_by` | Server-maintained, as in [comment files](/reference/comment-files/#file-fields), used to [follow the commit across rebases](/concepts/following-rebases/). With [follow-up commits](/concepts/commits-as-prs/#follow-up-commits), they describe the PR's first commit, never a follow-up. For a landed PR, `subject:` is its stored subject, which [stack selectors](/concepts/pr-stacks/#how-starts_at-picks-a-commit) match. |
 | `title` | The PR title. Absent or blank: the commit subject. A `title` identical to the commit subject (or a `body` identical to the commit body) counts as unedited. |
 | `body` (or `description`) | The PR description, Markdown. Absent: the commit body. It can show the project's [images](/using/editing-pr-text/#images) as `![alt](assets/<name>)`. |
 | `status` | `draft` (the default when absent) or `ready`. Case-insensitive (`Ready`, `READY`); any other value counts as absent. Setting it is the reviewer's call: see [Readiness](/concepts/readiness/). |
