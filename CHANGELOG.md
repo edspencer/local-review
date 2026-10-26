@@ -1,5 +1,11 @@
 # local-review
 
+## 0.12.0
+
+### Minor Changes
+
+- [#69](https://github.com/edspencer/local-review/pull/69) [`308c9a7`](https://github.com/edspencer/local-review/commit/308c9a7e3e1801eb4493d7ccd9444db53785a52d) Thanks [@edspencer](https://github.com/edspencer)! - New per-repo `pr_model: follow-ups` in project.yaml: commits added on top of a published PR's branch (to address review without rewriting it) are folded into that PR instead of showing as PRs of their own. The PR's diff covers them all, its header lists its commits, and its branch shows as `ok` rather than `moved`. Without it, nothing changes.
+
 ## 0.11.2
 
 ### Patch Changes

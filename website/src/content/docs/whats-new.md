@@ -7,9 +7,7 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
-## Coming in 0.12.0: follow-up commits
-
-Not released yet.
+## 0.12.0: follow-up commits
 
 - **Fix a published PR with new commits, not a force-push.** With `pr_model: follow-ups` on a repo in project.yaml,
   commits added on top of a PR's branch are part of that PR: its diff covers them, its header lists them, and its
