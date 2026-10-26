@@ -558,6 +558,13 @@ button { font-family: inherit; }
 .btn-copy-branch { padding: 2px 3px; }
 .pr-meta .pr-badge { font-size: 12px; line-height: 18px; padding: 0 6px; vertical-align: middle; }
 .pr-meta .sha { cursor: pointer; color: var(--fg); background: var(--bg-subtle); padding: 1px 5px; border-radius: 4px; }
+/* pr_model: follow-ups: the PR's commits, under the header */
+.pr-commits { font-size: 12px; color: var(--fg-muted); margin: 8px 0; }
+.pr-commits summary { cursor: pointer; }
+.pr-commits ol { margin: 6px 0 0; padding-left: 20px; }
+.pr-commits li { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
+.pr-commits .sha { cursor: pointer; color: var(--fg); background: var(--bg-subtle); padding: 0 5px; border-radius: 4px; }
+.pr-commits-subject { color: var(--fg); }
 .State {
   display: inline-flex;
   align-items: center;

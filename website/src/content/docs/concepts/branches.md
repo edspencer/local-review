@@ -30,8 +30,8 @@ reconciles each commit (`branch` in the API). The **display name** is, in order:
 
 | Status | Meaning | Fix |
 | --- | --- | --- |
-| `ok` | The recorded branch points at this commit. | Nothing to do. |
-| `moved` | It points elsewhere (`points_at`), e.g. after a rebase without `--update-refs`. | `git branch -f <name> <sha>` |
+| `ok` | The recorded branch points at this commit; with [`pr_model: follow-ups`](/concepts/commits-as-prs/#follow-up-commits), at the PR's last follow-up commit (`follow_ups: N`). | Nothing to do. |
+| `moved` | It points elsewhere (`points_at`), e.g. after a rebase without `--update-refs`. | `git branch -f <name> <sha>`, unless it moved onto follow-up commits you want to keep: then set `pr_model: follow-ups`. |
 | `missing` | It's recorded but not in git. | `git branch <name> <sha>`, or record the right name. |
 | `discovered` | Nothing is recorded; a branch in git points here. | Record it, if it's the one. |
 | `merged` | A [landed PR](/concepts/landed-prs/)'s recorded branch, whatever git says. Never a warning (it may well be deleted). | Nothing to do. |

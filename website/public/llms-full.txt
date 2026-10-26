@@ -333,6 +333,25 @@ GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash --update-refs "$MB"
   addressed. `outdated: true` means the commented lines are gone. That's expected when you deleted them; say so in
   the reply.
 
+### Alternative: follow-up commits on a published PR (`pr_model: follow-ups`)
+
+Fixup and autosquash rewrite the reviewed commit, so a published PR then needs a force-push. If the reviewer would
+rather see fixes as new commits on top, as on GitHub, ask them to set `pr_model: follow-ups` on the repo in
+`project.yaml`. Then:
+
+```sh
+git checkout me/feature-flag                  # the PR's own branch (its recorded `branch:`)
+# … edit …
+git commit -m "Review: handle an empty flag"  # a descriptive subject, not `fixup! …`
+git checkout me/my-feature && git rebase --update-refs me/feature-flag   # restack the PRs above
+git push origin me/feature-flag               # a plain push; the branches above need --force-with-lease
+```
+
+Local Review folds the commits between a PR's commit and its branch's head into that PR. They're listed under its
+header, its diff covers all of them, and its branch is `ok` (`follow_ups: N`). The PR's prs and review files stay
+keyed by its first commit. A commit with a recorded branch or `github:` of its own is never folded into the PR
+below it. Without `pr_model`, each follow-up shows as a PR of its own and the branch as `moved`.
+
 ## Branch tagging
 
 Each candidate PR gets a plain git branch pointing at its commit. GitHub needs one head branch per PR, so this is
@@ -354,8 +373,8 @@ The API and the UI show each commit's branch with a status:
 
 | status | meaning | fix |
 | --- | --- | --- |
-| `ok` | the recorded branch points at this commit | nothing to do |
-| `moved` | it points elsewhere (`points_at`), e.g. after a rebase without `--update-refs` | `git branch -f <name> <sha>` |
+| `ok` | the recorded branch points at this commit, or (`pr_model: follow-ups`) at its last follow-up commit (`follow_ups: N`) | nothing to do |
+| `moved` | it points elsewhere (`points_at`), e.g. after a rebase without `--update-refs` | `git branch -f <name> <sha>`, unless the commits it moved past are follow-ups you meant to keep (see `pr_model: follow-ups` above) |
 | `missing` | it's recorded but not in git | `git branch <name> <sha>`, or record the right name |
 | `discovered` | nothing is recorded; a branch in git points here | record it, if it's the one |
 

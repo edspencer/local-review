@@ -9,7 +9,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { streamSSE } from 'hono/streaming';
 import { bodyLimit } from 'hono/body-limit';
 import { AGENT_GUIDE, DEFAULT_PORT, EXAMPLE_PROJECT, HOME, PROJECTS_DIR, ROOT, SAFE_NAME, WEB_DIST } from './config.js';
-import { detailOf, filesOf, type CommitSummary } from './commits.js';
+import { detailOf, filesOf, followUpsOf, type CommitSummary } from './commits.js';
 import { prStatus, progressOf, storedStatus } from '../shared/readiness.js';
 import { ReviewConflictError, loadReview, mutateReview, randomId, reviewPath, unresolvedCount, viewReview, type Published, type Review, type ReviewContext, type Thread } from './reviews.js';
 import { branchName, githubOf, loadPr, loadPrs, prPath, prView, titleEdited, writePr, type GithubPr, type LoadedPr } from './prs.js';
@@ -111,8 +111,8 @@ const tipOf = (r: LoadedRepo) => r.cfg.branch ?? r.info.end ?? null;
  * `branch` (reconciled with git), `github` (as recorded) and `status` (draft / ready, or published once `github`
  * exists) for one commit: the API contract for all three.
  */
-function branchFields(r: LoadedRepo, refs: RefIndex, sha: string, l: LoadedPr | undefined) {
-  return { branch: reconcileBranch(refs, sha, l?.override, tipOf(r)), github: l?.override.github ?? null, status: prStatus(l?.override) };
+function branchFields(r: LoadedRepo, refs: RefIndex, c: CommitSummary, l: LoadedPr | undefined) {
+  return { branch: reconcileBranch(refs, c.sha, l?.override, tipOf(r), followUpsOf(c)), github: l?.override.github ?? null, status: prStatus(l?.override) };
 }
 
 async function prPayload(r: Resolved, body: string) {
@@ -120,7 +120,7 @@ async function prPayload(r: Resolved, body: string) {
   const l = await loadPr(ctx);
   return {
     ...prView(l, { subject: r.commit.subject, body }),
-    ...branchFields(r.repo, r.repo.refIndex, r.commit.sha, l),
+    ...branchFields(r.repo, r.repo.refIndex, r.commit, l),
     file: l.file ?? prPath(ctx.dir, ctx.sha),
     target_file: prPath(ctx.dir, ctx.sha),
     matched_from: l.matchedFrom ?? null,
@@ -174,7 +174,7 @@ async function buildRepoPayload(r: LoadedRepo, withWeights: boolean) {
         stack: r.stackOf.get(cm.sha) ?? 0,
         title: edited ? pr!.override.title! : cm.subject,
         title_source: edited ? 'override' : 'commit',
-        ...branchFields(r, refs, cm.sha, pr),
+        ...branchFields(r, refs, cm, pr),
         unresolved: l ? unresolvedCount(l.review) : 0,
         threads: l ? l.review.threads.length : 0,
         viewedCount: l ? l.review.viewed.length : 0,

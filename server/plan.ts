@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import YAML from 'yaml';
 import { fullPrBody } from '../shared/prText.js';
-import { baseSha, commitBody, isAncestor } from './commits.js';
+import { baseSha, commitBody, followUpsOf, isAncestor } from './commits.js';
 import { contextFor, inspectOrphan, liveCommits } from './context.js';
 import { viewReview, type Published, type Thread } from './reviews.js';
 import { loadRefs, reconcileBranch, stripRemote, type BranchInfo } from './branches.js';
@@ -20,6 +20,7 @@ export interface PlanPr {
   commit: string;
   short: string;
   subject: string;
+  follow_ups?: { sha: string; subject: string }[]; // pr_model: follow-ups: the commits above `commit` the PR also has
   branch: BranchInfo | null;
   base: string | null;
   base_from: 'previous-pr' | 'repo-base' | 'predecessor'; // predecessor: the top PR of the project this one builds on (`after:`)
@@ -143,7 +144,7 @@ async function repoPlan(project: LoadedProject, r: LoadedRepo, onlyStack?: numbe
       continue;
     }
     const l = loaded.get(c.sha);
-    const branch = reconcileBranch(refs, c.sha, l?.override, tip);
+    const branch = reconcileBranch(refs, c.sha, l?.override, tip, followUpsOf(c));
     const isFirst = first;
     first = false;
     const base = isFirst ? (pred ? pred.base : repoBase) : prevBranch;
@@ -197,6 +198,7 @@ async function repoPlan(project: LoadedProject, r: LoadedRepo, onlyStack?: numbe
         commit: c.sha,
         short: c.short,
         subject: c.subject,
+        ...(c.members ? { follow_ups: c.members.slice(1).map((m) => ({ sha: m.sha, subject: m.subject })) } : {}),
         branch,
         base,
         base_from: isFirst ? (pred ? 'predecessor' : 'repo-base') : 'previous-pr',
@@ -264,7 +266,7 @@ async function predecessorTop(project: LoadedProject, r: LoadedRepo): Promise<{ 
   if (!p || !pr || !top) return null;
   const [loaded, refs] = await Promise.all([loadPrs(pr.prsDir, liveCommits(pr.cfg, pr.info), inspectOrphan(pr.cfg, pr.info)).catch(() => new Map<string, LoadedPr>()), loadRefs(pr.info.path)]);
   const l = loaded.get(top.sha);
-  const branch = reconcileBranch(refs, top.sha, l?.override, pr.cfg.branch ?? pr.info.end ?? null);
+  const branch = reconcileBranch(refs, top.sha, l?.override, pr.cfg.branch ?? pr.info.end ?? null, followUpsOf(top));
   const n = pr.info.commits.indexOf(top) + 1;
   const warnings: string[] = [];
   if (!branch) warnings.push(`no base: the top PR of ${p.cfg.slug} here (PR #${n}, ${top.short}) has no branch yet`);
@@ -331,9 +333,10 @@ export function planMarkdown(plan: Plan): string {
       group = g;
       o.push(`## ${p.repo} · ${p.stack.number === null ? p.stack.title : `Stack ${p.stack.number}: ${p.stack.title}`}${p.stack.follow_on ? ' (follow-on)' : ''}`, '');
     }
-    const br = p.branch ? `\`${p.branch.name}\` (${p.branch.status}${p.branch.status === 'moved' ? `: points at ${p.branch.points_at?.slice(0, 8)}` : ''})` : '(none — agent must choose)';
+    const br = p.branch ? `\`${p.branch.name}\` (${p.branch.status}${p.branch.status === 'moved' ? `: points at ${p.branch.points_at?.slice(0, 8)}` : p.branch.follow_ups ? `, +${p.branch.follow_ups} follow-up${p.branch.follow_ups === 1 ? '' : 's'}` : ''})` : '(none — agent must choose)';
     o.push(`### PR #${p.number} (${p.stack.position} of ${p.stack.count}): ${p.title}`, '');
     o.push(`- Commit: \`${p.short}\` ${p.subject}`);
+    for (const f of p.follow_ups ?? []) o.push(`- Follow-up: \`${f.sha.slice(0, 8)}\` ${f.subject}`);
     o.push(`- Branch: ${br}`);
     if (p.branch && p.branch.discovered.filter((d) => d !== p.branch!.name).length) o.push(`- Also pointing here: ${p.branch.discovered.filter((d) => d !== p.branch!.name).map((d) => `\`${d}\``).join(', ')}`);
     o.push(`- Base: ${p.base ? `\`${p.base}\`` : p.base_from === 'previous-pr' ? `(none: PR #${p.number - 1} has no branch yet)` : '(none)'}${p.base_from === 'repo-base' ? ' (repo base)' : p.base_from === 'predecessor' ? ' (the top PR of the project this builds on)' : ''}`);

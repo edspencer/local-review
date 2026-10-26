@@ -8,7 +8,7 @@ import opentype from 'opentype.js';
 import { Resvg } from '@resvg/resvg-js';
 import { FONT_DIR } from './config.js';
 import { reconcileBranch } from './branches.js';
-import { filesOf } from './commits.js';
+import { filesOf, followUpsOf } from './commits.js';
 import { inspectOrphan, liveCommits } from './context.js';
 import { loadPrs } from './prs.js';
 import { FOLLOW_ON_COLOR, loadProject, type LoadedProject, type LoadedRepo } from './projects.js';
@@ -127,7 +127,7 @@ export async function vizModel(project: LoadedProject, current?: { repo: string;
             const paths = await filesOf(r.cfg.path, cm).then((fs) => fs.map((f) => f.path), () => undefined);
             const override = prs.get(cm.sha)?.override;
             // the same branch the sidebar shows (recorded, reconciled with git, else discovered)
-            const b = reconcileBranch(refs, cm.sha, override, tip);
+            const b = reconcileBranch(refs, cm.sha, override, tip, followUpsOf(cm));
             return [cm.sha, { position: i + 1, sha: cm.sha, short: cm.short, title: override?.title ?? cm.subject, additions: cm.additions, deletions: cm.deletions, filesChanged: cm.filesChanged, paths, branch: b?.name ?? null, branchMissing: b?.status === 'missing', pr: override?.github?.number ?? null, ...(cm.landed ? { merged: true } : {}) }];
           }),
         ),

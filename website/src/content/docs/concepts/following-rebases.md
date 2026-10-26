@@ -18,6 +18,10 @@ The same rules apply to `reviews/` (comments) and `prs/` (title/description over
 
 ## Which file belongs to a commit
 
+With [`pr_model: follow-ups`](/concepts/commits-as-prs/#follow-up-commits), a PR's files belong to its first commit,
+so adding follow-up commits on top renames nothing. Inline threads are placed on the PR's whole diff, so a fixed line
+shows the fix, or the thread goes outdated (see [line anchoring](#line-anchoring-how-inline-threads-follow-the-code)).
+
 When a commit has no file under its own sha, the server looks at the **orphaned** files in the same repo directory:
 `<sha>.yaml` files whose sha is no longer in the repo's range.
 

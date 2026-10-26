@@ -34,6 +34,18 @@ export interface CommitSummary {
   progress: Progress;
   /** a landed (merged) PR: prs/ `landed:`, and how its diff was made */
   landed?: LandedInfo | null;
+  /** pr_model: follow-ups: the PR's commits, oldest first (this one, then the follow-ups up to its branch head) */
+  members?: MemberCommit[];
+}
+
+export interface MemberCommit {
+  sha: string;
+  short: string;
+  subject: string;
+  author: string;
+  date: string;
+  additions: number;
+  deletions: number;
 }
 
 export interface LandedInfo {
@@ -53,6 +65,8 @@ export interface BranchInfo {
   status: 'ok' | 'moved' | 'missing' | 'discovered' | 'merged';
   /** where a moved branch points now */
   points_at?: string;
+  /** ok at the PR's head, this many follow-up commits above its own (pr_model: follow-ups) */
+  follow_ups?: number;
   discovered: string[];
 }
 

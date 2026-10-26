@@ -7,6 +7,15 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
+## Coming in 0.12.0: follow-up commits
+
+Not released yet.
+
+- **Fix a published PR with new commits, not a force-push.** With `pr_model: follow-ups` on a repo in project.yaml,
+  commits added on top of a PR's branch are part of that PR: its diff covers them, its header lists them, and its
+  branch is `ok` rather than `moved`. The PRs above keep their numbers. See
+  [Follow-up commits](/concepts/commits-as-prs/#follow-up-commits).
+
 ## 0.11.0: run it as a service
 
 - **`local-review service install` keeps it running.** After `npm i -g local-review`, it installs Local Review as a

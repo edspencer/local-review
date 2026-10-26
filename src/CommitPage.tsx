@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { api, stackColor, type CarriedOver, type CommitResponse, type CommitSummary, type FileData, type GithubInfo, type LandedInfo, type Loc, type PrInfo, type RepoData, type Review, type StackGroup, type Thread } from './api';
+import { api, stackColor, type CarriedOver, type CommitResponse, type CommitSummary, type FileData, type GithubInfo, type LandedInfo, type Loc, type MemberCommit, type PrInfo, type RepoData, type Review, type StackGroup, type Thread } from './api';
 import { BranchStatusMarker, PrBadge, branchNote } from './Branch';
 import { ensure, hoverPrefetch, patch, peek, prefetch, setActive, useCommitEntry } from './commitCache';
 import { Avatar, AuthorLabel, CommentForm, CommentView, Markdown, Octicon, PublishLabel, ThreadView, reviewer, type ThreadActions } from './Comments';
@@ -292,6 +292,7 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
               : <>Neither this PR's head and base nor its merge commit is in the local repo, so there's no diff to show. Fetching them would bring it back.</>}
           </div>
         )}
+        {c.members && <PrCommits members={c.members} />}
         {group && stackCommits.length > 0 && <StackStepper loc={loc} group={group} commits={stackCommits} current={c.sha} tab={tab} next={data.next} />}
         {actionError && <div className="flash flash-error" role="alert">{actionError} <button className="btn-link" onClick={() => setActionError(null)}>Dismiss</button></div>}
         {data.pr.parse_error && <div className="flash flash-error">PR file <code>{tilde(data.pr.file)}</code> is not valid YAML, so the commit message is shown instead: {tilde(data.pr.parse_error)}</div>}
@@ -352,6 +353,27 @@ export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, pr
       )}
     </div>
     </DraftScopeContext.Provider>
+  );
+}
+
+/** A PR with follow-up commits (pr_model: follow-ups): its commits, oldest first, as GitHub's Commits tab lists them. */
+function PrCommits({ members }: { members: MemberCommit[] }) {
+  return (
+    <details className="pr-commits" open>
+      <summary>
+        {members.length} commits: this PR's first and {members.length - 1} follow-up{members.length === 2 ? '' : 's'} on its branch. Files changed shows them all together.
+      </summary>
+      <ol>
+        {members.map((m) => (
+          <li key={m.sha}>
+            <code className="sha" title={m.sha} onClick={() => navigator.clipboard?.writeText(m.sha)}>{m.short}</code>
+            <span className="pr-commits-subject">{m.subject}</span>
+            <span className="color-add">+{m.additions}</span> <span className="color-del">−{m.deletions}</span>
+            <span className="muted">{m.author}, <span title={m.date}>{relativeTime(m.date)}</span></span>
+          </li>
+        ))}
+      </ol>
+    </details>
   );
 }
 

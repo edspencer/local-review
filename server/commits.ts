@@ -17,10 +17,26 @@ export interface CommitSummary {
   /**
    * The commit whose tree is shown (default: `sha`); `parent` is then what it's diffed against. Only differs for a
    * landed PR, whose `sha` is its prs file's key and whose diff is merge-base(base, head)...head (or the merge
-   * commit's first-parent diff). null: neither is in the repo, so there's nothing to diff.
+   * commit's first-parent diff), and for a PR with follow-up commits (`members`), whose tip is its branch head.
+   * null: neither is in the repo, so there's nothing to diff.
    */
   tip?: string | null;
   landed?: LandedView; // set on landed (merged) PRs only
+  /**
+   * `pr_model: follow-ups`: the PR's commits, oldest first (its root, `sha`, then the follow-up commits up to its
+   * branch's head, `tip`). Set only when there are follow-ups; `parent` stays the root's parent, so the diff covers all.
+   */
+  members?: MemberCommit[];
+}
+
+export interface MemberCommit {
+  sha: string;
+  short: string;
+  subject: string;
+  author: string;
+  date: string;
+  additions: number;
+  deletions: number;
 }
 
 /** A merged PR, frozen by the agent before fetching: prs/<repo>/<key>.yaml `landed:`. */
@@ -158,7 +174,7 @@ export async function headOf(cfg: RepoRange): Promise<string | null> {
 }
 
 /** `git rev-list --reverse a..b` (or just `b`) of full shas: immutable, so cached. */
-async function revList(repo: string, from: string | null, to: string): Promise<string[]> {
+export async function revList(repo: string, from: string | null, to: string): Promise<string[]> {
   const range = from ? `${sha40(from)}..${sha40(to)}` : sha40(to);
   const key = `${repo}\0${range}`;
   const hit = revListCache.get(key) ?? diskGet<string[]>(repo, 'rev-list', range);
@@ -455,9 +471,12 @@ export function commitDetail(repo: string, sha: string): Promise<CommitDetail> {
   return cachedDetail(repo + '\0' + sha, () => loadCommitDetail(repo, sha));
 }
 
-/** A range entry's detail: a commit's, or a landed PR's (its own diff, the head's message; see landedSummary). */
+/**
+ * A range entry's detail: a commit's, or a landed PR's (its own diff, the head's message; see landedSummary), or a PR
+ * with follow-up commits (its root's message, the diff of all its commits).
+ */
 export function detailOf(repo: string, c: CommitSummary): Promise<CommitDetail> {
-  if (!c.landed) return commitDetail(repo, c.sha);
+  if (!c.landed && !c.members) return commitDetail(repo, c.sha);
   return cachedDetail(`${repo}\0landed\0${c.sha}\0${c.parent}\0${c.tip}\0${c.subject}`, () => loadLandedDetail(repo, c));
 }
 
@@ -493,6 +512,9 @@ function cachedDetail(key: string, load: () => Promise<CommitDetail>): Promise<C
 
 const messageBody = (message: string) => message.replace(/^[^\n]*\n?/, '').replace(/^\n+/, '').trimEnd();
 
+/** A PR with follow-up commits: its head (the branch's) and how many follow-ups it has; undefined for any other entry. */
+export const followUpsOf = (c: CommitSummary) => (c.members && c.tip ? { head: c.tip, count: c.members.length - 1 } : undefined);
+
 /** A commit's message body (everything after the subject line), without loading its files. */
 export async function commitBody(repo: string, sha: string): Promise<string> {
   return messageBody(await git(repo, ['show', '-s', '--format=%B', sha40(sha)]));
@@ -508,7 +530,8 @@ async function loadCommitDetail(repo: string, sha: string): Promise<CommitDetail
 }
 
 async function loadLandedDetail(repo: string, c: CommitSummary): Promise<CommitDetail> {
-  // the message of the head (or the key commit), if the repo has it; a merge commit's message isn't the PR's
+  // the message of the head (or the key commit: a PR with follow-ups uses its root's), if the repo has it; a merge
+  // commit's message isn't the PR's
   const [headSha, keySha] = await present(repo, [c.landed?.head, c.sha]);
   const msgSha = headSha ?? keySha;
   let body = '';
