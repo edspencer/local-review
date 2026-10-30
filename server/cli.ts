@@ -5,6 +5,8 @@
 // `examples` only ever creates (the example projects and their repos); `examples remove` renames, never deletes.
 // `asset add` only ever creates a new, content-named image file; `asset url` writes only the asset's own <name>.yaml.
 // `move` copies prs / reviews files into another project (create-only) and renames the originals to .bak.
+// `github refresh` reads GitHub (gh api graphql queries only, server/gh.ts) and writes only its own cache, <data>/github/;
+// `github status` reads that cache and config.yaml, nothing else.
 // `service` writes only its own LaunchAgent / systemd user unit (and makes the data home's logs/), never user data.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -22,6 +24,7 @@ const USAGE = `Usage: local-review [serve] [--port <n>] [--quiet]
        local-review asset url <project> <name> <url>
        local-review move <from> <to> <repo> (<sha>… | --stack <n>) [--to-repo <name>] [--dry-run]
        local-review examples [remove]
+       local-review github refresh [<project>] | status [<project>]
        local-review service install [--port <n>] [--dry-run] [--from-checkout]
        local-review service uninstall | status [--json] | restart
        local-review guide
@@ -68,6 +71,14 @@ const USAGE = `Usage: local-review [serve] [--port <n>] [--quiet]
           restores removed ones and leaves existing ones alone.
   examples remove
           Hide the example projects again. Nothing is deleted: each one's project.yaml is renamed to a .bak.
+  github refresh
+          Fetch what GitHub says about the published PRs (those with a github: url in their prs file) of
+          <project>, or of every project that hasn't opted out (github: {sync: off}): approvals, checks, review
+          threads (resolved, answered or open) and comments. Asks now, whatever their age: one query per GitHub
+          repo, through the gh CLI. Writes only its cache, <data>/github/; a running server picks it up.
+  github status
+          The GitHub sync's settings (<data>/config.yaml) and, from the cache, each repo's last fetch; with
+          <project>, each of its PRs: approvals, checks and threads. No network.
   service install
           Run Local Review in the background, started at login and restarted if it exits: a LaunchAgent on
           macOS, a systemd user unit on Linux. The service runs this installed local-review with this shell's
@@ -248,6 +259,44 @@ async function examples(sub: string | undefined) {
   throw new UsageError(`unknown examples command '${sub}' (add or remove)`);
 }
 
+function ago(iso: string | null): string {
+  if (!iso) return 'never';
+  const s = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
+  return s < 90 ? `${s}s ago` : s < 5400 ? `${Math.round(s / 60)}m ago` : s < 129600 ? `${Math.round(s / 3600)}h ago` : `${Math.round(s / 86400)}d ago`;
+}
+
+async function github(args: string[]): Promise<number> {
+  const [sub, slug] = args;
+  if (sub !== 'refresh' && sub !== 'status') throw new UsageError(sub ? `unknown github command '${sub}' (refresh or status)` : 'github needs a command: refresh or status');
+  if (slug !== undefined) projectDirFor(`github ${sub}`, slug);
+  const G = await import('./github.js');
+  const { loadSettings } = await import('./settings.js');
+  const { GITHUB_DIR } = await import('./config.js');
+  const { summaryTooltip } = await import('../shared/github.js');
+  const settings = loadSettings();
+  for (const w of settings.warnings) process.stderr.write(`warning: ${w}\n`);
+  if (!GITHUB_DIR) throw new Error('no data home for the GitHub cache (set LOCAL_REVIEW_HOME)');
+  if (sub === 'refresh') {
+    if (slug && G.projectGithub(slug)?.optedOut) throw new Error(`${slug} has opted out of the GitHub sync (github: {sync: off} in its project.yaml)`);
+    const results = await G.refresh({ project: slug, all: !slug, force: true });
+    if (!results.length) process.stdout.write(`No published PRs to fetch${slug ? ` in ${slug}` : ''} (a PR is published once its prs file records github: {url}).\n`);
+    for (const r of results)
+      process.stdout.write(`${r.host === 'github.com' ? '' : `${r.host}/`}${r.key}: ${r.error ? `error: ${r.error}` : `${r.fetched} PR${r.fetched === 1 ? '' : 's'} fetched`}${r.missing?.length ? ` (not found: ${r.missing.map((n) => `#${n}`).join(', ')})` : ''}\n`);
+    return results.some((r) => r.error) ? 1 : 0;
+  }
+  const g = settings.github;
+  process.stdout.write(`GitHub sync: ${g.sync ? 'on' : 'off'} (source ${g.source}, max_age ${Math.round(g.maxAgeMs / 1000)}s${g.me ? `, me ${g.me}` : ''}) · ${settings.file}${fs.existsSync(settings.file) ? '' : ' (not there: the defaults)'}\n`);
+  process.stdout.write(`Cache: ${GITHUB_DIR}\n`);
+  for (const s of slug ? [slug] : (await import('./projects.js')).listProjectSlugs()) {
+    const p = G.projectGithub(s);
+    if (!p || (!slug && !p.repos.length)) continue;
+    process.stdout.write(`\n${s}${p.optedOut ? ' (opted out)' : p.enabled ? '' : ' (not synced automatically: the sync is off)'}\n`);
+    for (const r of p.repos) process.stdout.write(`  ${r.key}: ${r.prs} PR${r.prs === 1 ? '' : 's'}, fetched ${ago(r.fetched_at)}${r.error ? ` · last attempt failed: ${r.error}` : ''}\n`);
+    if (slug) for (const sum of Object.values(p.prs).sort((a, b) => a.number - b.number)) process.stdout.write(`\n${summaryTooltip(sum).replace(/^/gm, '  ')}\n  ${sum.url}\n`);
+  }
+  return 0;
+}
+
 async function serve(flags: Record<string, string>) {
   const given = flags.port ?? process.env.PORT;
   // `npm run dev`: the API sits next to Vite's UI port (see vite.config.ts)
@@ -339,6 +388,9 @@ async function main(argv: string[]): Promise<number | undefined> {
       check(cmd, flags, [], args, 1);
       await examples(args[0]);
       return 0;
+    case 'github':
+      check(cmd, flags, [], args, 2);
+      return github(args);
     case 'service':
       return service(args, flags);
     case 'guide':

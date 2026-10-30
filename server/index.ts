@@ -30,6 +30,7 @@ import type { PrStatus } from '../shared/readiness.js';
 import { parseStackRef, resolveStackRef } from '../shared/stackRef.js';
 import { agentGuide, llmsFullTxt, llmsTxt, type LlmsInput } from '../shared/llms.js';
 import { collectThreads } from './threads.js';
+import { FOCUS_MIN_AGE_MS, prSnapshot, projectGithub, projectSyncs, refresh as refreshGithub } from './github.js';
 
 const app = new Hono();
 
@@ -754,6 +755,33 @@ app.put(`${COMMIT}/pr`, async (c) => {
   await writePr(prCtx(r), { title, body: prBody, branch, github, status });
   emit({ type: 'pr', project: r.project.cfg.slug, repo: r.repo.cfg.name, sha: r.commit.sha });
   return c.json(await prPayload(r, (await detailOf(r.repo.cfg.path, r.commit)).body));
+});
+
+// ---------------- GitHub (server/github.ts): what GitHub says about published PRs, from its cache ----------------
+// The project's PRs, summarised for the sidebar, and how fresh that is. Read-only: no network.
+app.get('/api/projects/:project/github', async (c) => {
+  const g = projectGithub((await getProject(c.req.param('project'))).cfg.slug);
+  if (!g) throw new HttpError(404, `no project '${c.req.param('project')}'`);
+  return c.json(g);
+});
+
+// One PR's snapshot: its review threads, reviews and comments with their text (null if it hasn't been fetched).
+app.get(`${COMMIT}/github`, async (c) => {
+  const r = await resolveCommit(c);
+  const url = (await loadPr(prCtx(r))).override.github?.url;
+  return c.json(url ? prSnapshot(url) : null);
+});
+
+// Fetch now. `reason: 'button'` (the Refresh button) always asks GitHub; `'focus'` (a page coming back into view) only
+// if the sync is on for the project and what's cached is over a minute old. Either way, one query per GitHub repo.
+app.post('/api/projects/:project/github/refresh', async (c) => {
+  const b = await body(c);
+  const reason = b?.reason ?? 'button';
+  if (reason !== 'button' && reason !== 'focus') throw new HttpError(400, "reason must be 'button' or 'focus'");
+  const slug = (await getProject(c.req.param('project'))).cfg.slug;
+  const results =
+    reason === 'button' ? await refreshGithub({ project: slug, force: true }) : projectSyncs(loadProjectConfig(slug)) ? await refreshGithub({ project: slug, minAgeMs: FOCUS_MIN_AGE_MS }) : [];
+  return c.json({ results, github: projectGithub(slug) });
 });
 
 // ---------------- events ----------------

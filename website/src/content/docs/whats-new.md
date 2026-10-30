@@ -7,6 +7,19 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
+## Coming in 0.13.0: GitHub status
+
+Not released yet.
+
+- **See what GitHub says about your published PRs.** Turn it on with `github: {sync: on}` in
+  `~/.local-review/config.yaml` and the sidebar's PR link turns green once the PR is approved, or red if its checks
+  fail or someone asked for changes. A speech bubble beside it counts the review threads: amber with how many are
+  open (the last word is someone else's), grey once they're all answered (the last word is yours) or resolved. Each
+  stack's tally adds "4/6 approved · 2 to answer", and each PR page gets an **On GitHub** card listing the threads
+  waiting for you. It only reads GitHub, through the `gh` CLI, with one query per GitHub repo. It fetches again once
+  the data is older than `max_age` (5 minutes) while a page is open, when you come back to the page, and whenever you
+  press Refresh or run `local-review github refresh`. See [GitHub status](/using/github-status/).
+
 ## 0.12.0: follow-up commits
 
 - **Fix a published PR with new commits, not a force-push.** With `pr_model: follow-ups` on a repo in project.yaml,

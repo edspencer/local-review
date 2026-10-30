@@ -49,6 +49,7 @@ export interface ProjectConfig {
   example?: boolean; // `example: true`: one of the example projects (server/examples.ts); the UI labels it and offers to remove it
   hidden?: boolean; // `hidden: true`: kept off the root page, the switcher and linked projects' "Next" links; its URL still opens it
   after?: string; // `after: <slug>`: the project this one builds on (linked projects; see resolveLink)
+  github_sync?: false; // `github: {sync: off}`: leave this project's PRs out of the GitHub sync (server/github.ts)
   warnings: string[]; // project-level problems that aren't errors (a bad `after:`)
 }
 
@@ -93,6 +94,12 @@ export function flag(v: unknown): boolean | undefined {
   return t === 'yes' || t === 'true' ? true : t === 'no' || t === 'false' ? false : undefined;
 }
 
+/** A switch: flag()'s yes / no, plus on / off. */
+export function onOff(v: unknown): boolean | undefined {
+  const t = typeof v === 'string' ? v.trim().toLowerCase() : undefined;
+  return t === 'on' ? true : t === 'off' ? false : flag(v);
+}
+
 const text = (v: unknown): string | undefined => (v === null || v === undefined ? undefined : typeof v === 'object' ? undefined : String(v));
 
 /** Parse a project.yaml. Never throws: problems are reported as `error` (whole file) or repo `warnings`. */
@@ -114,6 +121,11 @@ export function parseProject(slug: string, dir: string, raw: string): ProjectCon
   out.description = text(doc.description) ?? null;
   if (flag(doc.example)) out.example = true;
   if (flag(doc.hidden)) out.hidden = true;
+  if (doc.github != null) {
+    const sync = onOff(typeof doc.github === 'object' && !Array.isArray(doc.github) ? doc.github.sync : doc.github);
+    if (sync === false) out.github_sync = false;
+    else if (sync === undefined) out.warnings.push(`\`github\` must be \`{sync: off}\` (or \`{sync: on}\`, the default), not ${JSON.stringify(doc.github)}; ignored`);
+  }
   if (doc.after != null) {
     const a = text(doc.after)?.trim();
     if (a && SAFE_NAME.test(a)) out.after = a;

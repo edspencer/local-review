@@ -5,12 +5,14 @@ import { BACKUPS_DIR, PROJECTS_DIR } from './config.js';
 import { startSnapshots } from './backups.js';
 import { linkedRepos, listProjectSlugs, loadProjectConfig } from './projects.js';
 import { repoState, trustPolled } from './stamps.js';
+import { startGithubSync } from './github.js';
 
 export type ServerEvent =
   | { type: 'review'; project: string; repo: string; sha: string }
   | { type: 'pr'; project: string; repo: string; sha: string }
   | { type: 'project'; project: string; reason: string; repo?: string }
-  | { type: 'projects'; reason: string };
+  | { type: 'projects'; reason: string }
+  | { type: 'github' }; // what GitHub says about published PRs changed (server/github.ts): a fetch finished
 
 type Listener = (e: ServerEvent) => void;
 const listeners = new Set<Listener>();
@@ -109,7 +111,12 @@ export function startWatchers() {
       polling = false;
     }
   };
-  onFirstListener = () => void tick(); // a browser (re)connecting catches up at once, not a round later
+  // the GitHub sync's own poll: fetches what's due while someone's watching, and says when its cache changes
+  const github = startGithubSync({ watching: () => listeners.size > 0, changed: () => emit({ type: 'github' }) });
+  onFirstListener = () => {
+    void tick(); // a browser (re)connecting catches up at once, not a round later
+    void github.tick();
+  };
   tick();
   setInterval(tick, POLL_MS).unref();
   // a poll round can be late or slow; past this, a request checks for itself (the ref files, then git if they moved)

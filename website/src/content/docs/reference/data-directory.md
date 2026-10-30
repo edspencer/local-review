@@ -26,6 +26,10 @@ them.
     orchard-<id>/                       # their git repos and a manifest.json (made by Local Review; see below)
   cache/
     <hash>.json                         # what git said about each repo's commits (disposable; see below)
+  github/                               # only if you use GitHub status (disposable; see below)
+    <owner>/<repo>/<number>.json        # what GitHub says about one published PR
+    <owner>/<repo>/sync.json            # that GitHub repo's last fetch, and its error if it failed
+  config.yaml                           # optional: settings for this machine (the GitHub sync)
   logs/                                 # only if you run it as a service
     server.out.log, server.err.log      # the service's output (see below)
 ```
@@ -47,6 +51,16 @@ files, merge-bases, ancestry and patch-ids. A commit's sha fixes all of that, so
 restart the first page load asks git only where the branches point (a couple of dozen git processes, rather than
 several per commit). It's not your data and isn't in snapshots: delete it any time, and it's rebuilt as pages load.
 It's off when only `LOCAL_REVIEW_PROJECTS_DIR` is set (like snapshots).
+
+<a id="github"></a>**`github/`** holds what [GitHub status](/using/github-status/) fetched: one JSON file per published
+PR, under its GitHub owner and repo (lower-cased), with its state, approvals, checks, review threads (each with its
+`state`: `resolved`, `answered` or `open`, its file and line, and its comments' text), reviews and comments; and a
+`sync.json` per GitHub repo, with when it was last fetched and the last attempt's error. Written only by the GitHub
+sync (the server, or `local-review github refresh`), never by you or an agent. It's a cache, not your data, and isn't
+in snapshots: delete it any time, and the next fetch rebuilds it. Off when only `LOCAL_REVIEW_PROJECTS_DIR` is set.
+
+**`config.yaml`** is optional: settings for this machine rather than any one project. See
+[config.yaml](/reference/config-yaml/).
 
 **`logs/`** is there only if you [run Local Review as a service](/getting-started/service/): launchd or systemd appends
 its output to `server.out.log` and `server.err.log`. Local Review writes little (a line when it starts, a note per

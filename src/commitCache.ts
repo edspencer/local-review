@@ -142,6 +142,7 @@ export function setActive(l: Loc | null, fullSha?: string) {
 
 /** A server event: mark what it may have changed; refresh the part of the page on screen it's about. */
 export function onServerEvent(e: ServerEvent) {
+  if (e.type === 'github') return; // GitHub's state isn't part of a PR page's data (Github.tsx loads it)
   let touched = false;
   for (const [k, entry] of entries) {
     const [project, repo, sha] = k.split('\0');
