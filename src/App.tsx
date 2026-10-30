@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { api, stackColor, type CommitSummary, type ProjectData, type ProjectSummary, type ProjectsResponse, type RepoData, type ServerEvent } from './api';
 import { BranchStatusMarker, MiddleTruncate, PrBadge, branchNote } from './Branch';
 import { CommitPage } from './CommitPage';
@@ -11,6 +11,7 @@ import { stackRef } from '../shared/stackRef';
 import { FOLLOW_ON_TIP, FollowOnBadge, ReadinessBadge } from './Readiness';
 import { TextDraftsProvider, repoAggregate } from './ProjectText';
 import { DraftDot } from './DraftNotices';
+import { GithubContext, GhSyncLine, GhThreadChip, ghTally, useGhSummary, useProjectGithub } from './Github';
 import { useDraftMarkers } from './useDrafts';
 import { ExamplesMenuItem, ExamplesStrip, Welcome } from './Welcome';
 import { Projects } from './Projects';
@@ -51,6 +52,9 @@ export function App() {
   // the project on screen: the one in the URL (`/` is the root page, every project: Projects.tsx)
   const onRoot = route.parts.length === 0;
   const activeSlug = list && isProject(route.project) ? route.project : null;
+  // what GitHub says about the project's published PRs (Github.tsx): its own data, refreshed on its own event
+  const github = useProjectGithub(activeSlug);
+  const reloadGithub = github.reload;
 
   const refreshList = useCallback(
     () => {
@@ -93,10 +97,12 @@ export function App() {
         if (dropped) {
           invalidateAll();
           refreshSoon();
+          reloadGithub();
         }
       });
       es.addEventListener('change', (m) => {
         const e = JSON.parse((m as MessageEvent).data) as ServerEvent;
+        if (e.type === 'github') return reloadGithub(); // only GitHub's state changed: not the project
         onServerEvent(e); // the PR pages in memory (the one on screen refreshes)
         refreshSoon();
       });
@@ -109,7 +115,7 @@ export function App() {
     };
     connect();
     return () => { es?.close(); clearTimeout(retry); clearTimeout(timer); };
-  }, [refreshAll]);
+  }, [refreshAll, reloadGithub]);
 
   // every commit of the project in sidebar order, for j/k, prev/next and redirects
   const flat = useMemo(() => (project?.repos ?? []).flatMap((r) => r.commits.map((c) => ({ repo: r.name, sha: c.sha }))), [project]);
@@ -220,6 +226,7 @@ export function App() {
         <span className={`live-dot ${live ? 'on' : ''}`} title={live ? 'Live: watching project files and branches' : 'Disconnected, retrying…'}>{live ? '● live' : '○ offline'}</span>
         {shortcuts && <span className="header-hint" title="Keyboard shortcuts">{shortcuts}</span>}
       </header>
+      <GithubContext.Provider value={github}>
       <div className="app-body">
         {sidebarOpen && !onRoot && (
           <>
@@ -262,6 +269,7 @@ export function App() {
                 ))}
               </div>
             )}
+            {project && <GhSyncLine />}
             {project && project.repos.length === 0 && !project.error && <div className="sidebar-empty">No repos in <code>{tilde(project.file)}</code>.</div>}
             {project?.repos.map((r) => (
               <RepoSection
@@ -325,6 +333,7 @@ export function App() {
           </ProjectContext.Provider>
         </main>
       </div>
+      </GithubContext.Provider>
     </div>
     </HomeContext.Provider>
   );
@@ -593,7 +602,7 @@ function RepoSection({ project, repo: r, route, drafts, closed, toggle }: { proj
                     return c ? <CommitItem key={sha} project={project.slug} repo={r.name} c={c} route={route} followOn={!!g.follow_on} draft={drafts.has(`pr:${project.slug}/${r.name}/${c.sha}`)} /> : null;
                   })}
                 </ol>
-                <StackTally commits={g.shas.map((s) => bySha.get(s)).filter((c): c is CommitSummary => !!c)} />
+                <StackTally repo={r.name} commits={g.shas.map((s) => bySha.get(s)).filter((c): c is CommitSummary => !!c)} />
               </fieldset>
             </Fragment>
           ))}
@@ -605,10 +614,18 @@ function RepoSection({ project, repo: r, route, drafts, closed, toggle }: { proj
  * "2/4 ready" on a stack's bottom border (the title already fills the top one), once any of its PRs is ready
  * (published and merged count as ready); "4/4 merged" once they've all landed.
  */
-function StackTally({ commits }: { commits: CommitSummary[] }) {
+function StackTally({ repo, commits }: { repo: string; commits: CommitSummary[] }) {
   const t = stackTally(commits);
+  // and, from the GitHub sync: "· 4/6 approved · 4 to answer"
+  const g = ghTally(useContext(GithubContext).data, repo, commits);
   if (!t.ready) return null;
-  return <span className={`pr-stack-tally ${t.allMerged ? 'is-merged' : ''}`} title={t.tip}>{t.text}</span>;
+  return (
+    <span className={`pr-stack-tally ${t.allMerged ? 'is-merged' : ''}`} title={g ? `${t.tip}\n${g.tip}` : t.tip}>
+      {t.text}
+      {g && <span className="gh-tally"> · {g.text}</span>}
+      {g && g.open > 0 && <span className="gh-tally is-open"> · {g.open} to answer</span>}
+    </span>
+  );
 }
 
 // octicon eye-16: the files-viewed bar is about "viewed", like the Viewed checkboxes on Files changed
@@ -623,6 +640,7 @@ function CommitItem({ project, repo, c, route, followOn, draft }: { project: str
   const url = routeUrl(project, repo, c.short, prTab(route.tab));
   const branch = c.branch ?? null;
   const note = branchNote(branch);
+  const gh = useGhSummary(repo, c.github);
   return (
     <li>
       <a
@@ -648,7 +666,8 @@ function CommitItem({ project, repo, c, route, followOn, draft }: { project: str
               <code className="commit-branch is-sha" title={c.sha}>{c.short}</code>
             )}
             <BranchStatusMarker branch={branch} />
-            <PrBadge github={c.github} asSpan />
+            <PrBadge github={c.github} gh={gh} asSpan />
+            <GhThreadChip s={gh} />
             {/* No per-row follow-on badge: it squeezed the branch name; the divider, stack badge and muting say it. */}
             {SHOW_FILES_VIEWED && c.filesChanged > 0 && (
               <span className={`viewed-mini ${allViewed ? 'done' : ''}`} title={`Files viewed: ${c.viewedCount} of ${c.filesChanged}`} aria-label={`Files viewed: ${c.viewedCount} of ${c.filesChanged}`}>

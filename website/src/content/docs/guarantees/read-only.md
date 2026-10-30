@@ -41,6 +41,22 @@ Two other git calls exist, and neither touches a repo you review:
   They're Local Review's own data, never anyone's work, and once made they're only read, through `server/git.ts`
   like any other.
 
+## GitHub
+
+If you turn on [GitHub status](/using/github-status/) (it's off by default), Local Review also **reads** GitHub, and
+only reads it. All of it goes through one module, `server/gh.ts`, which:
+
+- runs one command only, `gh api graphql --hostname <host> --input -`, via `spawn` with **no shell**, with the request
+  on its stdin. The [GitHub CLI](https://cli.github.com) holds your token; Local Review never sees or stores it;
+- refuses any request that isn't a GraphQL **query**: anything with a `mutation` or `subscription` in it is refused
+  before gh runs. So it can't comment, approve, resolve, push or change anything on GitHub, whatever your token allows;
+- sends fixed query text, with only PR numbers in it, for the PRs your prs files record (`github: {url}`), with the
+  owner and repo name from those URLs as variables;
+- refuses a host that could be read as an option (one starting with `-`), and kills a gh call that hasn't finished in
+  60 seconds.
+
+What it fetched is written only to its own cache, `~/.local-review/github/`; never to your projects or repos.
+
 ## Paths and names
 
 - Shas in URLs must be hex, and are only used after matching them against the repo's own commit list.
@@ -52,7 +68,7 @@ So no request can name a path outside `~/.local-review/projects/`.
 ## What does change the repo
 
 Only your agent, in its own work: fixups, rebases, branches, pushes. Local Review shows the result, and never does any
-of it itself. It never talks to GitHub either.
+of it itself. Nor does it change anything on GitHub: with GitHub status on, it [only reads](#github).
 
-Contributors: new git calls go through `server/git.ts` too, using only subcommands on the list. A change that weakens
-this won't be merged (see [Contributing](/contributing/#the-rules)).
+Contributors: new git calls go through `server/git.ts` too, using only subcommands on the list, and GitHub calls through
+`server/gh.ts`, queries only. A change that weakens this won't be merged (see [Contributing](/contributing/#the-rules)).

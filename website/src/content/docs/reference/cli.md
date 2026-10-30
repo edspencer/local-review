@@ -30,6 +30,7 @@ Usage: local-review [serve] [--port <n>] [--quiet]
        local-review asset url <project> <name> <url>
        local-review move <from> <to> <repo> (<sha>… | --stack <n>) [--to-repo <name>] [--dry-run]
        local-review examples [remove]
+       local-review github refresh [<project>] | status [<project>]
        local-review service install [--port <n>] [--dry-run] [--from-checkout]
        local-review service uninstall | status [--json] | restart
        local-review guide
@@ -76,6 +77,14 @@ Usage: local-review [serve] [--port <n>] [--quiet]
           restores removed ones and leaves existing ones alone.
   examples remove
           Hide the example projects again. Nothing is deleted: each one's project.yaml is renamed to a .bak.
+  github refresh
+          Fetch what GitHub says about the published PRs (those with a github: url in their prs file) of
+          <project>, or of every project that hasn't opted out (github: {sync: off}): approvals, checks, review
+          threads (resolved, answered or open) and comments. Asks now, whatever their age: one query per GitHub
+          repo, through the gh CLI. Writes only its cache, <data>/github/; a running server picks it up.
+  github status
+          The GitHub sync's settings (<data>/config.yaml) and, from the cache, each repo's last fetch; with
+          <project>, each of its PRs: approvals, checks and threads. No network.
   service install
           Run Local Review in the background, started at login and restarted if it exits: a LaunchAgent on
           macOS, a systemd user unit on Linux. The service runs this installed local-review with this shell's
@@ -239,6 +248,39 @@ The example projects are in /home/you/.local-review/projects (4). `local-review 
 `project.example-removed.yaml.bak`, so the project drops out of the list and every other file stays. Only projects
 whose `project.yaml` says `example: true` are touched. To reclaim the disk space (a few MB), delete
 `~/.local-review/examples/` and the `projects/example-*` directories yourself.
+
+## `local-review github`
+
+Fetches and shows what GitHub says about published PRs: [GitHub status](/using/github-status/).
+
+```text
+$ local-review github refresh larch-runtime-preflight-auth
+xbow-engineering/xbow-larch: 10 PRs fetched
+
+$ local-review github status larch-runtime-preflight-auth
+GitHub sync: on (source gh, max_age 300s) · /home/you/.local-review/config.yaml
+Cache: /home/you/.local-review/github
+
+larch-runtime-preflight-auth
+  xbow-engineering/xbow-larch: 10 PRs, fetched 4s ago
+
+  GitHub PR #9466
+  Approved by prathap-xbow
+  Checks passing
+  2 threads: 1 open, 1 answered, 0 resolved · 5 comments on the PR
+  https://github.com/xbow-engineering/xbow-larch/pull/9466
+…
+```
+
+- **`refresh [<project>]`** fetches now, whatever the cache's age: the PRs of `<project>`, or of every project that
+  hasn't opted out (`github: {sync: off}`), merged and closed ones included. One query per GitHub repo, through the
+  [GitHub CLI](https://cli.github.com) (`gh auth login` first). It works whether or not
+  [the sync](/reference/config-yaml/) is on, and with no server running: it writes only the cache,
+  `~/.local-review/github/`, and a running server shows what it fetched within a few seconds. It runs the same code
+  as the server's own fetches and the UI's Refresh button. Exit code 1 if a repo's fetch failed (the error is
+  printed, and recorded for the UI).
+- **`status [<project>]`** prints the settings from `config.yaml` and, from the cache, each project's GitHub repos
+  with their last fetch; with `<project>`, each of its PRs too: approvals, checks and threads. No network.
 
 ## `local-review move`
 

@@ -1,5 +1,6 @@
 import type { BranchInfo, GithubInfo } from './api';
 import { Octicon } from './Comments';
+import { summaryTooltip, type GhSummary } from '../shared/github';
 
 // octicon alert-16
 const ALERT = 'M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z';
@@ -49,10 +50,15 @@ export function BranchStatusMarker({ branch }: { branch: BranchInfo | null | und
  * GitHub's PR number as a small muted badge, `#1234 ↗`, opening the PR in a new tab. `asSpan` renders it as a
  * span with link behaviour, for use inside another link (the sidebar rows are <a>s; links can't nest).
  */
-export function PrBadge({ github, asSpan }: { github: GithubInfo | null | undefined; asSpan?: boolean }) {
+/**
+ * The GitHub PR link. With what GitHub says about it (`gh`, from the GitHub sync), it's green once approved and red if
+ * checks fail or someone asked for changes; its tooltip says all of it.
+ */
+export function PrBadge({ github, asSpan, gh }: { github: GithubInfo | null | undefined; asSpan?: boolean; gh?: GhSummary | null }) {
   if (!github) return null;
   const label = `#${github.number}`;
-  const title = `GitHub PR ${label}${github.base ? ` into ${github.base}` : ''}\n${github.url}`;
+  const title = `${gh ? summaryTooltip(gh) : `GitHub PR ${label}`}${github.base ? `\ninto ${github.base}` : ''}\n${github.url}`;
+  const cls = `pr-badge${gh?.tone ? ` is-${gh.tone}` : ''}`;
   const body = (
     <>
       {label}
@@ -61,7 +67,7 @@ export function PrBadge({ github, asSpan }: { github: GithubInfo | null | undefi
   );
   if (!asSpan)
     return (
-      <a className="pr-badge" href={github.url} target="_blank" rel="noreferrer noopener" title={title}>
+      <a className={cls} href={github.url} target="_blank" rel="noreferrer noopener" title={title}>
         {body}
       </a>
     );
@@ -72,7 +78,7 @@ export function PrBadge({ github, asSpan }: { github: GithubInfo | null | undefi
   };
   return (
     <span
-      className="pr-badge"
+      className={cls}
       role="link"
       tabIndex={0}
       title={title}

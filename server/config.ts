@@ -37,6 +37,8 @@ export function expandHome(p: string) {
  *   backups/<ISO timestamp>/   automatic snapshots of projects/ (server/backups.ts)
  *   examples/orchard-<id>/     the example projects' repos, if you added them (server/examples.ts)
  *   cache/<hash>.json          what git said about each repo's commits, so a restart needn't ask again (server/diskcache.ts)
+ *   github/<owner>/<repo>/     what GitHub says about published PRs, if the GitHub sync is on (server/github.ts)
+ *   config.yaml                settings for this machine: the GitHub sync (server/settings.ts)
  *   logs/server.{out,err}.log  the service's output, if it runs as one (`local-review service install`, server/service/)
  */
 export const HOME = path.resolve(expandHome(process.env.LOCAL_REVIEW_HOME || path.join(os.homedir(), '.local-review')));
@@ -55,6 +57,14 @@ export const BACKUPS_DIR: string | null = !projectsOverride || process.env.LOCAL
  */
 export const CACHE_DIR: string | null =
   process.env.LOCAL_REVIEW_HOME || (!projectsOverride && !process.env.NODE_TEST_CONTEXT) ? path.join(HOME, 'cache') : null;
+/** Settings for this machine, not any one project: `github:` (server/settings.ts). Optional. */
+export const CONFIG_FILE = path.join(HOME, 'config.yaml');
+/**
+ * What GitHub said about published PRs (server/github.ts): <owner>/<repo>/<number>.json and a sync.json per repo.
+ * Disposable, like the cache. Off under the test runner unless a test sets its own home.
+ */
+export const GITHUB_DIR: string | null =
+  process.env.LOCAL_REVIEW_HOME || (!projectsOverride && !process.env.NODE_TEST_CONTEXT) ? path.join(HOME, 'github') : null;
 /** The default port. The one place it's set: the CLI's help, the startup line and `npm run dev` all derive from it. */
 export { DEFAULT_PORT } from './port.js';
 /** A port number from the command line or $PORT: an integer 0–65535 (0 picks any free port), else null. */

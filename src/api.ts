@@ -1,5 +1,6 @@
 import type { PrStatus, Progress } from '../shared/readiness';
 import type { Aggregate } from '../shared/totals';
+import type { GhPrSnapshot, GhSummary } from '../shared/github';
 
 export interface CommitSummary {
   sha: string;
@@ -306,6 +307,24 @@ export interface ThreadsResponse {
   problems: { repo: string; sha: string; file: string; error: string }[];
 }
 
+/** What GitHub says about a project's published PRs, from Local Review's cache (server/github.ts projectGithub) */
+export interface ProjectGithub {
+  enabled: boolean;
+  optedOut: boolean;
+  source: string;
+  maxAgeMs: number;
+  fetchedAt: string | null;
+  error: string | null;
+  repos: { key: string; host: string; fetched_at: string | null; error: string | null; prs: number }[];
+  prs: Record<string, GhSummary>;
+  aliases: Record<string, string>;
+}
+
+export interface GithubRefreshResult {
+  results: { key: string; host: string; fetched: number; skipped?: string; error?: string; missing?: number[] }[];
+  github: ProjectGithub;
+}
+
 export interface CommitRef {
   repo: string;
   sha: string;
@@ -387,6 +406,12 @@ export const api = {
   /** the project intro (project.yaml `description:`); null removes it */
   setProjectDescription: (slug: string, description: string | null) => req<{ description: string | null; file: string }>('PUT', `/api/projects/${enc(slug)}/description`, { description }),
   /** a stack's note; `number` is the stack's 1-based position in `stacks:`, `title` guards against a reordered list */
+  /** the project's PRs as GitHub last said (no network) */
+  github: (slug: string) => req<ProjectGithub>('GET', `/api/projects/${enc(slug)}/github`),
+  /** fetch from GitHub now ('button': always; 'focus': only if the sync is on and it's over a minute old) */
+  githubRefresh: (slug: string, reason: 'button' | 'focus') => req<GithubRefreshResult>('POST', `/api/projects/${enc(slug)}/github/refresh`, { reason }),
+  /** one PR's GitHub snapshot (threads, reviews, comments with their text); null if not fetched */
+  prGithub: (l: Loc, sha: string) => req<GhPrSnapshot | null>('GET', `${base(l, sha)}/github`),
   setStackDescription: (slug: string, repo: string, number: number, title: string, description: string | null) =>
     req<{ description: string | null; title: string | null; file: string }>('PUT', `/api/projects/${enc(slug)}/repos/${enc(repo)}/stacks/${number}/description`, { description, title }),
 };
@@ -395,7 +420,8 @@ export type ServerEvent =
   | { type: 'review'; project: string; repo: string; sha: string }
   | { type: 'pr'; project: string; repo: string; sha: string }
   | { type: 'project'; project: string; reason: string; repo?: string }
-  | { type: 'projects'; reason: string };
+  | { type: 'projects'; reason: string }
+  | { type: 'github' };
 
 /** CSS colour for a stack: a palette variable (with dark-mode variants) or the #hex as given. */
 export const stackColor = (c: string) => (c.startsWith('#') ? c : `var(--stack-${c})`);

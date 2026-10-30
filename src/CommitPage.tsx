@@ -14,6 +14,7 @@ import { FollowOnBadge, ReadinessBadge, ReadinessControl } from './Readiness';
 import { progressOf, statusTooltip } from '../shared/readiness';
 import { StackTab } from './StackTab';
 import { TopProgress } from './TopProgress';
+import { GithubCard } from './Github';
 import { navigate, prTab, relativeTime, routeUrl, useTilde, type Route } from './util';
 
 export function CommitPage({ route, loc: locProp, projectTitle, projectIntro, projectFile, onChanged, repoData, vizVersion }: { route: Route; loc: Loc; projectTitle: string; projectIntro: string | null; projectFile: string; onChanged: () => void; repoData?: RepoData; vizVersion: string }) {
@@ -572,6 +573,8 @@ function Conversation({ data, loc, review, actions, onNew, desc, context, focusT
             <button className="btn-link" onClick={() => navigate(routeUrl(loc.project, loc.repo, c.short, 'files'))}>View files</button>
           </span>
         </div>
+
+        <GithubCard loc={loc} sha={c.sha} github={c.github ?? null} />
 
         {review.carried_over && <CarriedOverEvent co={review.carried_over} file={tilde(review.file)} target={tilde(review.target_file)} />}
 

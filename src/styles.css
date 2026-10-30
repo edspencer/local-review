@@ -14,6 +14,15 @@
   --danger: #d1242f;
   --attention: #9a6700;
   --attention-subtle: #fff8c5;
+  --gh-ok-fg: #1a7f37;
+  --gh-ok-bg: #dafbe1;
+  --gh-ok-border: #aceebb;
+  --gh-bad-fg: #cf222e;
+  --gh-bad-bg: #ffebe9;
+  --gh-bad-border: #ffcecb;
+  --gh-open-fg: #9a6700;
+  --gh-open-bg: #fff8c5;
+  --gh-open-border: #e9c46a;
   --add-fg: #1a7f37;
   --del-fg: #d1242f;
   --plum: #4a1942;
@@ -360,6 +369,51 @@ button { font-family: inherit; }
 .pr-badge { flex: none; display: inline-flex; align-items: center; gap: 1px; font-size: 11px; font-weight: 500; line-height: 16px; color: var(--fg-muted); text-decoration: none; padding: 0 4px; border: 1px solid var(--border-muted); border-radius: 2em; cursor: pointer; white-space: nowrap; }
 .pr-badge:hover, .pr-badge:focus-visible { color: var(--accent); border-color: var(--accent); }
 .pr-badge-ext { font-size: 10px; opacity: 0.8; }
+/* the GitHub sync (Github.tsx): the PR link turns green once approved, red if checks fail or changes were asked for */
+.pr-badge.is-approved { color: var(--gh-ok-fg); background: var(--gh-ok-bg); border-color: var(--gh-ok-border); }
+.pr-badge.is-blocked { color: var(--gh-bad-fg); background: var(--gh-bad-bg); border-color: var(--gh-bad-border); }
+.pr-badge.is-approved:hover, .pr-badge.is-approved:focus-visible { color: var(--gh-ok-fg); border-color: var(--gh-ok-fg); }
+.pr-badge.is-blocked:hover, .pr-badge.is-blocked:focus-visible { color: var(--gh-bad-fg); border-color: var(--gh-bad-fg); }
+/* review threads beside it: amber with the open count when some need you, else grey with the total */
+.gh-chip { flex: none; display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 600; line-height: 16px; padding: 0 5px; border: 1px solid var(--border-muted); border-radius: 2em; color: var(--fg-muted); cursor: pointer; white-space: nowrap; }
+.gh-chip .gh-icon { flex: none; }
+.gh-chip.is-done { font-weight: 500; }
+.gh-chip.is-open { color: var(--gh-open-fg); background: var(--gh-open-bg); border-color: var(--gh-open-border); }
+.gh-chip:hover, .gh-chip:focus-visible { border-color: currentColor; }
+.gh-tally { color: var(--fg-muted); }
+.gh-tally.is-open { color: var(--gh-open-fg); }
+.gh-sync { display: flex; align-items: center; gap: 6px; margin: 2px 12px 0; padding: 4px 0; font-size: 11px; color: var(--fg-muted); min-width: 0; }
+.gh-sync .gh-icon { flex: none; }
+.gh-sync-when { white-space: nowrap; }
+.gh-sync-refresh { font-size: 11px; }
+.gh-sync-error { color: var(--danger); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+/* the PR page's "On GitHub" card */
+.gh-card { margin: 0 0 16px 56px; padding: 10px 14px; border: 1px solid var(--border); border-left: 3px solid var(--border); border-radius: var(--radius); background: var(--bg); font-size: 13px; }
+.gh-card.is-approved { border-left-color: var(--gh-ok-fg); }
+.gh-card.is-blocked { border-left-color: var(--gh-bad-fg); }
+.gh-card-head { display: flex; align-items: center; gap: 8px; }
+.gh-card-head .pr-badge { font-size: 12px; line-height: 18px; padding: 0 6px; }
+.gh-card-sync { margin-left: auto; font-size: 12px; }
+.gh-pill { font-size: 11px; padding: 0 6px; border-radius: 2em; background: var(--bg-subtle); border: 1px solid var(--border-muted); color: var(--fg-muted); }
+.gh-facts { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 8px 0 0; padding: 0; color: var(--fg-muted); }
+.gh-facts a { color: inherit; text-decoration: none; }
+.gh-facts a:hover { text-decoration: underline; }
+.gh-facts .is-good { color: var(--success); }
+.gh-facts .is-bad { color: var(--danger); font-weight: 600; }
+.gh-facts .is-warn { color: var(--gh-open-fg); font-weight: 600; }
+.gh-sub { font-size: 12px; font-weight: 600; margin: 12px 0 4px; }
+.gh-threads, .gh-comments { list-style: none; margin: 0; padding: 0; }
+.gh-thread { padding: 6px 0; border-top: 1px solid var(--border-muted); }
+.gh-thread:first-child { border-top: none; }
+.gh-thread-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-size: 12px; }
+.gh-thread-where { text-decoration: none; }
+.gh-thread-last { margin-top: 2px; color: var(--fg); overflow-wrap: anywhere; }
+.gh-thread.is-open { box-shadow: inset 2px 0 0 var(--gh-open-fg); padding-left: 8px; }
+.gh-outdated { color: var(--gh-open-fg); }
+.gh-comments li { padding: 4px 0; overflow-wrap: anywhere; }
+.gh-fold { margin-top: 8px; }
+.gh-fold > summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--fg-muted); }
+.gh-fold[open] > summary { margin-bottom: 4px; }
 .sidebar-empty { padding: 4px 16px; color: var(--fg-muted); font-size: 12px; }
 
 /* ---------- primitives ---------- */
@@ -1115,6 +1169,15 @@ a.header-project:hover { color: #f6d29b; }
     --success: #3fb950;
     --success-emph: #238636;
     --danger: #f85149;
+    --gh-ok-fg: #3fb950;
+    --gh-ok-bg: rgba(46, 160, 67, 0.15);
+    --gh-ok-border: rgba(46, 160, 67, 0.4);
+    --gh-bad-fg: #f85149;
+    --gh-bad-bg: rgba(248, 81, 73, 0.15);
+    --gh-bad-border: rgba(248, 81, 73, 0.4);
+    --gh-open-fg: #d29922;
+    --gh-open-bg: rgba(187, 128, 9, 0.15);
+    --gh-open-border: rgba(187, 128, 9, 0.5);
     --attention: #d29922;
     --attention-subtle: rgba(187, 128, 9, 0.15);
     --add-fg: #3fb950;

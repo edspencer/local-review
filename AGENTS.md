@@ -12,6 +12,11 @@ The human-facing version, with setup, CI and pull request expectations, is [CONT
   `~/.local-review/examples/` (`demo/lib/gitworld.ts`), which are then only read through `git.ts` too. Don't add
   more. The branch poll's `server/reffiles.ts` isn't git access: it only stats a repo's ref files, to skip running
   git when no branch has moved.
+- **GitHub is only read, and only when asked to.** The GitHub sync (`server/github.ts`, docs:
+  `website/src/content/docs/using/github-status.md`) is off unless `config.yaml` turns it on (or you press Refresh /
+  run `local-review github refresh`). All GitHub access goes through `server/gh.ts`: `gh api graphql` with the request
+  on stdin, queries only (mutations and subscriptions are refused), gh holding the token. It writes only its own cache,
+  `<home>/github/`, never prs or review files. Keep it that way: no other GitHub calls, no writes to GitHub.
 - **It must look clearly *not GitHub* at a glance**, through at least one deliberate visual difference (docs: "The
   header: deliberately not GitHub" in `website/src/content/docs/using/ui-tour.md`), even though it otherwise mirrors
   GitHub's PR view.
