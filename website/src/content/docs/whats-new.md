@@ -7,9 +7,7 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
-## Coming in 0.13.0: GitHub status
-
-Not released yet.
+## 0.13.0: GitHub status
 
 - **See what GitHub says about your published PRs.** Turn it on with `github: {sync: on}` in
   `~/.local-review/config.yaml` and the sidebar's PR link turns green once the PR is approved, or red if its checks

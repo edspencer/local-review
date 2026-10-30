@@ -1,5 +1,0 @@
----
-"local-review": minor
----
-
-GitHub status for published PRs. Turn it on with `github: {sync: on}` in `~/.local-review/config.yaml` and, for each PR with a `github:` URL in its prs file, the sidebar's PR link turns green once it's approved, or red if its checks fail or someone asked for changes. A speech bubble beside the link counts its review threads: amber with the number that are open (the last word is someone else's), grey once they're all answered (the last word is yours) or resolved. A stack's tally adds "4/6 approved · 2 to answer", and each PR page gets an **On GitHub** card listing the threads waiting for you. It only reads GitHub, through the `gh` CLI (queries only; gh keeps the token), with one query per GitHub repo. It fetches again once the data is older than `max_age` (5 minutes by default) while a Local Review page is open, when you come back to the page, and whenever you press Refresh or run `local-review github refresh`. A project can opt out with `github: {sync: off}`. The data is a cache in `~/.local-review/github/` that agents can read.
