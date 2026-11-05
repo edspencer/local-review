@@ -37,7 +37,10 @@ A test fails the build if any code gains a way around that.
   one file, after checking its name and directory, and nothing in `~/.local-review`, not even the logs.
 - **`cache/` is Local Review's own, disposable data**, not yours: what git said about commits, rewritten atomically as
   git answers come in and never snapshotted. You can delete it any time; it's rebuilt as needed.
-- **The only deletion in `~/.local-review` is snapshot pruning**, guarded as below.
+- **`runtime.json` is Local Review's own note to itself**, not yours: while it runs, its pid, port, URL and version,
+  for [`local-review busy`](/reference/cli/#local-review-busy). It's removed when Local Review exits, but only while
+  it still names that process, so it can't remove another instance's.
+- **The only deletion of anything else in `~/.local-review` is snapshot pruning**, guarded as below.
 
 The one thing that removes your words is you: deleting your own comment in the UI removes it from the file, as you'd
 expect. The previous version is in the snapshots. (An agent's comments can't be deleted from the UI at all.)
@@ -61,9 +64,10 @@ Restoring is copying files back by hand: see [Restoring](/reference/data-directo
 All of this lives in `server/safefs.ts` and `server/backups.ts`. `test/fsguard.test.ts` statically scans
 `server/**/*.ts` (and `demo/lib`, `demo/world`: the code that builds the example projects, which is allowed none of
 these) and fails if any other code (or more code there) calls `unlink`, `rm`, `rmdir`, `truncate`,
-`writeFile`, `rename`, `copyFile`/`cp`, or shells out to `rm`/`mv`/…. The one other call it allows is
+`writeFile`, `rename`, `copyFile`/`cp`, or shells out to `rm`/`mv`/…. The other calls it allows are
 `service uninstall`'s single `unlink` in `server/service/manager.ts`, and the test checks that it sits behind the check
 that the file is the service's own (`local-review.server.plist` or `local-review-server.service`, in the service
-directory).
+directory); and `runtime.json`'s write, rename and removal in `server/contract/runtime-file.ts`, where the test checks
+that the removal is of `runtime.json` only, after checking its pid.
 
 Contributors: if the guard fails on your change, route the write through `server/safefs.ts`; don't widen the test.

@@ -73,7 +73,7 @@ export interface LaunchdOptions {
   label: string;
   uid: number;
   run?: Runner;
-  /** For the bootout → bootstrap retry. */
+  /** For waiting out a bootout, and the bootstrap retry. */
   sleep?: (ms: number) => Promise<void>;
 }
 
@@ -100,20 +100,30 @@ export function launchdManager({ dir, label, uid, run = defaultRunner, sleep = (
     return { installed, loaded: true, running: p.state === 'running' && p.pid !== null, pid: p.pid, lastExitCode: p.lastExitCode, state: p.state, enabled: null };
   };
 
-  // Right after a bootout, the job may still be on its way out, and bootstrap fails with "5: Input/output error";
-  // retrying for a few seconds is the usual cure.
+  // A bootout returns before launchd has finished taking the job down, and a bootstrap in that window fails with
+  // "5: Input/output error" (Paddock's release CI hit it). So a bootout waits until `print` no longer finds the job,
+  // and a bootstrap that still gets error 5 is retried once.
   const bootstrap = async () => {
-    for (let i = 0; ; i++) {
-      const r = await run('launchctl', ['bootstrap', domain, file]);
-      if (r.code === 0) return;
-      if (r.code === 127) throw new ServiceManagerError(NO_LAUNCHCTL);
-      if (i >= 10) throw new ServiceManagerError(`launchctl bootstrap ${domain} ${file} failed (exit ${r.code}): ${(r.stderr || r.stdout).trim()}`);
-      await sleep(500);
+    const r = await run('launchctl', ['bootstrap', domain, file]);
+    if (r.code === 0) return;
+    if (r.code === 127) throw new ServiceManagerError(NO_LAUNCHCTL);
+    if (r.code === 5) {
+      await sleep(1000);
+      if ((await run('launchctl', ['bootstrap', domain, file])).code === 0) return;
     }
+    throw new ServiceManagerError(`launchctl bootstrap ${domain} ${file} failed (exit ${r.code}): ${(r.stderr || r.stdout).trim()}`);
   };
 
-  // exit 3 / 36 / 113: "No such process" / "Operation now in progress" / "Could not find service": not loaded, as wanted
-  const bootout = () => launchctl(['bootout', target], [0, 3, 36, 113]);
+  // exit 3 / 36 / 113: "No such process" / "Operation now in progress" / "Could not find service": not loaded (or on
+  // its way out), as wanted. Then up to 10 seconds for it to be gone.
+  const bootout = async () => {
+    await launchctl(['bootout', target], [0, 3, 36, 113]);
+    for (let i = 0; i < 40; i++) {
+      const r = await run('launchctl', ['print', target]);
+      if (r.code !== 0) return;
+      await sleep(250);
+    }
+  };
 
   return {
     kind: 'launchd',

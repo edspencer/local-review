@@ -43,6 +43,7 @@ npm run typecheck     # server + frontend
 npm test              # node:test, from source via tsx; builds throwaway git repos in the OS temp dir
 npm run build         # dist/web (Vite) + dist/server, dist/shared (tsc)
 npm run smoke:pack    # npm pack, install the tarball into a temp prefix, run it as a user would
+npx cli-conformance   # the CLI contract's checks (edspencer/cli-contract) on the packed CLI; cli-contract.json
 ```
 
 `smoke:pack` matters whenever you touch the build, `package.json` (`files`, `bin`, dependencies) or anything the CLI

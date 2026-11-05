@@ -165,9 +165,19 @@ try {
   s = statusJson();
   step(`back as pid ${s.pid}`);
 
+  step('busy: not busy; runtime.json names the running service');
+  const runtime = path.join(data, 'runtime.json');
+  assert.equal(JSON.parse(fs.readFileSync(runtime, 'utf8')).pid, s.pid, 'the new process rewrote runtime.json');
+  let b = lrAny('busy', '--json');
+  assert.equal(b.code, 0, b.stderr);
+  assert.deepEqual(JSON.parse(b.stdout), { running: true, busy: false, url: `http://127.0.0.1:${port}`, version, counts: { save: 0, snapshot: 0, sync: 0 } });
+
   step('service stop: stopped, still installed, not disabled');
   assert.match(lr('service', 'stop'), /^Stopped Local Review\. It starts again/);
   assert.ok(!(await answers(port)), 'nothing answers');
+  await until('runtime.json removed by its clean exit on SIGTERM', async () => !fs.existsSync(runtime));
+  b = lrAny('busy');
+  assert.deepEqual([b.code, b.stdout], [3, "Local Review isn't running.\n"]);
   s = statusJson(); // exit 3
   assert.equal(s.installed, true);
   assert.equal(s.running, false);
@@ -190,11 +200,16 @@ try {
 
   step('service logs');
   o = lr('service', 'logs', '-n', '200');
-  assert.ok(o.includes(`Local Review on http://localhost:${port}`), `its start is in its log:\n${o}`);
+  assert.ok(o.includes(`Local Review ${version}: http://localhost:${port}\n`), `its start is in its log:\n${o}`);
   assert.equal(lr('service', 'logs', '-n', '1').trimEnd().split('\n').length, 1);
 
   step('service restart');
-  assert.match(lr('service', 'restart'), new RegExp(`^Restarted Local Review: http://localhost:${port}$`, 'm'));
+  // with --force: with nothing under way it changes nothing, so no "Overriding:". (The next step restarts it without
+  // --force. One restart here, not two: systemd refuses a sixth start within 10 seconds, its default StartLimitBurst.)
+  b = lrAny('service', 'restart', '--force');
+  assert.equal(b.code, 0, b.stderr);
+  assert.match(b.stdout, new RegExp(`^Restarted Local Review: http://localhost:${port}$`, 'm'));
+  assert.doesNotMatch(b.stderr, /Overriding/);
   assert.ok(await answers(port));
 
   step('service restart rewrites a unit an older version wrote (two log files)');
@@ -221,8 +236,11 @@ try {
   assert.match(o, new RegExp(`Port ${port2}, as it was installed`));
 
   step('service uninstall');
-  // its start, reading the data home `service install` chose (its environment came from the service's file alone)
-  assert.ok(fs.readFileSync(log, 'utf8').includes(`Local Review on http://localhost:${port}  (projects: ${path.join(data, 'projects')})`), 'it logged its start');
+  // its start, in the log. (That it uses the data home `service install` chose, from the service's file alone, the
+  // busy step showed: its runtime.json is in that data home.)
+  const logged = fs.readFileSync(log, 'utf8');
+  // (the service runs `serve --quiet`: just the first line, cli-contract SPEC §3)
+  assert.ok(logged.startsWith(`Local Review ${version}: http://localhost:${port}\n`), `it logged its start:\n${logged}`);
   const dataBefore = fs.readdirSync(data).sort();
   assert.match(lr('service', 'uninstall'), /^Removed Local Review's service \(.*\)\. Your data in .* is untouched\.$/m);
   installed = false;
@@ -230,8 +248,10 @@ try {
   await until(`nothing on ${port2}`, async () => !(await answers(port2)));
   assert.equal(statusJson().loaded, false);
   // (the server may still add to it as it stops, e.g. its cache: only what was there matters)
-  for (const f of dataBefore) assert.ok(fs.existsSync(path.join(data, f)), `${f} is still in the data home`);
-  assert.ok(fs.readFileSync(log, 'utf8').includes('Local Review on'), 'the logs are kept');
+  // all but runtime.json, which the server removes as it exits (cli-contract SPEC §4)
+  for (const f of dataBefore.filter((f) => f !== 'runtime.json')) assert.ok(fs.existsSync(path.join(data, f)), `${f} is still in the data home`);
+  await until('runtime.json removed by its clean exit', async () => !fs.existsSync(runtime));
+  assert.ok(fs.readFileSync(log, 'utf8').includes(`Local Review ${version}: `), 'the logs are kept');
   assert.match(lr('service', 'uninstall'), /wasn't installed as a service; nothing to do/);
   for (const verb of ['status', 'start', 'logs']) assert.equal(lrAny('service', verb).code, 4, `service ${verb} after uninstall`);
   step('ok');

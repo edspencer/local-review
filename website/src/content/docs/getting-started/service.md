@@ -37,8 +37,8 @@ Both start at **login**, not at boot (except a Linux unit with lingering on).
 ```sh
 local-review service install [--port <n>] [--dry-run] [--from-checkout]
 local-review service start
-local-review service stop
-local-review service restart
+local-review service stop [--force]
+local-review service restart [--force]
 local-review service status [--json]
 local-review service logs [-f] [-n <lines>]
 local-review service uninstall
@@ -74,6 +74,21 @@ $ local-review service stop
 Stopped Local Review. It starts again at your next login, or with `local-review service start`. To keep it off, `local-review service uninstall`.
 ```
 
+### Busy: `stop` and `restart` wait for you
+
+`service stop` and `service restart` first ask the service whether it's [busy](/reference/cli/#local-review-busy):
+saving a comment or a description, taking a backup snapshot, or syncing with GitHub. If it is, they don't stop it.
+Instead they say what's under way and exit 75:
+
+```text
+$ local-review service restart
+local-review: Local Review is busy: 1 GitHub sync is running. Try again once it has finished (`local-review busy` says when), or restart it anyway with --force.
+```
+
+Those writes take a moment, so trying again usually just works. `--force` goes ahead regardless, and says what it
+overrode (`Overriding: Local Review is busy: …`). Open pages don't count as busy: drafts live in the browser, and the
+pages reconnect once it's back. `service uninstall` doesn't ask, since removing the service is a deliberate act.
+
 ### `service status`
 
 ```text
@@ -82,7 +97,8 @@ Service:   ~/.config/systemd/user/local-review-server.service
 Loaded:    yes (active (running)), starts at login
 Running:   yes, pid 48213
 UI:        http://localhost:5622
-Version:   0.14.0
+Busy:      no
+Version:   0.15.0
 Node:      ~/.nvm/versions/node/v22.12.0/bin/node
 Runs:      ~/.nvm/versions/node/v22.12.0/lib/node_modules/local-review/dist/server/cli.js
 Data:      ~/.local-review
@@ -91,8 +107,11 @@ Log:       ~/.local-review/logs/service.log
 
 It warns when the Node or the `local-review` the service runs has gone (after a Node upgrade, say), when it runs a
 different `local-review` from the one you just ran, or when the version answering isn't the one installed (you
-upgraded but haven't restarted). `--json` gives the same as JSON, for scripts: `version` is the version answering,
-`installedVersion` the one on disk.
+upgraded but haven't restarted). `Busy` is what [`local-review busy`](/reference/cli/#local-review-busy) would say.
+`--json` gives the same as JSON, for scripts: `version` (and `runningVersion`) is the version answering,
+`installedVersion` the one on disk, `unit` the service's file, and `busy` what it's doing. The fields are the ones
+the [CLI contract's schema](https://github.com/edspencer/cli-contract/blob/main/schemas/service-status.schema.json)
+names.
 
 It exits **0** when the service is running and answering, **3** when it's installed but isn't (stopped, or
 not answering), and **4** when it isn't installed, with or without `--json`. Those are the codes `systemctl status`
@@ -100,7 +119,7 @@ uses.
 
 ### `service restart`
 
-Restarts it, for instance after an upgrade (below). If the service's file is stale, it's rewritten first, keeping
+Restarts it, for instance after an upgrade (below), unless it's [busy](#busy-stop-and-restart-wait-for-you). If the service's file is stale, it's rewritten first, keeping
 the port and the environment it was installed with. A file is stale when an older Local Review wrote it (one from
 before 0.14 logs to two files), or when the Node or `local-review` it names has gone. In that last case, it's pointed
 at the `local-review` you ran and its Node.
@@ -205,11 +224,13 @@ keeps the port and data home. `local-review service status` warns when this is n
 ## How much of this has been tested
 
 - **Tests, on Linux and macOS:** the generated plist and unit, read back again; escaping; the `PATH`; the refusals;
-  install, reinstall, start, stop, status and its exit codes, restart (and a stale file rewritten), logs and
-  uninstall, with launchctl and systemctl stood in for. On macOS the plist also
+  install, reinstall, start, stop, status and its exit codes, restart (and a stale file rewritten), logs, the busy
+  refusal and `--force`, launchd's bootout-then-bootstrap race, and uninstall, with launchctl and systemctl stood in
+  for. On macOS the plist also
   passes `plutil -lint`, and on Linux the unit passes `systemd-analyze verify`.
 - **For real, in CI:** the package as you'd install it, against launchd on a GitHub macOS runner and a systemd user
   instance on a GitHub Ubuntu runner: refused from npx, installed, reinstalled, killed (and restarted by
-  launchd or systemd), stopped (and still installed and enabled), started, restarted, its log read, moved to another
+  launchd or systemd), asked whether it's busy, stopped (and still installed and enabled, with its `runtime.json`
+  removed by a clean exit), started, restarted, its log read, moved to another
   port, and uninstalled with the data home untouched.
 - **Not tested yet:** a real logout and login, or a reboot, on either OS.

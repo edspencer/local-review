@@ -8,12 +8,13 @@
 // `github refresh` reads GitHub (gh api graphql queries only, server/gh.ts) and writes only its own cache, <data>/github/;
 // `github status` reads that cache and config.yaml, nothing else.
 // `service` writes only its own LaunchAgent / systemd user unit (and makes the data home's logs/), never user data;
-// `service logs` only reads its log.
+// `service logs` only reads its log. `busy` only asks the running instance's /api/busy.
+// `serve` writes <data>/runtime.json (its pid, port, URL and version, for `busy`), and removes it when it exits.
 // First: `--data-dir` sets LOCAL_REVIEW_HOME before config.ts reads it.
 import './datadir.js';
 import fs from 'node:fs';
 import path from 'node:path';
-import { AGENT_GUIDE, DEFAULT_PORT, EXAMPLE_PROJECT, PROJECTS_DIR, ROOT, SAFE_NAME, parsePort } from './config.js';
+import { AGENT_GUIDE, DEFAULT_PORT, EXAMPLE_PROJECT, HOME, PROJECTS_DIR, ROOT, SAFE_NAME, parsePort } from './config.js';
 import { loadProject } from './projects.js';
 import { buildPlan, planMarkdown, planYaml } from './plan.js';
 import { ExistsError, atomicWrite } from './safefs.js';
@@ -29,15 +30,18 @@ const USAGE = `Usage: local-review [--data-dir <path>] [serve] [--port <n>] [--q
        local-review examples [remove]
        local-review github refresh [<project>] | status [<project>]
        local-review service install [--port <n>] [--dry-run] [--from-checkout]
-       local-review service uninstall | start | stop | restart | status [--json]
+       local-review service uninstall | start | status [--json]
+       local-review service stop | restart [--force]
        local-review service logs [-f] [-n <lines>]
+       local-review busy [--json]
        local-review guide
        local-review --version | --help
 
   serve   (the default) Serve the review UI and API on http://localhost:<port> (127.0.0.1 only).
           --port <n>       the port (default ${DEFAULT_PORT}, or $PORT)
-          --quiet, -q      print just the "Local Review on <url>" line: no banner, no hint for agents
-                           (the banner is only shown on a terminal anyway)
+          It prints \`Local Review <version>: <url>\` first, then the projects directory and a hint for agents.
+          --quiet, -q      print just that first line: no banner, no hint for agents
+                           (the banner is only shown on a terminal anyway, on stderr)
   plan    For each PR in scope, in order: commit, status (draft / ready / published), branch (with its
           status), base, title and the exact full body (project intro, stack note, ---, PR description), plus
           any recorded github: info and the comments the reviewer marked for the GitHub PR (with file and
@@ -98,9 +102,13 @@ const USAGE = `Usage: local-review [--data-dir <path>] [serve] [--port <n>] [--q
           Start the installed service, and wait until it answers.
   service stop
           Stop it until \`service start\` or your next login. It stays installed: \`service uninstall\` removes it.
+          Refuses (exit 75) while it's busy saving, snapshotting or syncing with GitHub (see \`busy\`).
+          --force          stop it anyway
   service restart
           Restart it, e.g. after \`npm i -g local-review@latest\`. A service file an older version wrote, or one
-          whose Node or local-review has gone, is rewritten first, keeping its port and environment.
+          whose Node or local-review has gone, is rewritten first, keeping its port and environment. Refuses
+          (exit 75) while it's busy, as \`stop\` does.
+          --force          restart it anyway
   service status
           Whether it's installed, loaded, running and answering, on which port, which version, and what it runs.
           Exits 0 if it's running and answering, 3 if it's installed but not, 4 if it isn't installed.
@@ -109,13 +117,18 @@ const USAGE = `Usage: local-review [--data-dir <path>] [serve] [--port <n>] [--q
           The end of the service's log, <data>/logs/service.log.
           -f, --follow     then keep printing what it writes, until interrupted
           -n, --lines <n>  how many lines (default 50)
+  busy    Ask the running Local Review whether it's busy: saving a comment or a description, taking a backup
+          snapshot, or syncing with GitHub. Exits 0 if it isn't, 75 if it is, 3 if nothing is running. It finds
+          the instance through <data>/runtime.json, which \`serve\` writes.
+          --json           as JSON: { running, busy, url, version, counts }
   guide   Print the guide for agents using Local Review to get their work reviewed (AGENT-GUIDE.md).
 
   --data-dir <path>
           The data home for this command, as LOCAL_REVIEW_HOME sets it (default ~/.local-review).
 
 Data: $LOCAL_REVIEW_HOME/projects (default ~/.local-review/projects). Agents: run \`local-review guide\`.
-Exit codes: 0 done, 1 failed, 2 bad usage, 3 not running, 4 not installed (\`service\`).`;
+Exit codes: 0 done, 1 failed, 2 bad usage, 3 not running, 4 not installed (\`service\`), 75 busy (\`busy\`,
+\`service stop\` and \`restart\`: try again later, or use --force).`;
 
 /** Bad usage: exit 2, with the usage. Anything else thrown exits 1. */
 class UsageError extends Error {}
@@ -133,6 +146,7 @@ function parseArgs(argv: string[]) {
     else if (a === '--dry-run') flags['dry-run'] = '1';
     else if (a === '--from-checkout') flags['from-checkout'] = '1';
     else if (a === '--json') flags.json = '1';
+    else if (a === '--force') flags.force = '1';
     else if (a === '-q' || a === '--quiet') flags.quiet = '1';
     else if (a === '-f' || a === '--follow') flags.follow = '1';
     else if (a === '-n') {
@@ -328,19 +342,64 @@ async function serve(flags: Record<string, string>) {
   const { startServer } = await import('./index.js');
   try {
     const bound = await startServer(port);
+    const dev = !!process.env.LOCAL_REVIEW_DEV;
+    // `npm run dev` is a development server: it leaves runtime.json to the real instance
+    if (!dev) await announceRuntime(bound);
     const { startupMessage } = await import('./banner.js');
-    process.stdout.write(
-      startupMessage(
-        { url: `http://localhost:${bound}`, projectsDir: PROJECTS_DIR, quiet: !!flags.quiet, dev: !!process.env.LOCAL_REVIEW_DEV },
-        { isTTY: process.stdout.isTTY, columns: process.stdout.columns, env: process.env },
-      ),
+    const s = startupMessage(
+      { url: `http://localhost:${bound}`, version: version(), projectsDir: PROJECTS_DIR, quiet: !!flags.quiet, dev },
+      { isTTY: process.stdout.isTTY, columns: process.stdout.columns, env: process.env },
+      { isTTY: process.stderr.isTTY, columns: process.stderr.columns, env: process.env },
     );
+    if (s.err) process.stderr.write(s.err);
+    process.stdout.write(s.out);
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
     if (code === 'EADDRINUSE') throw new Error(`port ${port} is already in use; pick another with --port <n>`);
     if (code === 'EACCES') throw new Error(`not allowed to listen on port ${port}; pick another with --port <n>`);
     throw e;
   }
+}
+
+const version = (): string => JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+
+/**
+ * Write <data>/runtime.json, so `local-review busy` can find this instance (cli-contract SPEC §4), and remove it when
+ * the process exits. On SIGTERM (a service stop) or SIGINT, let the saves and syncs under way finish first, for up
+ * to 5 seconds; a second signal exits at once.
+ */
+async function announceRuntime(port: number) {
+  const { writeRuntimeFile, removeRuntimeFile } = await import('./contract/runtime-file.js');
+  const { whenIdle } = await import('./busy.js');
+  try {
+    writeRuntimeFile(HOME, { pid: process.pid, port, url: `http://127.0.0.1:${port}`, version: version() });
+  } catch (e) {
+    process.stderr.write(`local-review: couldn't write ${path.join(HOME, 'runtime.json')} (\`local-review busy\` won't find this instance): ${(e as Error).message}\n`);
+    return;
+  }
+  process.on('exit', () => {
+    try {
+      removeRuntimeFile(HOME);
+    } catch {
+      /* leave it: its pid is dead, so busy ignores it */
+    }
+  });
+  let stopping = false;
+  const onSignal = (code: number) => async () => {
+    if (stopping) process.exit(code);
+    stopping = true;
+    if (!(await whenIdle(5000))) process.stderr.write('local-review: stopping with work still under way\n');
+    process.exit(code);
+  };
+  process.on('SIGTERM', onSignal(0));
+  process.on('SIGINT', onSignal(130));
+}
+
+async function busy(flags: Record<string, string>): Promise<number> {
+  const { runBusyCommand } = await import('./contract/busy-client.js');
+  const { createOutput } = await import('./contract/output.js');
+  const { BUSY_NOUNS } = await import('./busy.js');
+  return runBusyCommand({ home: HOME, name: 'Local Review', out: createOutput({ tool: 'local-review', json: !!flags.json }), nouns: BUSY_NOUNS });
 }
 
 async function service(args: string[], flags: Record<string, string>): Promise<number> {
@@ -362,14 +421,14 @@ async function service(args: string[], flags: Record<string, string>): Promise<n
         check('service start', flags, [], rest, 0);
         return await svc.start(ctx);
       case 'stop':
-        check('service stop', flags, [], rest, 0);
-        return await svc.stop(ctx);
+        check('service stop', flags, ['force'], rest, 0);
+        return await svc.stop(ctx, { force: !!flags.force });
       case 'status':
         check('service status', flags, ['json'], rest, 0);
         return await svc.status(ctx, { json: !!flags.json });
       case 'restart':
-        check('service restart', flags, [], rest, 0);
-        return await svc.restart(ctx);
+        check('service restart', flags, ['force'], rest, 0);
+        return await svc.restart(ctx, { force: !!flags.force });
       case 'logs': {
         check('service logs', flags, ['follow', 'lines'], rest, 0);
         if (flags.lines !== undefined && !/^[0-9]{1,7}$/.test(flags.lines)) throw new UsageError(`-n must be a number of lines, not '${flags.lines}'`);
@@ -398,7 +457,7 @@ async function main(argv: string[]): Promise<number | undefined> {
     return 0;
   }
   if (flags.version) {
-    process.stdout.write(JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version + '\n');
+    process.stdout.write(version() + '\n');
     return 0;
   }
   const [cmd = 'serve', ...args] = pos;
@@ -432,6 +491,9 @@ async function main(argv: string[]): Promise<number | undefined> {
       return github(args);
     case 'service':
       return service(args, flags);
+    case 'busy':
+      check(cmd, flags, ['json'], args, 0);
+      return busy(flags);
     case 'guide':
       check(cmd, flags, [], args, 0);
       process.stdout.write(fs.readFileSync(AGENT_GUIDE, 'utf8'));

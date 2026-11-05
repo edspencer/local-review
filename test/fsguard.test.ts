@@ -1,6 +1,6 @@
 // A static guard: no server code may delete, truncate, overwrite or rename files except the few reviewed call
 // sites below (temp-file cleanup and no-clobber renames in safefs.ts, snapshot copying and pruning in
-// backups.ts, and `local-review service uninstall` removing its own LaunchAgent / systemd unit in service/manager.ts). If this fails, you've added a way to lose data: route it through server/safefs.ts instead, or
+// backups.ts, `serve`'s own runtime.json in contract/runtime-file.ts, and `local-review service uninstall` removing its own LaunchAgent / systemd unit in service/manager.ts). If this fails, you've added a way to lose data: route it through server/safefs.ts instead, or
 // (after careful review) update ALLOWED with a comment saying why it can't destroy anything.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -39,6 +39,13 @@ const ALLOWED: Record<string, Record<string, number>> = {
     rm: 1, // pruneSnapshots, only after assertPrunable
     rename: 1, // a complete snapshot copy into its fresh name
     copy: 1, // the snapshot copy itself (errorOnExist, force: false)
+  },
+  'contract/runtime-file.ts': {
+    // <data>/runtime.json (cli-contract SPEC §4): `serve`'s pid, port, URL and version, never user data. Written to a
+    // temp file and renamed into place, and removed when `serve` exits, but only while it still names this process
+    writeFile: 1, // the temp file, 0600
+    rename: 1, // temp -> runtime.json
+    rm: 2, // the temp file after a failed rename; runtime.json itself, after checking its pid (checked below)
   },
   'service/manager.ts': {
     // `service uninstall` removing the service's own generated definition (local-review.server.plist /
@@ -92,6 +99,13 @@ test("the service's one unlink removes only its own definition file", () => {
     src,
     /export function removeServiceFile\(file: string, dir: string\) \{\s*if \(!SERVICE_FILE\.test\(path\.basename\(file\)\) \|\| path\.dirname\(path\.resolve\(file\)\) !== path\.resolve\(dir\)\)\s*throw new Error\([^;]*;\s*try \{\s*fs\.unlinkSync\(file\);/,
   );
+});
+
+test('runtime.json is the only file contract/runtime-file.ts removes, and only while it names this process', () => {
+  const src = stripComments(fs.readFileSync(path.join(SERVER, 'contract', 'runtime-file.ts'), 'utf8'));
+  assert.match(src, /export const RUNTIME_FILE = 'runtime\.json';/);
+  assert.match(src, /const info = readRuntimeFile\(home\);\s*if \(!info \|\| info\.pid !== pid\) return false;\s*fs\.rmSync\(runtimeFilePath\(home\), \{ force: true \}\);/);
+  assert.match(src, /fs\.rmSync\(tmp, \{ force: true \}\);/);
 });
 
 test('the guard catches the patterns it is meant to', () => {

@@ -19,6 +19,7 @@ import { readPrFile } from './prs.js';
 import { loadSettings, type GithubSettings } from './settings.js';
 import { ghSource, type GithubSource } from './gh.js';
 import { prKey, prRef, prsQuery, repoKey, snapshotOf, summaryOf, type GhPrSnapshot, type GhSummary, type PrRef } from '../shared/github.js';
+import { trackBusy } from './busy.js';
 
 /** How many PRs one query asks for (GitHub limits a query's size). */
 const BATCH = 20;
@@ -260,7 +261,7 @@ export async function refresh(opts: RefreshOptions = {}): Promise<RepoResult[]> 
       const unseen = numbers.some((n) => !readSnapshot({ ...g, number: n }) && !sync?.missing.includes(n));
       if (!opts.force && !(unseen && !sync?.error) && dueAt(sync, minAge, settings.maxAgeMs) > now())
         return Promise.resolve<RepoResult>({ key: g.key, host: g.host, fetched: 0, skipped: sync?.error ? 'backoff' : 'fresh' });
-      const p = fetchRepo(g, numbers, source, settings, now).finally(() => inflight.delete(id));
+      const p = trackBusy('sync', () => fetchRepo(g, numbers, source, settings, now)).finally(() => inflight.delete(id));
       inflight.set(id, p);
       return p;
     }),

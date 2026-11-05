@@ -10,6 +10,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ASSET_NAME } from '../shared/assets.js';
+import { trackBusy } from './busy.js';
 
 export const KEEP_RECENT = 50;
 export const KEEP_DAYS = 30;
@@ -182,11 +183,16 @@ export function pruneSnapshots(backupsDir: string, projectsDir: string, now = ne
 
 /** Snapshot (if changed) and prune. Never throws: a failed snapshot must not take the server down. */
 export function snapshotNow(projectsDir: string, backupsDir: string, now = new Date()) {
+  return trackBusy('snapshot', () => snapshotOrNull(projectsDir, backupsDir, now));
+}
+
+// on stderr, like every log line: stdout's first line is the CLI's "Local Review <version>: <url>" (cli-contract SPEC §3)
+function snapshotOrNull(projectsDir: string, backupsDir: string, now: Date) {
   try {
     const name = takeSnapshot(projectsDir, backupsDir, now);
-    if (name) console.log(`[backups] snapshot ${path.join(backupsDir, name)}`);
+    if (name) console.error(`[backups] snapshot ${path.join(backupsDir, name)}`);
     const removed = pruneSnapshots(backupsDir, projectsDir, now);
-    if (removed.length) console.log(`[backups] pruned ${removed.length} old snapshot(s)`);
+    if (removed.length) console.error(`[backups] pruned ${removed.length} old snapshot(s)`);
     return name;
   } catch (e) {
     console.error('[backups] snapshot failed:', e);

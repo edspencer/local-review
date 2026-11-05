@@ -40,6 +40,11 @@ The human-facing version, with setup, CI and pull request expectations, is [CONT
   live facts, from the same code. After changing any of those three, run `npm run docs:llms` and commit the result.
 - **`/llms.txt` shows nothing the UI doesn't** (docs: `website/src/content/docs/agents/llms-txt.md`). It's read-only,
   behind `localOnly`, and its live facts come from what `/api/projects` and `/api/me` already return. Keep it that way.
+- **The CLI follows [edspencer/cli-contract](https://github.com/edspencer/cli-contract)** (SPEC.md): the commands,
+  exit codes and output around running it (`serve`'s first line is `Local Review <version>: <url>`, logs go to
+  stderr), `service`, `busy`. `server/contract/` holds files copied from its `reference/`, each with a header naming
+  the spec version and any local changes; fix them upstream and copy them again rather than editing them here.
+  CI runs its conformance checks (`cli-contract.json`).
 - Personal, machine-specific rules go in a git-ignored `CLAUDE.local.md` next to this file.
 
 ## Commands
@@ -53,6 +58,7 @@ npm test              # node:test, from source via tsx
 npm run typecheck     # server + frontend
 npm run build         # dist/web (Vite) + dist/server, dist/shared (tsc)
 npm run smoke:pack    # npm pack, install the tarball into a temp prefix, run it, check it serves
+npx cli-conformance   # edspencer/cli-contract's checks on the packed CLI (cli-contract.json says which apply)
 npm run demo:seed     # the demo test bed: fake repos + a data home, in demo/out (demo/README.md)
 npm run docs:media    # screenshots of it for the docs (tools/docs-media/README.md)
 npm run docs:media:gif   # the demo GIF and the landing page's video (ffmpeg)

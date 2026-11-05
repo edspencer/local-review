@@ -32,15 +32,18 @@ Usage: local-review [--data-dir <path>] [serve] [--port <n>] [--quiet]
        local-review examples [remove]
        local-review github refresh [<project>] | status [<project>]
        local-review service install [--port <n>] [--dry-run] [--from-checkout]
-       local-review service uninstall | start | stop | restart | status [--json]
+       local-review service uninstall | start | status [--json]
+       local-review service stop | restart [--force]
        local-review service logs [-f] [-n <lines>]
+       local-review busy [--json]
        local-review guide
        local-review --version | --help
 
   serve   (the default) Serve the review UI and API on http://localhost:<port> (127.0.0.1 only).
           --port <n>       the port (default 5622, or $PORT)
-          --quiet, -q      print just the "Local Review on <url>" line: no banner, no hint for agents
-                           (the banner is only shown on a terminal anyway)
+          It prints `Local Review <version>: <url>` first, then the projects directory and a hint for agents.
+          --quiet, -q      print just that first line: no banner, no hint for agents
+                           (the banner is only shown on a terminal anyway, on stderr)
   plan    For each PR in scope, in order: commit, status (draft / ready / published), branch (with its
           status), base, title and the exact full body (project intro, stack note, ---, PR description), plus
           any recorded github: info and the comments the reviewer marked for the GitHub PR (with file and
@@ -101,9 +104,13 @@ Usage: local-review [--data-dir <path>] [serve] [--port <n>] [--quiet]
           Start the installed service, and wait until it answers.
   service stop
           Stop it until `service start` or your next login. It stays installed: `service uninstall` removes it.
+          Refuses (exit 75) while it's busy saving, snapshotting or syncing with GitHub (see `busy`).
+          --force          stop it anyway
   service restart
           Restart it, e.g. after `npm i -g local-review@latest`. A service file an older version wrote, or one
-          whose Node or local-review has gone, is rewritten first, keeping its port and environment.
+          whose Node or local-review has gone, is rewritten first, keeping its port and environment. Refuses
+          (exit 75) while it's busy, as `stop` does.
+          --force          restart it anyway
   service status
           Whether it's installed, loaded, running and answering, on which port, which version, and what it runs.
           Exits 0 if it's running and answering, 3 if it's installed but not, 4 if it isn't installed.
@@ -112,21 +119,27 @@ Usage: local-review [--data-dir <path>] [serve] [--port <n>] [--quiet]
           The end of the service's log, <data>/logs/service.log.
           -f, --follow     then keep printing what it writes, until interrupted
           -n, --lines <n>  how many lines (default 50)
+  busy    Ask the running Local Review whether it's busy: saving a comment or a description, taking a backup
+          snapshot, or syncing with GitHub. Exits 0 if it isn't, 75 if it is, 3 if nothing is running. It finds
+          the instance through <data>/runtime.json, which `serve` writes.
+          --json           as JSON: { running, busy, url, version, counts }
   guide   Print the guide for agents using Local Review to get their work reviewed (AGENT-GUIDE.md).
 
   --data-dir <path>
           The data home for this command, as LOCAL_REVIEW_HOME sets it (default ~/.local-review).
 
 Data: $LOCAL_REVIEW_HOME/projects (default ~/.local-review/projects). Agents: run `local-review guide`.
-Exit codes: 0 done, 1 failed, 2 bad usage, 3 not running, 4 not installed (`service`).
+Exit codes: 0 done, 1 failed, 2 bad usage, 3 not running, 4 not installed (`service`), 75 busy (`busy`,
+`service stop` and `restart`: try again later, or use --force).
 ```
 
 ## `local-review [serve]`
 
 Serves the review UI and its [HTTP API](/reference/http-api/) on `http://localhost:5622`, bound to 127.0.0.1 only
 (see [Localhost security](/guarantees/localhost-security/)). `serve` is the default, so `local-review` on its own
-does the same. On start, in a terminal, it prints a LOCAL REVIEW banner, then the URL and the projects directory it
-reads, then how to get a coding agent to set up a project (from [its llms.txt](/agents/llms-txt/)):
+does the same. On start, its first line is `Local Review <version>: <url>`, then the projects directory it reads,
+then how to get a coding agent to set up a project (from [its llms.txt](/agents/llms-txt/)). In a terminal, a LOCAL
+REVIEW banner comes first:
 
 ```text
  ██     ▄████▄ ▄█████ ▄████▄ ██         █████▄ ██████ ██  ██ ██ ██████ ██    ██
@@ -136,8 +149,8 @@ reads, then how to get a coding agent to set up a project (from [its llms.txt](/
  ██     ██  ██ ██     ██  ██ ██         ██  ██ ██      ████  ██ ██     ██ ██ ██
  ██████ ▀████▀ ▀█████ ██  ██ ██████     ██  ██ ██████   ██   ██ ██████ ▀██▀▀██▀
 
-Local Review on http://localhost:5622  (projects: /home/you/.local-review/projects)
-
+Local Review 0.15.0: http://localhost:5622
+Projects: /home/you/.local-review/projects
 
 Point Claude Code/Codex/pi/whatever at http://localhost:5622/llms.txt then ask it to generate a project definition for you. Example:
 
@@ -146,15 +159,23 @@ Point Claude Code/Codex/pi/whatever at http://localhost:5622/llms.txt then ask i
 
 The URLs are the ones it's actually on, so `--port` or `PORT` changes them. The banner is in the header's plum and
 amber, in full colour where the terminal has it, else the nearest of 256 or 16 colours, else none (`NO_COLOR`; see
-[Environment variables](/reference/environment/#colour-no_color-and-force_color)). It's left out when the output
-isn't a terminal (piped, written to a log file, in CI) unless `FORCE_COLOR` is set, and a terminal narrower than 80
-columns gets a one-line title instead. The `Local Review on …` line is always printed, first thing after the banner,
-so a script can wait for it.
+[Environment variables](/reference/environment/#colour-no_color-and-force_color)). It goes to stderr, and it's left
+out when stderr isn't a terminal (written to a log file, in CI) unless `FORCE_COLOR` is set. A terminal narrower than
+80 columns gets a one-line title instead.
+
+**For scripts:** the first line on stdout is always `Local Review <version>: <url>`, as the
+[CLI contract](https://github.com/edspencer/cli-contract) has it, so a script can wait for it and read the URL from
+it. The server's own log lines go to stderr. Before 0.15.0 the line was
+`Local Review on <url>  (projects: <dir>)`, after the banner.
+
+While it runs, `serve` writes `<data>/runtime.json` (its pid, port, URL and version) so
+[`local-review busy`](#local-review-busy) can find it, and removes it when it exits. On `SIGTERM` or `SIGINT` it lets
+saves and GitHub syncs under way finish first, for up to 5 seconds.
 
 | Option | |
 | --- | --- |
 | `--port <n>` | The port, 0–65535 (`0` picks any free port). Wins over `PORT`. Also written `--port=<n>`. |
-| `--quiet`, `-q` | Print only the `Local Review on …` line: no banner, no hint for agents. |
+| `--quiet`, `-q` | Print only the first line, `Local Review <version>: <url>`: no banner, no hint for agents. |
 
 If the port is taken, it says so and exits (`port 5622 is already in use; pick another with --port <n>`). It never
 falls back to another port by itself: pick one with `--port <n>` or `PORT=<n>`.
@@ -338,7 +359,8 @@ Then: check both project.yaml files: each repo's range (…) and its stacks' sta
 
 ```text
 local-review service install [--port <n>] [--dry-run] [--from-checkout]
-local-review service uninstall | start | stop | restart | status [--json]
+local-review service uninstall | start | status [--json]
+local-review service stop | restart [--force]
 local-review service logs [-f] [-n <lines>]
 ```
 
@@ -351,9 +373,9 @@ story, with the generated file: [Run it as a service](/getting-started/service/)
 | --- | --- |
 | `service install` | Write the service's file and start it, then wait for it to answer. It runs this `local-review` and this Node, by absolute path, with a `PATH` that must find git, on 127.0.0.1 only. Running it again rewrites the file, restarting the service only if it changed, and keeps the port, `LOCAL_REVIEW_HOME` and `LOCAL_REVIEW_USER` it was installed with unless you give new ones. |
 | `service start` | Start the installed service, and wait until it answers. |
-| `service stop` | Stop it until `service start` or your next login. It stays installed and enabled; `service uninstall` removes it. |
-| `service restart` | Restart it, e.g. after `npm i -g local-review@latest`. A stale service file (an older version's, or one whose Node or `local-review` has gone) is rewritten first, keeping its port and environment. |
-| `service status` | Whether it's installed, loaded, running and answering, its port, the version installed and the version answering, the Node and `local-review` it runs, and its log, with a warning if something is off. Exits 0, 3 (installed, not running or not answering) or 4 (not installed). `--json` for scripts. |
+| `service stop` | Stop it until `service start` or your next login. It stays installed and enabled; `service uninstall` removes it. Refuses with exit 75 while it's [busy](#local-review-busy); `--force` stops it anyway (and says what it's overriding). |
+| `service restart` | Restart it, e.g. after `npm i -g local-review@latest`. A stale service file (an older version's, or one whose Node or `local-review` has gone) is rewritten first, keeping its port and environment. Refuses with exit 75 while it's busy, unless `--force`. |
+| `service status` | Whether it's installed, loaded, running and answering, its port, the version installed and the version answering, the Node and `local-review` it runs, its log and whether it's busy, with a warning if something is off. Exits 0, 3 (installed, not running or not answering) or 4 (not installed). `--json` for scripts. |
 | `service logs` | The last 50 lines of its log, `<data>/logs/service.log`. `-n <lines>` for more or fewer, `-f` to keep printing what it writes. |
 | `service uninstall` | Stop it and remove its file. Nothing else: the data home, `logs/` included, is untouched. |
 
@@ -365,6 +387,29 @@ story, with the generated file: [Run it as a service](/getting-started/service/)
 
 It refuses to install from npx's cache (or pnpm dlx's, bunx's, yarn dlx's), which can be deleted at any time, and
 says what to do instead: `npm i -g local-review`, then `local-review service install`.
+
+## `local-review busy`
+
+```text
+local-review busy [--json]
+```
+
+Asks the running Local Review whether it's busy: whether a restart now would cut short a write under way. It counts
+saves (a comment, a reply, a Viewed mark, a description, an image), backup snapshots and GitHub syncs. Open pages
+don't count: drafts live in the browser, and pages reconnect after a restart.
+
+```text
+$ local-review busy
+Local Review is busy: 1 save and 1 GitHub sync are running.
+$ echo $?
+75
+```
+
+It exits 0 when it isn't busy, 75 when it is, and 3 when nothing is running. It finds the instance through
+`<data>/runtime.json`, which `serve` writes, so give it the same `--data-dir` (or `LOCAL_REVIEW_HOME`) as the
+instance. `--json` prints `{ running, busy, url, version, counts }`. It's for scripts and for anything that restarts
+Local Review (`service stop` and `restart` run the same check). The server's side is
+[`GET /api/busy`](/reference/http-api/).
 
 ## `local-review guide`
 
@@ -388,8 +433,9 @@ that uses it, as `LOCAL_REVIEW_HOME` would.
 | `0` | Success. |
 | `1` | An error, printed as `local-review: <message>` (no such project, the port is in use, `init`'s file exists, a file that isn't an image, a `move` that would replace a file, a `service install` refused or not answering, …). |
 | `2` | Bad usage (an unknown command or option, a missing argument, a bad project or asset name, a URL `asset url` can't use): the message, then the usage. |
-| `3` | `service status`: installed, but not running or not answering. |
+| `3` | `service status`: installed, but not running or not answering. `busy`: nothing is running. |
 | `4` | `service status`, `start`, `stop`, `restart`, `logs`: there's no service installed. |
+| `75` | `busy`: it's busy. `service stop`, `restart`: refused because it's busy; try again later, or use `--force`. |
 
 These follow the [CLI contract](https://github.com/edspencer/cli-contract) shared by Local Review and its sibling tools.
 
