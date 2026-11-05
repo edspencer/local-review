@@ -40,6 +40,11 @@ A test fails the build if any code gains a way around that.
 - **`runtime.json` is Local Review's own note to itself**, not yours: while it runs, its pid, port, URL and version,
   for [`local-review busy`](/reference/cli/#local-review-busy). It's removed when Local Review exits, but only while
   it still names that process, so it can't remove another instance's.
+- **`local-review update` writes only its own two files** in the data home: `update-check.json` (what npm said, written
+  to a temporary file and renamed into place) and `update.lock` (its pid while it runs, removed when it ends, or by
+  the next `update` once that pid has gone). The rest of what it changes is the global install of `local-review`
+  itself, through npm. Its check that npm's global folder is writable makes an empty directory there and removes it
+  at once.
 - **The only deletion of anything else in `~/.local-review` is snapshot pruning**, guarded as below.
 
 The one thing that removes your words is you: deleting your own comment in the UI removes it from the file, as you'd
@@ -68,6 +73,9 @@ these) and fails if any other code (or more code there) calls `unlink`, `rm`, `r
 `service uninstall`'s single `unlink` in `server/service/manager.ts`, and the test checks that it sits behind the check
 that the file is the service's own (`local-review.server.plist` or `local-review-server.service`, in the service
 directory); and `runtime.json`'s write, rename and removal in `server/contract/runtime-file.ts`, where the test checks
-that the removal is of `runtime.json` only, after checking its pid.
+that the removal is of `runtime.json` only, after checking its pid. `update`'s files in `server/contract/` have theirs
+too: `lock.ts` creates `update.lock` with `O_EXCL` and removes only it, and only once its pid is ours or gone;
+`update-check.ts` writes a temporary file, renames it to `update-check.json`, and removes only that temporary file;
+`package-manager.ts` removes only the empty directory it has just made for the writability check. The test pins each.
 
 Contributors: if the guard fails on your change, route the write through `server/safefs.ts`; don't widen the test.

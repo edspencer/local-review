@@ -96,6 +96,18 @@ describe('local-review CLI', () => {
       [['service', 'status', '--port', '1'], /service status doesn't take --port/],
       [['service', 'uninstall', 'x'], /unexpected argument 'x'/],
       [['init', 'x', '--from-checkout'], /init doesn't take --from-checkout/],
+      // a flag on a command that can't act on it is a usage error, not dropped (cli-contract SPEC §1)
+      [['service', 'start', '--force'], /service start doesn't take --force/],
+      [['service', 'status', '--refresh'], /service status doesn't take --refresh/],
+      [['busy', '--check'], /busy doesn't take --check/],
+      [['update', '--refresh'], /update doesn't take --refresh/],
+      [['update', '--offline'], /update doesn't take --offline/],
+      [['upgrade', 'now'], /unexpected argument 'now'/],
+      [['update', '--to'], /--to needs a value/],
+      [['doctor', '--force'], /doctor doesn't take --force/],
+      [['doctor', '--check'], /doctor doesn't take --check/],
+      [['serve', '--yes'], /serve doesn't take --yes/],
+      [['service', 'install', '--offline'], /service install doesn't take --offline/],
     ] as const) {
       const r = await lr([...args]);
       assert.equal(r.code, 2, `${args.join(' ')}: ${r.stderr}`);
@@ -169,6 +181,76 @@ describe('local-review CLI', () => {
     const bad = await lr([], { PORT: 'abc' });
     assert.equal(bad.code, 2);
     assert.match(bad.stderr, /PORT must be a port number \(0-65535\), not 'abc'/);
+  });
+});
+
+describe('update and doctor (cli-contract SPEC §1, §5, §6)', () => {
+  /** A registry that knows one newer local-review. */
+  async function registry(latest: string) {
+    const http = await import('node:http');
+    const asked: string[] = [];
+    const server = http.createServer((req, res) => {
+      asked.push(req.url ?? '');
+      res.setHeader('content-type', 'application/json');
+      if (req.url === '/-/package/local-review/dist-tags') res.end(JSON.stringify({ latest }));
+      else if (req.url === `/local-review/${latest}`) res.end(JSON.stringify({ name: 'local-review', version: latest, engines: { node: '>=22' } }));
+      else res.writeHead(404).end('{}');
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    return { url, asked, close: () => new Promise((r) => server.close(r)) };
+  }
+
+  test('from this checkout: --check reports (exit 0) with the right command; an update exits 5; `upgrade` is the same', async () => {
+    const home = tmpDir('lr-test-update-');
+    const reg = await registry('99.0.0');
+    try {
+      const env = { LOCAL_REVIEW_HOME: path.join(home, 'data'), HOME: home, npm_config_registry: reg.url };
+      const c = await lr(['update', '--check', '--json'], env);
+      assert.equal(c.code, 0, c.stderr);
+      const doc = JSON.parse(c.stdout);
+      assert.equal(doc.name, 'local-review');
+      assert.equal(doc.target, '99.0.0');
+      assert.equal(doc.updateAvailable, true);
+      assert.equal(doc.installMethod, 'checkout');
+      assert.equal(doc.canUpdate, false);
+      assert.match(c.stderr, /^Local Review 99\.0\.0 is available \(you have .*\)\.\n  Run: git pull && npm install && npm run build +\(this is a checkout\)\n  Changes: https:\/\/github\.com\/edspencer\/local-review\/releases\/tag\/v99\.0\.0\n$/);
+      // what `service status` repeats
+      assert.equal(JSON.parse(fs.readFileSync(path.join(home, 'data', 'update-check.json'), 'utf8')).target, '99.0.0');
+      const u = await lr(['upgrade', '--yes'], env);
+      assert.equal(u.code, 5, u.stderr);
+      assert.match(u.stderr, /local-review: this install can't update itself: it's running from a checkout/);
+      assert.equal(u.stdout, '');
+      assert.ok(!fs.existsSync(path.join(home, 'data', 'update.lock')), 'the lock is released');
+    } finally {
+      await reg.close();
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('a registry that does not answer: exit 1, and doctor --offline never asks it', async () => {
+    const home = tmpDir('lr-test-update-');
+    const reg = await registry('99.0.0');
+    await reg.close();
+    try {
+      const env = { LOCAL_REVIEW_HOME: path.join(home, 'data'), HOME: home, npm_config_registry: reg.url };
+      const u = await lr(['update', '--check'], env);
+      assert.equal(u.code, 1);
+      assert.match(u.stderr, /^local-review: /);
+      const d = await lr(['doctor', '--offline', '--json'], env);
+      assert.ok(d.code === 0 || d.code === 1, d.stderr);
+      const doc = JSON.parse(d.stdout);
+      assert.equal(typeof doc.ok, 'boolean');
+      assert.deepEqual(
+        doc.checks.map((c: { id: string }) => c.id),
+        ['node-engines', 'install-method', 'unit', 'running-version', 'port', 'linger', 'data-home', 'git', 'gh', 'update'],
+      );
+      assert.equal(doc.checks.at(-1).status, 'skip');
+      assert.equal(doc.ok, !doc.checks.some((c: { status: string }) => c.status === 'fail'));
+      assert.equal(d.code, doc.ok ? 0 : 1);
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
   });
 });
 

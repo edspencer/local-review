@@ -14,7 +14,8 @@ import { SERVICE_FILE, removeServiceFile } from '../server/service/manager.ts';
 import { launchdManager, parseLaunchctlPrint, parsePlist, renderPlist } from '../server/service/launchd.ts';
 import { execWord, execWords, parseUnit, renderUnit } from '../server/service/systemd.ts';
 import { LABEL, buildSpec, isCheckout, portOf, refusal, serviceDir, servicePath, transientInstall, unsupported } from '../server/service/spec.ts';
-import { type ServiceContext, install, logs, restart, start, status, statusReport, stop, tailLines, uninstall } from '../server/service/index.ts';
+import { type ServiceContext, install, logs, restart, start, status, statusReport, stop, tailLines, uninstall, updateHooks } from '../server/service/index.ts';
+import { diagnose, doctorCode, renderChecks } from '../server/doctor.ts';
 
 const TMP = fs.realpathSync(tmpDir('lr-test-service-'));
 after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -913,5 +914,254 @@ describe('launchd: the bootout → bootstrap race', () => {
     const other = rig({ printsAfterBootout: 0, bootstrapCodes: [112] });
     await assert.rejects(other.m.restart({ reload: true }), /failed \(exit 112\)/);
     assert.equal(other.calls.filter((c) => c === 'launchctl bootstrap').length, 1, 'not retried');
+  });
+});
+
+describe('service install --refresh (cli-contract SPEC §1, §5 step 11)', () => {
+  test('nothing installed: exit 4, and nothing written or started', async () => {
+    const w = world('linux');
+    assert.equal(await install(w.ctx, { refresh: true }), 4);
+    assert.match(w.take().err, /^local-review: Local Review isn't installed as a service, so there's nothing to refresh/);
+    assert.ok(!fs.existsSync(w.file));
+    assert.deepEqual(w.calls, []);
+  });
+
+  for (const platform of ['linux', 'darwin'] as const)
+    test(`${platform}: re-renders from what the service records, not this shell, and restarts it; --port still wins`, async () => {
+      const w = world(platform);
+      w.ctx.env = { ...w.ctx.env, LOCAL_REVIEW_HOME: path.join(w.userHome, 'kept'), LOCAL_REVIEW_USER: 'Ed' };
+      await install(w.ctx, { port: 6001 });
+      const before = fs.readFileSync(w.file, 'utf8');
+      w.take();
+      // a different shell: another data home, no user, another PATH. None of it is what the service was installed with
+      w.ctx.env = { PATH: '/usr/bin:/bin', LOCAL_REVIEW_HOME: path.join(w.userHome, 'elsewhere') };
+      assert.equal(await install(w.ctx, { refresh: true }), 0);
+      const calls = [...w.calls];
+      const { out } = w.take();
+      assert.equal(fs.readFileSync(w.file, 'utf8'), before, 'byte-identical: the same Node, CLI, port, environment and PATH');
+      assert.match(out, /^Refreshed Local Review as a .*\(unchanged\)\nIt's running: http:\/\/localhost:6001\n$/);
+      // unchanged, but restarted all the same: update runs this to bring up the version it has just installed
+      assert.ok(calls.some((c) => /^systemctl --user restart |^launchctl kickstart -k /.test(c)), calls.join('\n'));
+      assert.ok(!fs.existsSync(path.join(w.userHome, 'elsewhere')), "this shell's LOCAL_REVIEW_HOME isn't used");
+      // flags given with it still win
+      assert.equal(await install(w.ctx, { refresh: true, port: 6002 }), 0);
+      const def = (platform === 'darwin' ? parsePlist : parseUnit)(fs.readFileSync(w.file, 'utf8'))!;
+      assert.equal(portOf(def.program), 6002);
+      assert.equal(def.env.LOCAL_REVIEW_HOME, path.join(w.userHome, 'kept'));
+      assert.equal(def.env.LOCAL_REVIEW_USER, 'Ed');
+    });
+
+  test('a service installed from a checkout on purpose is refreshed from it without --from-checkout', async () => {
+    const co = world('linux', { where: 'checkout' });
+    assert.equal(await install(co.ctx, { fromCheckout: true }), 0);
+    co.take();
+    assert.equal(await install(co.ctx, { refresh: true }), 0);
+    // a plain install still refuses it
+    await assert.rejects(install(co.ctx, {}), /source checkout/);
+  });
+
+  test('a stopped service is started by the refresh', async () => {
+    const w = world('linux');
+    await install(w.ctx, {});
+    w.state.running = false;
+    w.take();
+    assert.equal(await install(w.ctx, { refresh: true }), 0);
+    assert.equal(w.state.running, true);
+  });
+});
+
+describe("service status repeats the last update check (cli-contract SPEC §3), and never asks the registry", () => {
+  const cache = (home: string, o: { current: string; target: string; updateAvailable: boolean; checkedAt?: string }) => {
+    fs.mkdirSync(home, { recursive: true });
+    fs.writeFileSync(
+      path.join(home, 'update-check.json'),
+      JSON.stringify({ name: 'local-review', installMethod: 'npm-global', canUpdate: true, checkedAt: new Date().toISOString(), ...o }),
+    );
+  };
+
+  test('installed: from the data home the service uses; the notice on stderr, with and without --json', async () => {
+    const w = world('linux');
+    w.ctx.version = '1.0.0';
+    await install(w.ctx, {});
+    w.take();
+    w.ctx.fetch = async () => {
+      throw new Error('connection refused'); // and the registry is never asked: only /api/busy goes through fetch
+    };
+    cache(path.join(w.userHome, '.local-review'), { current: '1.0.0', target: '1.1.0', updateAvailable: true });
+    assert.equal(await status(w.ctx, { json: true }), 0);
+    let r = w.take();
+    const doc = JSON.parse(r.out);
+    assert.equal(doc.update.latest, '1.1.0');
+    assert.equal(doc.update.updateAvailable, true);
+    assert.match(r.err, /^Local Review 1\.1\.0 is available \(you have 1\.0\.0\)\.\n  Run: local-review update\n  Changes: https:\/\/github\.com\/edspencer\/local-review\/releases\/tag\/v1\.1\.0\n$/);
+    assert.equal(await status(w.ctx), 0);
+    r = w.take();
+    assert.doesNotMatch(r.out, /available/);
+    assert.match(r.err, /Local Review 1\.1\.0 is available/);
+  });
+
+  test('left out, never null: no cache, a cache for another version, or nothing available', async () => {
+    const w = world('linux');
+    w.ctx.version = '1.0.0';
+    w.ctx.dataHome = path.join(w.userHome, 'here');
+    assert.equal(await status(w.ctx, { json: true }), 4);
+    assert.ok(!('update' in JSON.parse(w.take().out)));
+    // the cache is about 0.9.0, and this is 1.0.0: an update has happened since, so it says nothing
+    cache(w.ctx.dataHome, { current: '0.9.0', target: '1.0.0', updateAvailable: true });
+    await status(w.ctx, { json: true });
+    let r = w.take();
+    assert.ok(!('update' in JSON.parse(r.out)));
+    assert.equal(r.err, '');
+    // nothing installed: it's read from this command's data home; up to date, so no notice
+    cache(w.ctx.dataHome, { current: '1.0.0', target: '1.0.0', updateAvailable: false });
+    await status(w.ctx, { json: true });
+    r = w.take();
+    assert.deepEqual(JSON.parse(r.out).update, { latest: '1.0.0', updateAvailable: false, checkedAt: JSON.parse(fs.readFileSync(path.join(w.ctx.dataHome, 'update-check.json'), 'utf8')).checkedAt });
+    assert.equal(r.err, '');
+  });
+});
+
+describe("update's service hooks (server/update.ts → updateHooks)", () => {
+  /** A stand-in CLI: records how it was run, and exits with $FAKE_EXIT. */
+  const fakeCli = (dir: string) => {
+    const f = path.join(dir, 'fake-cli.mjs');
+    fs.writeFileSync(f, "import fs from 'node:fs';\nfs.appendFileSync(process.env.FAKE_LOG, JSON.stringify(process.argv.slice(2)) + '\\n');\nprocess.stderr.write('local-review: it said no\\n');\nprocess.exitCode = Number(process.env.FAKE_EXIT ?? 0);\n");
+    return f;
+  };
+
+  test('installed: the service data home and port; stop is `service stop --force` by this CLI; refresh is `service install --refresh` by the one named', async () => {
+    const w = world('linux');
+    w.ctx.env = { ...w.ctx.env, LOCAL_REVIEW_HOME: path.join(w.userHome, 'data') };
+    await install(w.ctx, { port: 6001 });
+    w.take();
+    w.ctx.execPath = process.execPath; // the hooks' children are real
+    w.ctx.dataHome = path.join(w.userHome, 'not-this-one');
+    const cli = fakeCli(TMP);
+    const log = path.join(TMP, `hooks-${Date.now()}.log`);
+    process.env.FAKE_LOG = log;
+    try {
+      const h = await updateHooks(w.ctx, { cli });
+      assert.equal(h.home, path.join(w.userHome, 'data'), "the service's data home: the one `service status` reads update-check.json from");
+      assert.equal(h.busyUrl, 'http://127.0.0.1:6001');
+      assert.deepEqual(h.hooks.inspect(), { installed: true, running: true, url: 'http://127.0.0.1:6001', log: path.join(w.userHome, 'data', 'logs', 'service.log') });
+      h.hooks.stop();
+      const refreshed = h.hooks.refresh(cli);
+      assert.equal(refreshed.status, 0);
+      assert.deepEqual(fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l)), [
+        ['service', 'stop', '--force'],
+        ['service', 'install', '--refresh'],
+      ]);
+      process.env.FAKE_EXIT = '1';
+      assert.throws(() => h.hooks.stop(), /^Error: it said no$/);
+      assert.equal(h.hooks.refresh(cli).status, 1);
+      fs.writeFileSync(path.join(w.userHome, 'data', 'logs', 'service.log'), 'one\ntwo\nthree\n');
+      assert.equal(h.hooks.tail(2), 'two\nthree\n');
+    } finally {
+      delete process.env.FAKE_LOG;
+      delete process.env.FAKE_EXIT;
+    }
+  });
+
+  test("not installed: this command's data home, and a foreground `serve` found only through its runtime.json", async () => {
+    const w = world('linux');
+    w.ctx.dataHome = path.join(w.userHome, 'here');
+    const h = await updateHooks(w.ctx, { cli: '/nowhere' });
+    assert.equal(h.home, w.ctx.dataHome);
+    assert.equal(h.busyUrl, undefined);
+    assert.deepEqual(h.hooks.inspect(), { installed: false, running: false });
+    fs.mkdirSync(w.ctx.dataHome, { recursive: true });
+    fs.writeFileSync(path.join(w.ctx.dataHome, 'runtime.json'), JSON.stringify({ pid: process.pid, port: 7777, url: 'http://127.0.0.1:7777', version: '9.9.9', startedAt: new Date().toISOString() }));
+    assert.deepEqual(h.hooks.inspect(), { installed: false, running: true, url: 'http://127.0.0.1:7777' });
+    assert.equal(h.hooks.tail(20), '');
+  });
+});
+
+describe('doctor (cli-contract SPEC §1)', () => {
+  const registry = (latest: string) => async (url: string | URL | Request) => {
+    const u = String(url);
+    if (u.endsWith('/api/health')) throw new Error('connection refused');
+    if (u.includes('/dist-tags')) return new Response(JSON.stringify({ latest }));
+    return new Response(JSON.stringify({ name: 'local-review', version: latest, engines: { node: '>=22' } }));
+  };
+  const run = (w: ReturnType<typeof world>, o: Partial<Parameters<typeof diagnose>[0]> = {}) =>
+    diagnose({
+      ctx: w.ctx,
+      version: '1.0.0',
+      engines: '>=22',
+      home: path.join(w.userHome, '.local-review'),
+      entry: w.cli,
+      nodeVersion: '22.12.0',
+      npmGlobalRoot: () => path.dirname(w.root),
+      registry: 'http://registry.test',
+      isListening: async () => false,
+      linger: async () => true,
+      path: w.ctx.env.PATH,
+      ...o,
+    });
+
+  test('a healthy install: every check passes, in the documented order, and the result is cached for `service status`', async () => {
+    const w = world('linux');
+    w.ctx.fetch = registry('1.0.0') as typeof fetch;
+    fs.writeFileSync(path.join(w.bin, 'gh'), '#!/bin/sh\n', { mode: 0o755 });
+    const { checks, notice } = await run(w);
+    assert.deepEqual(
+      checks.map((c) => `${c.id} ${c.status}`),
+      ['node-engines pass', 'install-method pass', 'unit skip', 'running-version skip', 'port pass', 'linger pass', 'data-home pass', 'git pass', 'gh pass', 'update pass'],
+    );
+    assert.equal(notice, undefined);
+    assert.equal(doctorCode(checks), 0);
+    const cached = JSON.parse(fs.readFileSync(path.join(w.userHome, '.local-review', 'update-check.json'), 'utf8'));
+    assert.equal(cached.current, '1.0.0');
+    assert.equal(cached.updateAvailable, false);
+    assert.match(renderChecks(checks), /^✓ Node 22\.12\.0 \(Local Review needs >=22\)\n✓ Local Review 1\.0\.0, installed globally with npm: `local-review update` can update it\n- it isn't installed as a service/);
+  });
+
+  test('failures have a fix, warnings keep exit 0, --offline never asks the registry', async () => {
+    const w = world('linux', { where: 'checkout' });
+    w.ctx.fetch = async () => {
+      throw new Error('the registry was asked');
+    };
+    const { checks } = await run(w, { nodeVersion: '20.1.0', isListening: async () => true, offline: true, path: '/nowhere' });
+    const by = Object.fromEntries(checks.map((c) => [c.id, c]));
+    assert.equal(by['node-engines'].status, 'fail');
+    assert.match(by['node-engines'].message, /Node 20\.1\.0 is too old: Local Review 1\.0\.0 needs Node >=22/);
+    assert.equal(by['install-method'].status, 'warn');
+    assert.match(by['install-method'].fix!, /^git pull && npm install && npm run build/);
+    assert.equal(by.port.status, 'fail');
+    assert.match(by.port.message, /something that isn't Local Review is listening on port 5622/);
+    assert.equal(by.git.status, 'fail');
+    assert.equal(by.gh.status, 'warn');
+    assert.equal(by.update.status, 'skip');
+    for (const c of checks) if (c.status === 'fail') assert.ok(c.fix, `${c.id} has a fix`);
+    assert.equal(doctorCode(checks), 1);
+    assert.match(renderChecks(checks), /^✗ Node 20\.1\.0 is too old.*\n    fix: install Node >=22/m);
+  });
+
+  test('the service: a Node that has gone fails, linger off warns, a newer version warns with the notice', async () => {
+    const w = world('linux');
+    await install(w.ctx, {});
+    w.take();
+    fs.rmSync(w.node);
+    w.ctx.fetch = registry('1.2.0') as typeof fetch;
+    const { checks, notice } = await run(w, { linger: async () => false });
+    const by = Object.fromEntries(checks.map((c) => [c.id, c]));
+    assert.equal(by.unit.status, 'fail');
+    assert.match(by.unit.message, /The Node it runs, .* isn't there any more/);
+    assert.equal(by.linger.status, 'warn');
+    assert.match(by.linger.fix!, /^sudo loginctl enable-linger /);
+    assert.equal(by.update.status, 'warn');
+    assert.match(notice!, /^Local Review 1\.2\.0 is available \(you have 1\.0\.0\)\.\n  Run: local-review update\n/);
+  });
+
+  test('a registry that does not answer is a warning, not a failure', async () => {
+    const w = world('darwin');
+    w.ctx.fetch = async () => {
+      throw new Error('getaddrinfo ENOTFOUND');
+    };
+    const { checks } = await run(w);
+    const update = checks.find((c) => c.id === 'update')!;
+    assert.equal(update.status, 'warn');
+    assert.match(update.fix!, /--offline/);
+    assert.equal(checks.find((c) => c.id === 'linger')!.status, 'skip');
   });
 });

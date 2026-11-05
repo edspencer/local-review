@@ -84,6 +84,7 @@ export default defineConfig({
 						{ label: 'Quickstart', slug: 'getting-started/quickstart', badge: { text: 'npx', variant: 'tip' } },
 						{ label: 'Installation', slug: 'getting-started/installation' },
 						{ label: 'Run it as a service', slug: 'getting-started/service' },
+						{ label: 'Updating', slug: 'getting-started/updating' },
 					],
 				},
 				{
