@@ -1,4 +1,4 @@
-// From edspencer/cli-contract reference/service/rotate.ts @ 0.2; local changes: none
+// From edspencer/cli-contract reference/service/rotate.ts @ 1.0; local changes: none
 // Rotating the service log (SPEC §7: "the tool rotates its own log, by copying it and then truncating it"). Lifted
 // from Paddock's `service-log.ts`. Node built-ins only.
 //

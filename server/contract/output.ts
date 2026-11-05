@@ -1,4 +1,4 @@
-// From edspencer/cli-contract reference/output.ts @ 0.2; local changes: imports end in .js, not .ts
+// From edspencer/cli-contract reference/output.ts @ 1.0; local changes: imports end in .js, not .ts
 // A CLI's output, the way SPEC §2 and §3 say: errors as `<tool>: <message>` on stderr, colour only on a TTY (honouring
 // NO_COLOR and FORCE_COLOR), and with `--json`, one JSON document on stdout and every word of prose on stderr.
 // Node built-ins only.
