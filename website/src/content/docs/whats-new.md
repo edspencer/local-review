@@ -7,9 +7,7 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
-## Coming in 0.15.0: `local-review busy`
-
-Not released yet.
+## 0.15.0: `local-review busy`
 
 - **Restarts wait for your writes.** `local-review busy` says whether Local Review is saving, taking a backup
   snapshot or syncing with GitHub. It exits 0 when it isn't, 75 when it is, and 3 when nothing is running. `service
