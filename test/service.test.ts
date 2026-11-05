@@ -14,7 +14,7 @@ import { SERVICE_FILE, removeServiceFile } from '../server/service/manager.ts';
 import { launchdManager, parseLaunchctlPrint, parsePlist, renderPlist } from '../server/service/launchd.ts';
 import { execWord, execWords, parseUnit, renderUnit } from '../server/service/systemd.ts';
 import { LABEL, buildSpec, isCheckout, portOf, refusal, serviceDir, servicePath, transientInstall, unsupported } from '../server/service/spec.ts';
-import { type ServiceContext, install, logs, restart, start, status, statusReport, stop, tailLines, uninstall, updateHooks } from '../server/service/index.ts';
+import { type ServiceContext, install, logs, restart, start, status, statusReport, stop, tailLines, uninstall, updateHooks, withJson } from '../server/service/index.ts';
 import { diagnose, doctorCode, renderChecks } from '../server/doctor.ts';
 
 const TMP = fs.realpathSync(tmpDir('lr-test-service-'));
@@ -492,6 +492,95 @@ describe('service install, on macOS (launchd)', () => {
     // a new port: launchd only reads a plist at bootstrap
     await install(w.ctx, { port: 6001 });
     assert.ok(w.calls.join('\n').includes(`launchctl bootout gui/501/local-review.server\nlaunchctl print gui/501/local-review.server\nlaunchctl enable gui/501/local-review.server\nlaunchctl bootstrap gui/501 ${w.file}`), w.calls.join('\n'));
+  });
+});
+
+describe('--json on install, uninstall, start, stop and restart (cli-contract SPEC §1)', () => {
+  /** One JSON document on stdout, and nothing else. */
+  const doc = (out: string) => {
+    const d = JSON.parse(out);
+    assert.equal(out, JSON.stringify(d, null, 2) + '\n', 'exactly one document');
+    return d;
+  };
+
+  test('install: the document on stdout, with the status report; the prose on stderr; the same exit code', async () => {
+    const w = world('linux');
+    assert.equal(await withJson(w.ctx, 'install', (c) => install(c, {})), 0);
+    const { out, err } = w.take();
+    const d = doc(out);
+    assert.equal(d.ok, true);
+    assert.equal(d.action, 'install');
+    assert.equal('error' in d, false);
+    assert.deepEqual([d.dryRun, d.refreshed, d.changed], [false, false, true]);
+    assert.deepEqual([d.installed, d.running, d.answering, d.port, d.url, d.unit], [true, true, true, 5622, 'http://localhost:5622', w.file]);
+    assert.equal(d.log, path.join(w.userHome, '.local-review', 'logs', 'service.log'));
+    assert.match(err, /^Installed Local Review as a systemd user unit: /m);
+    assert.match(err, /It's running: http:\/\/localhost:5622/);
+  });
+
+  test('install --dry-run: the definition it would write, and nothing written', async () => {
+    const w = world('darwin');
+    assert.equal(await withJson(w.ctx, 'install', (c) => install(c, { dryRun: true })), 0);
+    const { out, err } = w.take();
+    const d = doc(out);
+    assert.deepEqual([d.ok, d.dryRun, d.installed], [true, true, false]);
+    assert.match(d.definition, /<key>Label<\/key>\s+<string>local-review\.server<\/string>/);
+    assert.match(err, /Would write the LaunchAgent/);
+    assert.equal(fs.existsSync(w.file), false);
+  });
+
+  test('stop, start, restart, uninstall: each says what it found, and stdout has nothing else', async () => {
+    const w = world('linux');
+    await install(w.ctx, {});
+    w.take();
+    let d = doc((await withJson(w.ctx, 'stop', (c) => stop(c)), w.take().out));
+    assert.deepEqual([d.ok, d.action, d.wasRunning, d.running], [true, 'stop', true, false]);
+    d = doc((await withJson(w.ctx, 'start', (c) => start(c)), w.take().out));
+    assert.deepEqual([d.ok, d.action, d.wasRunning, d.running, d.answering], [true, 'start', false, true, true]);
+    d = doc((await withJson(w.ctx, 'restart', (c) => restart(c)), w.take().out));
+    assert.deepEqual([d.ok, d.action, d.rewritten, d.running], [true, 'restart', false, true]);
+    d = doc((await withJson(w.ctx, 'uninstall', (c) => uninstall(c)), w.take().out));
+    assert.deepEqual([d.ok, d.action, d.wasInstalled, d.installed], [true, 'uninstall', true, false]);
+  });
+
+  test("not installed: exit 4 and error 'not installed'; busy: 75 and error 'busy', and nothing stopped", async () => {
+    const w = world('linux');
+    for (const [action, run] of [
+      ['start', start],
+      ['stop', stop],
+      ['restart', restart],
+    ] as const) {
+      assert.equal(await withJson(w.ctx, action, (c) => run(c)), 4, action);
+      const { out, err } = w.take();
+      assert.deepEqual([doc(out).ok, doc(out).error, doc(out).installed], [false, 'not installed', false], action);
+      assert.match(err, /isn't installed as a service/);
+    }
+    await install(w.ctx, {});
+    w.ctx.fetch = async () => new Response(JSON.stringify({ busy: true, version: '9.9.9', counts: { save: 1, snapshot: 0, sync: 0 } }));
+    w.take();
+    assert.equal(await withJson(w.ctx, 'stop', (c) => stop(c)), 75);
+    const { out, err } = w.take();
+    const d = doc(out);
+    assert.deepEqual([d.ok, d.error, d.running, d.busy], [false, 'busy', true, { busy: true, counts: { save: 1, snapshot: 0, sync: 0 } }]);
+    assert.match(err, /1 save/);
+  });
+
+  test("a failure says why; a refusal that's thrown still gets its document, and is rethrown (exit 1)", async () => {
+    const w = world('linux');
+    await install(w.ctx, {});
+    w.ctx.health = async () => null; // it starts, but never answers
+    w.take();
+    assert.equal(await withJson(w.ctx, 'restart', (c) => restart(c)), 1);
+    let { out } = w.take();
+    assert.deepEqual([doc(out).ok, doc(out).error], [false, 'restarted the service, but nothing answered on http://localhost:5622 in time']);
+
+    const npx = world('linux', { where: 'npx' });
+    await assert.rejects(withJson(npx.ctx, 'install', (c) => install(c, {})), /npx's cache/);
+    ({ out } = npx.take());
+    const d = doc(out);
+    assert.equal(d.ok, false);
+    assert.match(d.error, /npx's cache/);
+    assert.equal(d.installed, false);
   });
 });
 

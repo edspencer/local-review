@@ -49,13 +49,21 @@ export interface ServiceContext extends PlatformContext {
   dataHome?: string;
   /** This CLI's version, which `status` repeats an update check for (cli-contract SPEC §3). */
   version?: string;
+  /** With `--json` (withJson): what a command adds to its JSON document, beyond the status report. */
+  facts?: Record<string, unknown>;
 }
+
+/** Record what `--json` should carry: a no-op without it. */
+const note = (ctx: ServiceContext, f: Record<string, unknown>) => {
+  if (ctx.facts) Object.assign(ctx.facts, f);
+};
 
 export const SERVICE_USAGE = 'service needs one of: install, uninstall, start, stop, restart, status, logs';
 
 /** cli-contract SPEC §2. */
 export const EXIT_NOT_RUNNING = 3;
 export const EXIT_NOT_INSTALLED = 4;
+export const EXIT_BUSY = 75;
 
 /** `/Users/me/x` → `~/x`, for messages. */
 const tildify = (p: string, home: string) => (p === home ? '~' : p.startsWith(home + '/') ? `~${p.slice(home.length)}` : p);
@@ -225,6 +233,7 @@ export async function install(ctx: ServiceContext, flags: InstallFlags): Promise
         ...CARRIED_ENV.filter((k) => carried[k] && !ctx.env[k]).map((k) => `${k}=${carried[k]}, as it was installed (uninstall first to drop it).`),
       ];
   if (flags.dryRun) {
+    note(ctx, { dryRun: true, definition: m.render(spec) });
     ctx.out(`Would write the ${m.noun} ${t(m.file)} (--dry-run: nothing written, nothing started):\n\n${m.render(spec)}\n`);
     for (const n of notes) ctx.out(`${n}\n`);
     return 0;
@@ -243,6 +252,7 @@ export async function install(ctx: ServiceContext, flags: InstallFlags): Promise
   if (st.loaded && (changed || st.running || flags.refresh)) await m.restart({ reload: changed });
   else await m.start();
 
+  note(ctx, { dryRun: false, refreshed: !!flags.refresh, changed });
   ctx.out(`${flags.refresh ? 'Refreshed' : 'Installed'} Local Review as a ${m.noun}: ${t(m.file)}${changed ? '' : ' (unchanged)'}\n`);
   for (const n of notes) ctx.out(`${n}\n`);
   if (!(await waitUntil(ctx, port))) {
@@ -272,6 +282,7 @@ export async function start(ctx: ServiceContext): Promise<number> {
   if (!def) return notInstalled(ctx);
   const port = portOf(def.program) ?? DEFAULT_PORT;
   const st = await m.status();
+  note(ctx, { wasRunning: st.running });
   if (st.running && (await answering(ctx, port))) {
     ctx.out(`Local Review is already running: http://localhost:${port}\n`);
     return 0;
@@ -309,6 +320,7 @@ export async function stop(ctx: ServiceContext, { force = false } = {}): Promise
   if (!def) return notInstalled(ctx);
   const port = portOf(def.program) ?? DEFAULT_PORT;
   const st = await m.status();
+  note(ctx, { wasRunning: st.running });
   if (st.running) {
     const refused = await checkBusy(ctx, def, port, force, 'stop');
     if (refused !== null) return refused;
@@ -327,6 +339,7 @@ export async function uninstall(ctx: ServiceContext): Promise<number> {
   const def = installed(m);
   const st = await m.status();
   await m.remove();
+  note(ctx, { wasInstalled: st.installed || st.loaded });
   const home = tildify(dataHome(def?.env ?? {}, ctx.userHome), ctx.userHome);
   ctx.out(
     st.installed || st.loaded
@@ -334,6 +347,48 @@ export async function uninstall(ctx: ServiceContext): Promise<number> {
       : "Local Review wasn't installed as a service; nothing to do.\n",
   );
   return 0;
+}
+
+export type ServiceAction = 'install' | 'uninstall' | 'start' | 'stop' | 'restart';
+
+/**
+ * `service install | uninstall | start | stop | restart --json` (cli-contract SPEC §1): one JSON document on stdout,
+ * `{ ok, action, error?, …what the command adds, …the status report }`, the shape Hallway's `service … --json` has.
+ * Every word for people goes to stderr instead, and the exit code is the one without --json. `error` is `busy` on a
+ * 75, `not installed` on a 4, and otherwise the reason it failed. A refusal that's thrown (npx's cache, a port in use)
+ * gets its document too, and is then rethrown, so it's still printed and still exits 1.
+ */
+export async function withJson(ctx: ServiceContext, action: ServiceAction, run: (ctx: ServiceContext) => Promise<number>): Promise<number> {
+  const facts: Record<string, unknown> = {};
+  let said = '';
+  const quiet: ServiceContext = {
+    ...ctx,
+    out: ctx.err,
+    err: (s) => {
+      said += s;
+      ctx.err(s);
+    },
+    facts,
+  };
+  let code: number;
+  let thrown: unknown = null;
+  try {
+    code = await run(quiet);
+  } catch (e) {
+    thrown = e;
+    code = 1;
+  }
+  const reason = thrown ? (thrown as Error).message : /^local-review: (.*)$/m.exec(said)?.[1].replace(/\.$/, '');
+  const error = code === 0 ? undefined : code === EXIT_BUSY ? 'busy' : code === EXIT_NOT_INSTALLED ? 'not installed' : (reason ?? 'failed');
+  let report: Partial<StatusReport> = {};
+  try {
+    report = await statusReport(ctx);
+  } catch {
+    /* no service manager to ask: the document says what the command found */
+  }
+  ctx.out(JSON.stringify({ ok: code === 0, action, ...(error ? { error } : {}), ...facts, ...report }, null, 2) + '\n');
+  if (thrown) throw thrown;
+  return code;
 }
 
 export interface StatusReport extends ServiceStatus {
@@ -485,6 +540,7 @@ export async function restart(ctx: ServiceContext, { force = false } = {}): Prom
     fs.mkdirSync(path.dirname(fresh.spec.log), { recursive: true });
     changed = await m.write(fresh.spec);
   }
+  note(ctx, { rewritten: changed });
   if (changed) await m.restart({ reload: true });
   else await m.restart();
   const port = portOf(def.program) ?? DEFAULT_PORT;

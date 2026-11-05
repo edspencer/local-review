@@ -33,9 +33,9 @@ Usage: local-review [--data-dir <path>] [serve] [--port <n>] [--quiet]
        local-review move <from> <to> <repo> (<sha>… | --stack <n>) [--to-repo <name>] [--dry-run]
        local-review examples [remove]
        local-review github refresh [<project>] | status [<project>]
-       local-review service install [--port <n>] [--dry-run] [--from-checkout] [--refresh]
+       local-review service install [--port <n>] [--dry-run] [--from-checkout] [--refresh] [--json]
        local-review service uninstall | start | status [--json]
-       local-review service stop | restart [--force]
+       local-review service stop | restart [--force] [--json]
        local-review service logs [-f] [-n <lines>]
        local-review busy [--json]
        local-review update [--check] [--to <version|tag>] [--yes] [--force] [--json]
@@ -105,19 +105,25 @@ Usage: local-review [--data-dir <path>] [serve] [--port <n>] [--quiet]
           --refresh        rewrite the installed service for this version, from what it was installed with (its
                            port, data home and environment, not this shell's), and restart it. Exits 4 if
                            nothing is installed. `update` runs it.
+          --json           one JSON document on stdout, { ok, action, error?, … } with `service status --json`'s
+                           fields; the messages go to stderr
   service uninstall
           Stop the service and remove its file. Your data (and its logs/) stays where it is.
+          --json           as `service install`
   service start
           Start the installed service, and wait until it answers.
+          --json           as `service install`
   service stop
           Stop it until `service start` or your next login. It stays installed: `service uninstall` removes it.
           Refuses (exit 75) while it's busy saving, snapshotting or syncing with GitHub (see `busy`).
           --force          stop it anyway
+          --json           as `service install`
   service restart
           Restart it, e.g. after `npm i -g local-review@latest`. A service file an older version wrote, or one
           whose Node or local-review has gone, is rewritten first, keeping its port and environment. Refuses
           (exit 75) while it's busy, as `stop` does.
           --force          restart it anyway
+          --json           as `service install`
   service status
           Whether it's installed, loaded, running and answering, on which port, which version, and what it runs.
           Exits 0 if it's running and answering, 3 if it's installed but not, 4 if it isn't installed.
@@ -381,9 +387,9 @@ Then: check both project.yaml files: each repo's range (…) and its stacks' sta
 ## `local-review service`
 
 ```text
-local-review service install [--port <n>] [--dry-run] [--from-checkout] [--refresh]
+local-review service install [--port <n>] [--dry-run] [--from-checkout] [--refresh] [--json]
 local-review service uninstall | start | status [--json]
-local-review service stop | restart [--force]
+local-review service stop | restart [--force] [--json]
 local-review service logs [-f] [-n <lines>]
 ```
 
@@ -408,6 +414,45 @@ story, with the generated file: [Run it as a service](/getting-started/service/)
 | `--dry-run` | Print the file it would write, and do nothing else. |
 | `--from-checkout` | Allow a source checkout's build (`dist/`) to be the service. Without it, a checkout is refused. |
 | `--refresh` | Rewrite the installed service for this version from what it was installed with (its port, data home, environment and `PATH`, not this shell's), and restart it. `--port` still wins. Exits 4 with nothing installed. `update` runs it. |
+
+Each option belongs to the commands that can act on it. Anywhere else it's a usage error (exit 2), not ignored:
+
+| Option | Taken by |
+| --- | --- |
+| `--port`, `--dry-run`, `--from-checkout`, `--refresh` | `install` |
+| `--force` | `stop`, `restart` |
+| `--json` | `install`, `uninstall`, `start`, `stop`, `restart`, `status` (not `logs`) |
+| `-f`, `-n` | `logs` |
+
+**`--json`** prints one JSON document on stdout and nothing else; the messages go to stderr, and the exit code is the
+same as without it. For `status` it's the status report. For the others it's what happened, then the same report as
+it is afterwards:
+
+```json
+{
+  "ok": true,
+  "action": "stop",
+  "wasRunning": true,
+  "installed": true,
+  "running": false,
+  "port": 5622,
+  "…": "the rest of `service status --json`"
+}
+```
+
+| Field | |
+| --- | --- |
+| `ok` | Whether it did it: `true` exactly when the exit code is 0. |
+| `action` | `install`, `uninstall`, `start`, `stop` or `restart`. |
+| `error` | Only when `ok` is `false`: `busy` (exit 75), `not installed` (exit 4), or the reason it failed (exit 1), as printed on stderr. |
+| `dryRun`, `definition` | `install`: whether it was `--dry-run`, and then the file it would write. |
+| `refreshed`, `changed` | `install`: whether it was `--refresh`, and whether the service's file changed. |
+| `wasRunning` | `start`, `stop`: whether it was running before. |
+| `rewritten` | `restart`: whether a stale service file was rewritten first. |
+| `wasInstalled` | `uninstall`: whether there was a service to remove. |
+
+The same shape as Hallway's `hallway service … --json`. An install that's refused (npx's cache, a checkout, the port
+in use) prints its document with the reason too, then exits 1.
 
 It refuses to install from npx's cache (or pnpm dlx's, bunx's, yarn dlx's), which can be deleted at any time, and
 says what to do instead: `npm i -g local-review`, then `local-review service install`.
