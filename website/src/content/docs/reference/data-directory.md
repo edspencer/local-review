@@ -31,6 +31,8 @@ them.
     <owner>/<repo>/sync.json            # that GitHub repo's last fetch, and its error if it failed
   config.yaml                           # optional: settings for this machine (the GitHub sync)
   runtime.json                          # while `local-review` runs: its pid, port, URL and version (see below)
+  update-check.json                     # what `local-review update --check` or `doctor` last found (see below)
+  update.lock                           # only while `local-review update` runs
   logs/                                 # only if you run it as a service
     service.log                         # the service's output (see below)
 ```
@@ -68,6 +70,11 @@ start time, readable only by you, so [`local-review busy`](/reference/cli/#local
 on start and removes it when it exits (see the [never-delete guarantee](/guarantees/never-delete/)). It's
 never your data. One left behind by a crash is ignored, because its pid is gone. A development server (`npm run dev`)
 doesn't write it.
+
+**`update-check.json`** is what the last [`local-review update --check`](/getting-started/updating/) (or `update`, or
+`doctor`) found on npm: the newest version, whether it's newer than yours, and when it asked. `service status` repeats
+it, without asking npm itself. **`update.lock`** holds the pid of an `update` while it runs, so two can't run at once;
+it's removed when it ends, and one left by a crash is ignored once its pid has gone. Neither is your data.
 
 **`logs/`** is there only if you [run Local Review as a service](/getting-started/service/): launchd or systemd appends
 its output, stdout and stderr both, to `service.log`, which `local-review service logs` reads. A service installed

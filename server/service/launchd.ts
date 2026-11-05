@@ -101,16 +101,17 @@ export function launchdManager({ dir, label, uid, run = defaultRunner, sleep = (
   };
 
   // A bootout returns before launchd has finished taking the job down, and a bootstrap in that window fails with
-  // "5: Input/output error" (Paddock's release CI hit it). So a bootout waits until `print` no longer finds the job,
-  // and a bootstrap that still gets error 5 is retried once.
+  // "5: Input/output error" (Paddock's release CI hit it), or 37, "Operation already in progress". So a bootout waits
+  // until `print` no longer finds the job, and a bootstrap that still gets 5 or 37 is retried, up to five more times,
+  // 500 ms apart: that covers a bootout another process issued, which there's nothing to wait for (cli-contract SPEC §7)
   const bootstrap = async () => {
-    const r = await run('launchctl', ['bootstrap', domain, file]);
+    let r = await run('launchctl', ['bootstrap', domain, file]);
+    for (let i = 0; i < 5 && (r.code === 5 || r.code === 37); i++) {
+      await sleep(500);
+      r = await run('launchctl', ['bootstrap', domain, file]);
+    }
     if (r.code === 0) return;
     if (r.code === 127) throw new ServiceManagerError(NO_LAUNCHCTL);
-    if (r.code === 5) {
-      await sleep(1000);
-      if ((await run('launchctl', ['bootstrap', domain, file])).code === 0) return;
-    }
     throw new ServiceManagerError(`launchctl bootstrap ${domain} ${file} failed (exit ${r.code}): ${(r.stderr || r.stdout).trim()}`);
   };
 

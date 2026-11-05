@@ -98,7 +98,8 @@ server/   git.ts (read-only git), config.ts (data home, package paths), port.ts 
           diskcache.ts (what git said about commits, kept in cache/), threads.ts (the Comments tab's data), plan.ts,
           cli.ts (the `local-review` CLI: serve, plan, init, asset, move, examples, guide, service), banner.ts (the
           startup banner), busy.ts (the counts behind /api/busy), contract/ (copied from edspencer/cli-contract's
-          reference/: runtime.json, the busy client, exit codes, output), service/ (`local-review service`: launchd, systemd), assets.ts (images), move.ts (`local-review move`), examples.ts (the
+          reference/: runtime.json, the busy client, exit codes, output, and `update`: the registry, semver, the install
+          method, the lock, npm, the update cache, health), update.ts (`local-review update`), doctor.ts (`local-review doctor`), service/ (`local-review service`: launchd, systemd), assets.ts (images), move.ts (`local-review move`), examples.ts (the
           example projects), reviewer.ts (who you are), anchors.ts (line anchors + relocation), context.ts,
           events.ts (watch + SSE), index.ts (Hono), security.ts (localhost Host/Origin guard), stackviz.ts (stack
           picture and root-page thumbnails: SVG + PNG), fonts/ (bundled OFL fonts for it)

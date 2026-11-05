@@ -53,10 +53,14 @@ prints the last lines of its log and exits 1.
 
 - **`--port <n>`** picks the port (default 5622). `$PORT` isn't used, so a `PORT` exported for something else can't
   end up in the service by accident.
-- **It's safe to run again.** It rewrites the file, and restarts the service only if the file changed
-  (`(unchanged)` otherwise). A reinstall **keeps the port, `LOCAL_REVIEW_HOME` and `LOCAL_REVIEW_USER` the service was
+- **It's safe to run again.** It rewrites the file (`(unchanged)` if nothing in it changed), and a service that's
+  running is restarted onto it, so the old process never keeps serving. A reinstall **keeps the port, `LOCAL_REVIEW_HOME` and `LOCAL_REVIEW_USER` the service was
   installed with** unless you give new ones, and says when it kept one. To drop one, `uninstall` first.
 - **`--dry-run`** prints the file it would write and does nothing else: no file, no directory, nothing started.
+- **`--refresh`** rewrites the installed service in this version's format from what *it* records (its port, data home,
+  environment and `PATH`), not from the shell you run it in, then restarts it. `--port` still wins. With nothing
+  installed it exits 4 rather than installing with defaults. It's what [`local-review update`](/getting-started/updating/)
+  runs with the new version.
 - If the port is already taken by something else (most likely `local-review` running in a terminal), it stops before
   writing anything: stop that first, or pick another port.
 
@@ -109,7 +113,9 @@ It warns when the Node or the `local-review` the service runs has gone (after a 
 different `local-review` from the one you just ran, or when the version answering isn't the one installed (you
 upgraded but haven't restarted). `Busy` is what [`local-review busy`](/reference/cli/#local-review-busy) would say.
 `--json` gives the same as JSON, for scripts: `version` (and `runningVersion`) is the version answering,
-`installedVersion` the one on disk, `unit` the service's file, and `busy` what it's doing. The fields are the ones
+`installedVersion` the one on disk, `unit` the service's file, `busy` what it's doing, and `update` what the last
+[`update --check`](/getting-started/updating/) or `doctor` found (left out when there's nothing to repeat: `status`
+never asks npm itself). The fields are the ones
 the [CLI contract's schema](https://github.com/edspencer/cli-contract/blob/main/schemas/service-status.schema.json)
 names.
 
@@ -208,18 +214,15 @@ npm run build
 npm run lr -- service install --from-checkout
 ```
 
-## Upgrading
+## Updating
 
-The service runs the files of your global install, so an upgrade only needs a restart:
-
-```sh
-npm i -g local-review@latest
-local-review service restart
-```
+`local-review update` installs the latest version and restarts the service onto it, and if the new version doesn't
+come up it puts the old one back: see [Updating](/getting-started/updating/). By hand, it's
+`npm i -g local-review@latest` then `local-review service install --refresh`.
 
 If you've changed Node since you installed the service (a new version through nvm, fnm or Homebrew), your global
 packages may have moved with it. Run `local-review service install` again to point the service at the new ones; it
-keeps the port and data home. `local-review service status` warns when this is needed.
+keeps the port and data home. `local-review service status` and `local-review doctor` warn when this is needed.
 
 ## How much of this has been tested
 

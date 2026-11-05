@@ -139,9 +139,12 @@ try {
   assert.equal(text.split(log).length - 1, 2, `stdout and stderr both to ${log}:\n${text}`);
   if (process.platform === 'darwin') execFileSync('plutil', ['-lint', file], { stdio: 'inherit' });
 
-  step('again: unchanged');
+  step('again: unchanged, and the running process replaced, not left serving (cli-contract SPEC §1)');
+  const pidBefore = statusJson().pid;
   assert.match(lr('service', 'install'), /\(unchanged\)/);
   assert.ok(await answers(port));
+  const pidAfter = statusJson().pid;
+  assert.ok(pidBefore && pidAfter && pidAfter !== pidBefore, `a new process: pid ${pidBefore} → ${pidAfter}`);
 
   step('status');
   console.log(lr('service', 'status'));

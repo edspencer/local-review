@@ -143,6 +143,8 @@ export function systemdManager({ dir, label, run = defaultRunner }: SystemdOptio
     },
     async start() {
       await systemctl(['enable', '--quiet', unit]);
+      // a unit that hit systemd's start limit (five starts in ten seconds) stays failed until this (cli-contract SPEC §1)
+      await systemctl(['reset-failed', unit], [0, 1, 5]);
       await systemctl(['start', unit]);
     },
     async stop() {
@@ -152,6 +154,7 @@ export function systemdManager({ dir, label, run = defaultRunner }: SystemdOptio
     async restart() {
       // `write` already ran daemon-reload for a changed unit, and restart starts an inactive one
       await systemctl(['enable', '--quiet', unit]);
+      await systemctl(['reset-failed', unit], [0, 1, 5]);
       await systemctl(['restart', unit]);
     },
     status,

@@ -5,7 +5,7 @@ description: Every local-review command and flag.
 
 One command, `local-review`, does everything: with no arguments it serves the UI, and its subcommands create
 projects, add images, print a project's publishing plan, move review data between projects, add or hide the example
-projects, run it as a service and print the agent guide. Run it with `npx local-review …`, or install it once with
+projects, run it as a service, update and check it, and print the agent guide. Run it with `npx local-review …`, or install it once with
 `npm i -g local-review` and run `local-review …`.
 
 ```sh
@@ -18,6 +18,8 @@ npx local-review move my-feature my-follow-up my-service --stack 3   # after spl
 npx local-review examples                 # add the example projects (remove: `examples remove`)
 npx local-review guide                    # print the guide for agents
 local-review service install              # after `npm i -g local-review`: run it at every login
+local-review update                       # update it, and restart the service onto the new version
+local-review doctor                       # check the install
 ```
 
 ## `local-review --help`
@@ -31,11 +33,13 @@ Usage: local-review [--data-dir <path>] [serve] [--port <n>] [--quiet]
        local-review move <from> <to> <repo> (<sha>… | --stack <n>) [--to-repo <name>] [--dry-run]
        local-review examples [remove]
        local-review github refresh [<project>] | status [<project>]
-       local-review service install [--port <n>] [--dry-run] [--from-checkout]
+       local-review service install [--port <n>] [--dry-run] [--from-checkout] [--refresh]
        local-review service uninstall | start | status [--json]
        local-review service stop | restart [--force]
        local-review service logs [-f] [-n <lines>]
        local-review busy [--json]
+       local-review update [--check] [--to <version|tag>] [--yes] [--force] [--json]
+       local-review doctor [--json] [--offline]
        local-review guide
        local-review --version | --help
 
@@ -98,6 +102,9 @@ Usage: local-review [--data-dir <path>] [serve] [--port <n>] [--quiet]
           --port <n>       the port (default 5622; $PORT isn't used here)
           --dry-run        print the service file it would write; write nothing, start nothing
           --from-checkout  run a source checkout's build (dist/) as the service, on purpose
+          --refresh        rewrite the installed service for this version, from what it was installed with (its
+                           port, data home and environment, not this shell's), and restart it. Exits 4 if
+                           nothing is installed. `update` runs it.
   service uninstall
           Stop the service and remove its file. Your data (and its logs/) stays where it is.
   service start
@@ -123,14 +130,30 @@ Usage: local-review [--data-dir <path>] [serve] [--port <n>] [--quiet]
           snapshot, or syncing with GitHub. Exits 0 if it isn't, 75 if it is, 3 if nothing is running. It finds
           the instance through <data>/runtime.json, which `serve` writes.
           --json           as JSON: { running, busy, url, version, counts }
+  update  Update this local-review to the latest version on npm, and restart the service onto it. It asks first
+          (`--yes` answers; without a terminal, --yes is needed), refuses while Local Review is busy, and if the
+          new version doesn't come up it puts the old one back. A copy it can't update itself (npx, a source
+          checkout, a project's dependency) prints the command to run instead, and exits 5.
+          --check          only say whether there's a newer version; change nothing
+          --to <v>         a version or a dist-tag (next); the only way to go to a lower version
+          --yes            don't ask
+          --force          update even while it's busy (the health check and the rollback still run)
+          --json           one JSON document on stdout
+  doctor  Check this install: Node against what Local Review needs, how it was installed, the service (whether
+          what it runs is still there), that the running version is the installed one, the port, linger (Linux),
+          the data home, git and gh, and whether there's a newer version. A fix is printed under each problem.
+          Exits 1 if a check failed (warnings don't count).
+          --offline        don't ask the npm registry for a newer version
+          --json           as JSON: { ok, version, checks: [{ id, status, message, fix }] }
   guide   Print the guide for agents using Local Review to get their work reviewed (AGENT-GUIDE.md).
 
   --data-dir <path>
           The data home for this command, as LOCAL_REVIEW_HOME sets it (default ~/.local-review).
 
 Data: $LOCAL_REVIEW_HOME/projects (default ~/.local-review/projects). Agents: run `local-review guide`.
-Exit codes: 0 done, 1 failed, 2 bad usage, 3 not running, 4 not installed (`service`), 75 busy (`busy`,
-`service stop` and `restart`: try again later, or use --force).
+Exit codes: 0 done, 1 failed, 2 bad usage, 3 not running, 4 not installed (`service`), 5 can't update itself,
+6 the update failed and the old version is running again, 7 the update failed and couldn't be undone, 75 busy
+(`busy`, `update`, `service stop` and `restart`: try again later, or use --force).
 ```
 
 ## `local-review [serve]`
@@ -358,7 +381,7 @@ Then: check both project.yaml files: each repo's range (…) and its stacks' sta
 ## `local-review service`
 
 ```text
-local-review service install [--port <n>] [--dry-run] [--from-checkout]
+local-review service install [--port <n>] [--dry-run] [--from-checkout] [--refresh]
 local-review service uninstall | start | status [--json]
 local-review service stop | restart [--force]
 local-review service logs [-f] [-n <lines>]
@@ -371,10 +394,10 @@ story, with the generated file: [Run it as a service](/getting-started/service/)
 
 | Command | |
 | --- | --- |
-| `service install` | Write the service's file and start it, then wait for it to answer. It runs this `local-review` and this Node, by absolute path, with a `PATH` that must find git, on 127.0.0.1 only. Running it again rewrites the file, restarting the service only if it changed, and keeps the port, `LOCAL_REVIEW_HOME` and `LOCAL_REVIEW_USER` it was installed with unless you give new ones. |
+| `service install` | Write the service's file and start it, then wait for it to answer. It runs this `local-review` and this Node, by absolute path, with a `PATH` that must find git, on 127.0.0.1 only. Running it again rewrites the file and restarts a running service onto it, and keeps the port, `LOCAL_REVIEW_HOME` and `LOCAL_REVIEW_USER` it was installed with unless you give new ones. |
 | `service start` | Start the installed service, and wait until it answers. |
 | `service stop` | Stop it until `service start` or your next login. It stays installed and enabled; `service uninstall` removes it. Refuses with exit 75 while it's [busy](#local-review-busy); `--force` stops it anyway (and says what it's overriding). |
-| `service restart` | Restart it, e.g. after `npm i -g local-review@latest`. A stale service file (an older version's, or one whose Node or `local-review` has gone) is rewritten first, keeping its port and environment. Refuses with exit 75 while it's busy, unless `--force`. |
+| `service restart` | Restart it, e.g. after `npm i -g local-review@latest` (`local-review update` does that and the restart for you). A stale service file (an older version's, or one whose Node or `local-review` has gone) is rewritten first, keeping its port and environment. Refuses with exit 75 while it's busy, unless `--force`. |
 | `service status` | Whether it's installed, loaded, running and answering, its port, the version installed and the version answering, the Node and `local-review` it runs, its log and whether it's busy, with a warning if something is off. Exits 0, 3 (installed, not running or not answering) or 4 (not installed). `--json` for scripts. |
 | `service logs` | The last 50 lines of its log, `<data>/logs/service.log`. `-n <lines>` for more or fewer, `-f` to keep printing what it writes. |
 | `service uninstall` | Stop it and remove its file. Nothing else: the data home, `logs/` included, is untouched. |
@@ -384,6 +407,7 @@ story, with the generated file: [Run it as a service](/getting-started/service/)
 | `--port <n>` | The port, 1–65535. Default: the one it was installed with, else 5622. `PORT` isn't used. |
 | `--dry-run` | Print the file it would write, and do nothing else. |
 | `--from-checkout` | Allow a source checkout's build (`dist/`) to be the service. Without it, a checkout is refused. |
+| `--refresh` | Rewrite the installed service for this version from what it was installed with (its port, data home, environment and `PATH`, not this shell's), and restart it. `--port` still wins. Exits 4 with nothing installed. `update` runs it. |
 
 It refuses to install from npx's cache (or pnpm dlx's, bunx's, yarn dlx's), which can be deleted at any time, and
 says what to do instead: `npm i -g local-review`, then `local-review service install`.
@@ -411,6 +435,59 @@ instance. `--json` prints `{ running, busy, url, version, counts }`. It's for sc
 Local Review (`service stop` and `restart` run the same check). The server's side is
 [`GET /api/busy`](/reference/http-api/).
 
+## `local-review update`
+
+```text
+local-review update [--check] [--to <version|tag>] [--yes] [--force] [--json]
+```
+
+Updates this `local-review` to the latest version on npm and restarts the service onto it; if the new version doesn't
+answer, it puts the old one back. `upgrade` works too. The whole story: [Updating](/getting-started/updating/).
+
+| Option | |
+| --- | --- |
+| `--check` | Only say whether there's a newer version, and change nothing. Exits 0 either way; `--json`'s `updateAvailable` says which. |
+| `--to <v>` | A version (`0.16.0`) or a dist-tag (`next`). The only way to go to a lower version. |
+| `--yes` | Don't ask. Without a terminal, `update` needs it (exit 2 otherwise). |
+| `--force` | Update even while Local Review is [busy](#local-review-busy). The health check and the rollback still run. |
+| `--json` | One JSON document on stdout; the progress goes to stderr. |
+
+It exits 5 when this copy can't update itself (npx's cache, a source checkout, another project's dependency, a
+global folder you can't write to), printing the command to run instead; 6 when the new version didn't start and the
+old one is running again; 7 when that couldn't be undone either (it prints the commands to run by hand); and 75 when
+it's busy.
+
+## `local-review doctor`
+
+```text
+local-review doctor [--json] [--offline]
+```
+
+Checks this install, one line each: `✓` fine, `!` a warning, `✗` a problem, with a `fix:` line under each problem.
+
+```text
+$ local-review doctor
+✓ Node 22.12.0 (Local Review needs >=22)
+✓ Local Review 0.16.0, installed globally with npm: `local-review update` can update it
+✓ the service is installed (systemd): ~/.config/systemd/user/local-review-server.service
+✓ http://localhost:5622 is running 0.16.0
+✓ port 5622 is Local Review's (0.16.0)
+! linger is off for ed: the service stops when you log out, and starts only when you log in
+    fix: sudo loginctl enable-linger ed
+✓ the data home ~/.local-review is writable
+✓ git: /usr/bin/git
+✓ gh: /usr/bin/gh
+✓ 0.16.0 is the latest
+```
+
+It checks this Node against what Local Review needs; how it was installed; the service (whether the Node and
+`local-review` it runs are still there, and whether it's this one); that the version running is the one installed;
+that the port is free or Local Review's; linger, on Linux; that the data home is writable; that git (needed) and gh
+(for publishing and the GitHub sync) are on your `PATH`; and whether there's a newer version on npm, which
+`--offline` skips. It exits 1 if a check failed; warnings don't count. `--json` gives
+`{ ok, version, checks: [{ id, status, message, fix }] }`, `status` being `pass`, `warn`, `fail` or `skip`. It writes
+nothing but `update-check.json`, as `update --check` does.
+
 ## `local-review guide`
 
 Prints the [agent guide](/agents/agent-guide/) (`AGENT-GUIDE.md`, which ships in the package), so an agent reads the
@@ -433,9 +510,12 @@ that uses it, as `LOCAL_REVIEW_HOME` would.
 | `0` | Success. |
 | `1` | An error, printed as `local-review: <message>` (no such project, the port is in use, `init`'s file exists, a file that isn't an image, a `move` that would replace a file, a `service install` refused or not answering, …). |
 | `2` | Bad usage (an unknown command or option, a missing argument, a bad project or asset name, a URL `asset url` can't use): the message, then the usage. |
-| `3` | `service status`: installed, but not running or not answering. `busy`: nothing is running. |
-| `4` | `service status`, `start`, `stop`, `restart`, `logs`: there's no service installed. |
-| `75` | `busy`: it's busy. `service stop`, `restart`: refused because it's busy; try again later, or use `--force`. |
+| `3` | `service status`: installed, but not running or not answering. `busy`: nothing is running. `update`: a `local-review` is running in a terminal, with no service to stop. |
+| `4` | `service status`, `start`, `stop`, `restart`, `logs`, `install --refresh`: there's no service installed. |
+| `5` | `update`: this copy can't update itself; the right command was printed. |
+| `6` | `update`: the new version didn't start, and the old one is running again. |
+| `7` | `update`: the new version didn't start, and the old one couldn't be put back; it printed what to run. |
+| `75` | `busy`: it's busy. `update`, `service stop`, `restart`: refused because it's busy; try again later, or use `--force`. |
 
 These follow the [CLI contract](https://github.com/edspencer/cli-contract) shared by Local Review and its sibling tools.
 

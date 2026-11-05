@@ -9,6 +9,9 @@
 // `github status` reads that cache and config.yaml, nothing else.
 // `service` writes only its own LaunchAgent / systemd user unit (and makes the data home's logs/), never user data;
 // `service logs` only reads its log. `busy` only asks the running instance's /api/busy.
+// `update` asks the npm registry, then installs local-review with npm and refreshes the service (server/update.ts);
+// it writes <data>/update.lock and update-check.json, never user data. `doctor` only reads, apart from
+// update-check.json (server/doctor.ts). They're the only commands that ask the registry, and only when run.
 // `serve` writes <data>/runtime.json (its pid, port, URL and version, for `busy`), and removes it when it exits.
 // First: `--data-dir` sets LOCAL_REVIEW_HOME before config.ts reads it.
 import './datadir.js';
@@ -29,11 +32,13 @@ const USAGE = `Usage: local-review [--data-dir <path>] [serve] [--port <n>] [--q
        local-review move <from> <to> <repo> (<sha>… | --stack <n>) [--to-repo <name>] [--dry-run]
        local-review examples [remove]
        local-review github refresh [<project>] | status [<project>]
-       local-review service install [--port <n>] [--dry-run] [--from-checkout]
+       local-review service install [--port <n>] [--dry-run] [--from-checkout] [--refresh]
        local-review service uninstall | start | status [--json]
        local-review service stop | restart [--force]
        local-review service logs [-f] [-n <lines>]
        local-review busy [--json]
+       local-review update [--check] [--to <version|tag>] [--yes] [--force] [--json]
+       local-review doctor [--json] [--offline]
        local-review guide
        local-review --version | --help
 
@@ -96,6 +101,9 @@ const USAGE = `Usage: local-review [--data-dir <path>] [serve] [--port <n>] [--q
           --port <n>       the port (default ${DEFAULT_PORT}; $PORT isn't used here)
           --dry-run        print the service file it would write; write nothing, start nothing
           --from-checkout  run a source checkout's build (dist/) as the service, on purpose
+          --refresh        rewrite the installed service for this version, from what it was installed with (its
+                           port, data home and environment, not this shell's), and restart it. Exits 4 if
+                           nothing is installed. \`update\` runs it.
   service uninstall
           Stop the service and remove its file. Your data (and its logs/) stays where it is.
   service start
@@ -121,19 +129,35 @@ const USAGE = `Usage: local-review [--data-dir <path>] [serve] [--port <n>] [--q
           snapshot, or syncing with GitHub. Exits 0 if it isn't, 75 if it is, 3 if nothing is running. It finds
           the instance through <data>/runtime.json, which \`serve\` writes.
           --json           as JSON: { running, busy, url, version, counts }
+  update  Update this local-review to the latest version on npm, and restart the service onto it. It asks first
+          (\`--yes\` answers; without a terminal, --yes is needed), refuses while Local Review is busy, and if the
+          new version doesn't come up it puts the old one back. A copy it can't update itself (npx, a source
+          checkout, a project's dependency) prints the command to run instead, and exits 5.
+          --check          only say whether there's a newer version; change nothing
+          --to <v>         a version or a dist-tag (next); the only way to go to a lower version
+          --yes            don't ask
+          --force          update even while it's busy (the health check and the rollback still run)
+          --json           one JSON document on stdout
+  doctor  Check this install: Node against what Local Review needs, how it was installed, the service (whether
+          what it runs is still there), that the running version is the installed one, the port, linger (Linux),
+          the data home, git and gh, and whether there's a newer version. A fix is printed under each problem.
+          Exits 1 if a check failed (warnings don't count).
+          --offline        don't ask the npm registry for a newer version
+          --json           as JSON: { ok, version, checks: [{ id, status, message, fix }] }
   guide   Print the guide for agents using Local Review to get their work reviewed (AGENT-GUIDE.md).
 
   --data-dir <path>
           The data home for this command, as LOCAL_REVIEW_HOME sets it (default ~/.local-review).
 
 Data: $LOCAL_REVIEW_HOME/projects (default ~/.local-review/projects). Agents: run \`local-review guide\`.
-Exit codes: 0 done, 1 failed, 2 bad usage, 3 not running, 4 not installed (\`service\`), 75 busy (\`busy\`,
-\`service stop\` and \`restart\`: try again later, or use --force).`;
+Exit codes: 0 done, 1 failed, 2 bad usage, 3 not running, 4 not installed (\`service\`), 5 can't update itself,
+6 the update failed and the old version is running again, 7 the update failed and couldn't be undone, 75 busy
+(\`busy\`, \`update\`, \`service stop\` and \`restart\`: try again later, or use --force).`;
 
 /** Bad usage: exit 2, with the usage. Anything else thrown exits 1. */
 class UsageError extends Error {}
 
-const VALUE_FLAGS = ['repo', 'stack', 'format', 'port', 'alt', 'to-repo', 'lines', 'data-dir'];
+const VALUE_FLAGS = ['repo', 'stack', 'format', 'port', 'alt', 'to-repo', 'lines', 'data-dir', 'to'];
 
 function parseArgs(argv: string[]) {
   const pos: string[] = [];
@@ -147,6 +171,10 @@ function parseArgs(argv: string[]) {
     else if (a === '--from-checkout') flags['from-checkout'] = '1';
     else if (a === '--json') flags.json = '1';
     else if (a === '--force') flags.force = '1';
+    else if (a === '--check') flags.check = '1';
+    else if (a === '--yes') flags.yes = '1';
+    else if (a === '--refresh') flags.refresh = '1';
+    else if (a === '--offline') flags.offline = '1';
     else if (a === '-q' || a === '--quiet') flags.quiet = '1';
     else if (a === '-f' || a === '--follow') flags.follow = '1';
     else if (a === '-n') {
@@ -402,17 +430,46 @@ async function busy(flags: Record<string, string>): Promise<number> {
   return runBusyCommand({ home: HOME, name: 'Local Review', out: createOutput({ tool: 'local-review', json: !!flags.json }), nouns: BUSY_NOUNS });
 }
 
+async function update(flags: Record<string, string>): Promise<number> {
+  if (flags.to === '') throw new UsageError('--to needs a version or a dist-tag');
+  const { updateCommand } = await import('./update.js');
+  return updateCommand(
+    { root: ROOT, home: HOME, version: version() },
+    { check: !!flags.check, yes: !!flags.yes, force: !!flags.force, json: !!flags.json, ...(flags.to !== undefined ? { to: flags.to } : {}) },
+  );
+}
+
+async function doctor(flags: Record<string, string>): Promise<number> {
+  const { diagnose, doctorCode, renderChecks } = await import('./doctor.js');
+  const { realContext } = await import('./service/index.js');
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const { checks, notice } = await diagnose({
+    ctx: realContext(ROOT, { dataHome: HOME, version: pkg.version }),
+    version: pkg.version,
+    engines: pkg.engines?.node,
+    home: HOME,
+    entry: process.argv[1] ?? '',
+    offline: !!flags.offline,
+  });
+  const code = doctorCode(checks);
+  if (flags.json) process.stdout.write(JSON.stringify({ ok: code === 0, version: pkg.version, checks }, null, 2) + '\n');
+  else process.stdout.write(renderChecks(checks));
+  // SPEC §3: the update notice goes to stderr
+  if (notice) process.stderr.write(`\n${notice}\n`);
+  return code;
+}
+
 async function service(args: string[], flags: Record<string, string>): Promise<number> {
   const [sub, ...rest] = args;
   const svc = await import('./service/index.js');
-  const ctx = svc.realContext(ROOT);
+  const ctx = svc.realContext(ROOT, { dataHome: HOME, version: version() });
   try {
     switch (sub) {
       case 'install': {
-        check('service install', flags, ['port', 'dry-run', 'from-checkout'], rest, 0);
+        check('service install', flags, ['port', 'dry-run', 'from-checkout', 'refresh'], rest, 0);
         const port = flags.port === undefined ? undefined : parsePort(flags.port);
         if (port === null || port === 0) throw new UsageError(`--port must be a port number (1-65535), not '${flags.port}'`);
-        return await svc.install(ctx, { port, dryRun: !!flags['dry-run'], fromCheckout: !!flags['from-checkout'] });
+        return await svc.install(ctx, { port, dryRun: !!flags['dry-run'], fromCheckout: !!flags['from-checkout'], refresh: !!flags.refresh });
       }
       case 'uninstall':
         check('service uninstall', flags, [], rest, 0);
@@ -494,6 +551,13 @@ async function main(argv: string[]): Promise<number | undefined> {
     case 'busy':
       check(cmd, flags, ['json'], args, 0);
       return busy(flags);
+    case 'update':
+    case 'upgrade': // a hidden alias (cli-contract SPEC §1)
+      check(cmd, flags, ['check', 'to', 'yes', 'force', 'json'], args, 0);
+      return update(flags);
+    case 'doctor':
+      check(cmd, flags, ['json', 'offline'], args, 0);
+      return doctor(flags);
     case 'guide':
       check(cmd, flags, [], args, 0);
       process.stdout.write(fs.readFileSync(AGENT_GUIDE, 'utf8'));

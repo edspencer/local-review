@@ -47,6 +47,23 @@ const ALLOWED: Record<string, Record<string, number>> = {
     rename: 1, // temp -> runtime.json
     rm: 2, // the temp file after a failed rename; runtime.json itself, after checking its pid (checked below)
   },
+  'contract/lock.ts': {
+    // <data>/update.lock (cli-contract SPEC §5 step 1): `update`'s own pid file, never user data. Created with 'wx'
+    // (O_EXCL), and removed when the update ends or when the pid it names has gone (checked below)
+    writeFile: 1,
+    rm: 2,
+  },
+  'contract/update-check.ts': {
+    // <data>/update-check.json (SPEC §3): what the last registry question found. A temp file renamed into place
+    writeFile: 1,
+    rename: 1,
+    rm: 1, // the temp file after a failed rename
+  },
+  'contract/package-manager.ts': {
+    // `update`'s writability probe (SPEC §5 step 5): an empty directory it has just made with mkdtemp in npm's global
+    // folder, removed at once (checked below). Never inside the data home
+    rm: 1,
+  },
   'service/manager.ts': {
     // `service uninstall` removing the service's own generated definition (local-review.server.plist /
     // local-review-server.service), outside the data home, after checking its name and directory (checked below)
@@ -106,6 +123,20 @@ test('runtime.json is the only file contract/runtime-file.ts removes, and only w
   assert.match(src, /export const RUNTIME_FILE = 'runtime\.json';/);
   assert.match(src, /const info = readRuntimeFile\(home\);\s*if \(!info \|\| info\.pid !== pid\) return false;\s*fs\.rmSync\(runtimeFilePath\(home\), \{ force: true \}\);/);
   assert.match(src, /fs\.rmSync\(tmp, \{ force: true \}\);/);
+});
+
+test("update's files remove only update.lock, their own temp file and the probe directory they just made", () => {
+  const read = (f: string) => stripComments(fs.readFileSync(path.join(SERVER, 'contract', f), 'utf8'));
+  const lock = read('lock.ts');
+  assert.match(lock, /export const LOCK_FILE = 'update\.lock';/);
+  assert.match(lock, /fs\.writeFileSync\(file, [^;]*\{ flag: 'wx', mode: 0o600 \}\);/);
+  // a stale lock (its pid has gone) is removed; a live one throws first
+  assert.match(lock, /throw new LockHeldError\([^;]*;\s*\}\s*fs\.rmSync\(file, \{ force: true \}\);/);
+  assert.match(lock, /if \(holder === null \|\| holder\.pid === pid\) fs\.rmSync\(file, \{ force: true \}\);/);
+  const check = read('update-check.ts');
+  assert.match(check, /const tmp = `\$\{file\}\.\$\{process\.pid\}\.tmp`;/);
+  assert.match(check, /fs\.rmSync\(tmp, \{ force: true \}\);/);
+  assert.match(read('package-manager.ts'), /fs\.rmSync\(fs\.mkdtempSync\(path\.join\(probe, '\.update-probe-'\)\), \{ recursive: true, force: true \}\);/);
 });
 
 test('the guard catches the patterns it is meant to', () => {

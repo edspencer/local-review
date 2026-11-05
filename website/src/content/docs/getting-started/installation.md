@@ -39,15 +39,15 @@ local-review service install       # run it at every login (after npm i -g local
 Stop any `local-review` you started in a terminal first: the service needs its port. It won't install a service from
 npx's cache, which npm can delete at any time. More: [Run it as a service](/getting-started/service/).
 
-## Upgrading
+## Updating
 
 ```sh
-npm i -g local-review@latest
-local-review service restart       # if it runs as a service
+local-review update                # the latest from npm; restarts the service onto it
 ```
 
-If you've changed Node since you installed the service, see [Upgrading a service](/getting-started/service/#upgrading).
-With npx, `npx local-review@latest` fetches the newest release. Upgrading never touches your data (below).
+It asks first, waits while Local Review is busy, and puts the old version back if the new one doesn't start. More:
+[Updating](/getting-started/updating/). With npx, `npx local-review@latest` fetches the newest release. Updating never
+touches your data (below).
 
 ## Ports
 

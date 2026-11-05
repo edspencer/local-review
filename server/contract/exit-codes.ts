@@ -1,4 +1,4 @@
-// From edspencer/cli-contract reference/exit-codes.ts @ 0.1; local changes: none
+// From edspencer/cli-contract reference/exit-codes.ts @ 0.2; local changes: none
 // The exit codes every tool shares (SPEC §2). Copy this file; don't renumber it.
 //
 // Set `process.exitCode`, never call `process.exit()`, so piped output isn't cut short.
