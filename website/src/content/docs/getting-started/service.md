@@ -59,8 +59,21 @@ while you're logged out, and starts at boot. Turn it on once:
 sudo loginctl enable-linger $USER
 ```
 
-`install` reminds you of it, and [`doctor`](/reference/cli/#local-review-doctor) checks, and prints
-`sudo loginctl enable-linger <user>` when it's off. **Local Review never runs `sudo` itself.**
+**`install` and [`doctor`](/reference/cli/#local-review-doctor) check** (`loginctl show-user <user> -p Linger`), and
+print `sudo loginctl enable-linger <user>` when it's off. **Local Review never runs `sudo` itself.** When linger is on,
+or `loginctl` can't answer (in a container, say), `install` says nothing about it. With `--json`, the advice is in the
+document's `warnings`.
+
+```text
+$ local-review service install
+Installed Local Review as a systemd user unit: ~/.config/systemd/user/local-review-server.service
+It's running: http://localhost:5622
+It starts with your user session and is restarted if it exits.
+Data: ~/.local-review. Log: ~/.local-review/logs/service.log (`local-review service logs`).
+
+Linger is off for ed, so the service stops when you log out, SSH sessions included, and starts only when you log in. To keep Local Review running, once:
+    sudo loginctl enable-linger ed
+```
 
 ### Not from npx
 

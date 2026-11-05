@@ -319,6 +319,8 @@ function world(platform: 'darwin' | 'linux', { where = 'global', git = true }: {
     waitMs: 0,
     isListening: async () => false,
     health: async () => (state.running ? { version: '9.9.9' } : null),
+    // loginctl can't say, as in a container, unless a test says otherwise
+    linger: async () => null,
     // /api/busy: nothing answers, unless a test says otherwise
     fetch: async () => {
       throw new Error('connection refused');
@@ -352,11 +354,52 @@ describe('service install, on Linux (systemd)', () => {
       [
         "Installed Local Review as a systemd user unit: ~/.config/systemd/user/local-review-server.service",
         "It's running: http://localhost:5622",
-        "It starts with your user session and is restarted if it exits. To keep it running while you're logged out, and start it at boot, enable lingering once: `loginctl enable-linger $USER`.",
+        'It starts with your user session and is restarted if it exits.',
         'Data: ~/.local-review. Log: ~/.local-review/logs/service.log (`local-review service logs`).',
         '',
       ].join('\n'),
     );
+  });
+
+  test('linger (cli-contract SPEC §7): off prints the sudo line and why; on, or a loginctl that can\'t say, prints nothing', async () => {
+    const advice = [
+      '',
+      'Linger is off for ed, so the service stops when you log out, SSH sessions included, and starts only when you log in. To keep Local Review running, once:',
+      '    sudo loginctl enable-linger ed',
+      '',
+    ].join('\n');
+    for (const [on, said] of [
+      [false, advice],
+      [true, ''],
+      [null, ''],
+    ] as const) {
+      const w = world('linux');
+      w.ctx.env.USER = 'ed';
+      let asked = 0;
+      w.ctx.linger = async () => (asked++, on);
+      assert.equal(await install(w.ctx, {}), 0);
+      const { out, err } = w.take();
+      assert.equal(asked, 1, `linger ${on}: asked once`);
+      assert.ok(out.endsWith('(`local-review service logs`).\n' + said), `linger ${on}:\n${out}`);
+      if (on !== false) assert.doesNotMatch(out + err, /linger|sudo/i, `linger ${on}: not a word`);
+      assert.ok(!w.calls.some((c) => /sudo|loginctl/.test(c)), 'it never runs sudo, or loginctl through the service manager');
+    }
+  });
+
+  test("linger: not asked on macOS, by a dry run, or by `update`'s --refresh", async () => {
+    const mac = world('darwin');
+    mac.ctx.linger = async () => assert.fail('asked on macOS');
+    assert.equal(await install(mac.ctx, {}), 0);
+    assert.doesNotMatch(mac.take().out, /linger/i);
+    const w = world('linux');
+    w.ctx.linger = async () => assert.fail('asked by a dry run');
+    assert.equal(await install(w.ctx, { dryRun: true }), 0);
+    w.ctx.linger = async () => false;
+    assert.equal(await install(w.ctx, {}), 0);
+    assert.match(w.take().out, /sudo loginctl enable-linger/);
+    w.ctx.linger = async () => assert.fail('asked by a refresh');
+    assert.equal(await install(w.ctx, { refresh: true }), 0);
+    assert.doesNotMatch(w.take().out, /linger/i);
   });
 
   test('again: idempotent, then a new port rewrites and restarts it, and a bare reinstall keeps that port', async () => {
@@ -519,6 +562,26 @@ describe('--json on install, uninstall, start, stop and restart (cli-contract SP
     assert.equal(d.log, path.join(w.userHome, '.local-review', 'logs', 'service.log'));
     assert.match(err, /^Installed Local Review as a systemd user unit: /m);
     assert.match(err, /It's running: http:\/\/localhost:5622/);
+  });
+
+  test("install with linger off: the advice is in the document's warnings, not on stdout; on, or unknown, it isn't", async () => {
+    for (const on of [false, true, null]) {
+      const w = world('linux');
+      w.ctx.env.USER = 'ed';
+      w.ctx.linger = async () => on;
+      assert.equal(await withJson(w.ctx, 'install', (c) => install(c, {})), 0);
+      const { out, err } = w.take();
+      const d = doc(out);
+      const advice = d.warnings.filter((x: string) => /linger/i.test(x));
+      if (on === false) {
+        assert.equal(advice.length, 1);
+        assert.match(advice[0], /^Linger is off for ed, so the service stops when you log out.*\n    sudo loginctl enable-linger ed$/s);
+        assert.match(err, /^    sudo loginctl enable-linger ed$/m, 'and the prose, on stderr');
+      } else {
+        assert.deepEqual(advice, [], `linger ${on}`);
+        assert.doesNotMatch(err, /linger/i);
+      }
+    }
   });
 
   test('install --dry-run: the definition it would write, and nothing written', async () => {
