@@ -7,9 +7,7 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
-## Coming in 0.14.0: `service start`, `stop` and `logs`
-
-Not released yet.
+## 0.14.0: `service start`, `stop` and `logs`
 
 - **Stop and start the service without uninstalling it.** `local-review service stop` stops it until
   `service start` or your next login. It stays installed, as `systemctl --user stop` and `launchctl bootout` leave
