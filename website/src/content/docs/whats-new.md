@@ -7,9 +7,7 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
-## Coming in 0.16.0: `local-review update` and `doctor`
-
-Not released yet.
+## 0.16.0: `local-review update` and `doctor`
 
 - **`local-review update`** installs the latest version and restarts the service onto it. It asks first, waits while
   Local Review is busy, and if the new version doesn't start it puts the old one back. `--check` only reports. See
