@@ -1,13 +1,15 @@
-// What `local-review` (serve) prints once it's listening: the LOCAL REVIEW banner, the "Local Review on …" line, and
-// how to point a coding agent at /llms.txt. Hand-rolled, no dependency (like herdctl's banner): a 12-pixel-high font
-// drawn with half blocks (▀ ▄ █), so it's 6 rows and fits an 80-column terminal, coloured in a plum-to-amber gradient
-// (the UI header's colours, lightened so they read on dark and light terminals alike).
+// What `local-review` (serve) prints once it's listening. On stdout, first, the line cli-contract SPEC §3 asks for,
+// `Local Review <version>: <url>`, then the projects directory it reads and how to point a coding agent at /llms.txt.
+// Scripts wait for that first line (scripts/smoke-pack.mjs, the conformance runner), so nothing comes before it on
+// stdout: the server's own log lines go to stderr.
 //
-// The banner is only for a person at a terminal: none when stdout isn't a TTY (piped, a log file, CI) unless
-// FORCE_COLOR is set, none with --quiet, a one-line title when the terminal is too narrow. Colour follows Node's own
-// rules (tty.WriteStream#getColorDepth: NO_COLOR, FORCE_COLOR, TERM=dumb, COLORTERM, Windows 10+), so truecolor where
-// the terminal has it, else the nearest of 256 or 16 colours, else none. The "Local Review on" line is always printed:
-// scripts (scripts/smoke-pack.mjs) wait for it.
+// For a person at a terminal, the LOCAL REVIEW banner comes before it, on stderr. Hand-rolled, no dependency (like
+// herdctl's banner): a 12-pixel-high font drawn with half blocks (▀ ▄ █), so it's 6 rows and fits an 80-column
+// terminal, coloured in a plum-to-amber gradient (the UI header's colours, lightened so they read on dark and light
+// terminals alike). None when stderr isn't a TTY (a log file, CI) unless FORCE_COLOR is set, none with --quiet, a
+// one-line title when the terminal is too narrow. Colour follows Node's own rules (tty.WriteStream#getColorDepth:
+// NO_COLOR, FORCE_COLOR, TERM=dumb, COLORTERM, Windows 10+), so truecolor where the terminal has it, else the nearest
+// of 256 or 16 colours, else none.
 import tty from 'node:tty';
 
 // Each glyph: 12 pixel rows, `#` set. Rows pair up into one text row each.
@@ -101,34 +103,42 @@ function paint(line: string, width: number, depth: number): string {
 
 const bold = (s: string, depth: number) => (depth >= 4 ? `\x1b[1m${s}\x1b[22m` : s);
 
+export interface Startup {
+  /** The first line and what follows it. */
+  out: string;
+  /** The banner, for a person: write it first. Empty unless stderr is a terminal (or FORCE_COLOR). */
+  err: string;
+}
+
 /**
- * The startup text, for a terminal. `quiet` (--quiet): just the "Local Review on" line, as when stdout isn't a
- * terminal. `dev` (npm run dev's API): just that line too, since the URL to give an agent is Vite's, not this one.
+ * The startup text. `out` is for stdout (`t`), `err` for stderr (`errT`, default the same terminal). `quiet`
+ * (--quiet): just the first line. `dev` (npm run dev's API): the first line and the projects, since the URL to give an
+ * agent is Vite's, not this one.
  */
-export function startupMessage(o: { url: string; projectsDir: string; quiet?: boolean; dev?: boolean }, t: Terminal): string {
+export function startupMessage(o: { url: string; version: string; projectsDir: string; quiet?: boolean; dev?: boolean }, t: Terminal, errT: Terminal = t): Startup {
   const depth = colorDepth(t);
-  const line = `Local Review on ${o.url}  (projects: ${o.projectsDir})`;
-  if (o.dev) return line + '\n';
-  const out: string[] = [];
-  const showBanner = !o.quiet && (t.isTTY || (t.env.FORCE_COLOR !== undefined && depth > 1));
-  if (showBanner) {
+  const first = `Local Review ${o.version}: ${o.url}`;
+  const projects = `Projects: ${o.projectsDir}`;
+  if (o.quiet) return { out: first + '\n', err: '' };
+  if (o.dev) return { out: `${first}\n${projects}\n`, err: '' };
+  const err: string[] = [];
+  const errDepth = colorDepth(errT);
+  if (errT.isTTY || (errT.env.FORCE_COLOR !== undefined && errDepth > 1)) {
     const lines = bannerLines();
     const width = Math.max(...lines.map((l) => l.length));
     // 2 columns of margin; narrower than that, a one-line title rather than a wrapped banner
-    if ((t.columns ?? 80) >= width + 2) out.push('', ...lines.map((l) => ' ' + paint(l, width, depth)), '');
-    else out.push('', ' ' + bold(paint('▌ LOCAL REVIEW', 14, depth), depth), '');
+    if ((errT.columns ?? 80) >= width + 2) err.push('', ...lines.map((l) => ' ' + paint(l, width, errDepth)), '');
+    else err.push('', ' ' + bold(paint('▌ LOCAL REVIEW', 14, errDepth), errDepth), '');
   }
-  out.push(line);
-  if (!o.quiet) {
-    const llms = bold(`${o.url}/llms.txt`, depth);
-    out.push(
-      '',
-      '',
-      `Point Claude Code/Codex/pi/whatever at ${llms} then ask it to generate a project definition for you. Example:`,
-      '',
-      `  Read ${llms} and create a local-review project for my feature-xyz branch on ~/code/my-git-project`,
-      '',
-    );
-  }
-  return out.join('\n') + '\n';
+  const llms = bold(`${o.url}/llms.txt`, depth);
+  const out = [
+    first,
+    projects,
+    '',
+    `Point Claude Code/Codex/pi/whatever at ${llms} then ask it to generate a project definition for you. Example:`,
+    '',
+    `  Read ${llms} and create a local-review project for my feature-xyz branch on ~/code/my-git-project`,
+    '',
+  ];
+  return { out: out.join('\n') + '\n', err: err.length ? err.join('\n') + '\n' : '' };
 }

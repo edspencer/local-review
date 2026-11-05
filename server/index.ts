@@ -31,6 +31,7 @@ import { parseStackRef, resolveStackRef } from '../shared/stackRef.js';
 import { agentGuide, llmsFullTxt, llmsTxt, type LlmsInput } from '../shared/llms.js';
 import { collectThreads } from './threads.js';
 import { FOCUS_MIN_AGE_MS, prSnapshot, projectGithub, projectSyncs, refresh as refreshGithub } from './github.js';
+import { busyCounts, isBusy, trackBusy } from './busy.js';
 
 const app = new Hono();
 
@@ -41,6 +42,11 @@ class HttpError extends Error {
 }
 
 app.use('*', localOnly);
+
+// a request that changes something is a save under way, for /api/busy (busy.ts); the GitHub refresh counts as a sync
+app.use('/api/*', (c, next) =>
+  c.req.method === 'GET' || c.req.method === 'HEAD' || c.req.method === 'OPTIONS' || c.req.path.endsWith('/github/refresh') ? next() : trackBusy('save', next),
+);
 
 app.onError((err, c) => {
   const status = err instanceof HttpError || err instanceof AssetError || err instanceof ExamplesConflictError ? err.status : err instanceof ReviewConflictError ? 409 : err instanceof EditNotFoundError ? 404 : 500;
@@ -840,6 +846,9 @@ app.get('/agent-guide.md', (c) => agentText(c, agentGuide(llmsInput(c)), 'text/m
 // the version too, so `service status` and an update's health check can tell which build answers (cli-contract SPEC §8)
 app.get('/api/health', (c) => c.json({ ok: true, version: VERSION }));
 app.get('/api/me', (c) => c.json(REVIEWER));
+// the writes under way, as counts, from memory (cli-contract SPEC §4): `local-review busy`, and `service stop` and
+// `restart` before they stop it
+app.get('/api/busy', (c) => c.json({ busy: isBusy(), version: VERSION, counts: busyCounts() }));
 app.all('/api/*', (c) => c.json({ error: 'not found' }, 404));
 
 // ---------------- frontend ----------------
@@ -861,7 +870,7 @@ export function startServer(port: number): Promise<number> {
     const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, (i) => {
       server.off('error', reject);
       startWatchers();
-      resolve(i.port); // the CLI prints "Local Review on …" (server/banner.ts)
+      resolve(i.port); // the CLI prints "Local Review <version>: <url>" (server/banner.ts)
     });
     server.once('error', reject);
   });

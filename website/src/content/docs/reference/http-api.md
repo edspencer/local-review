@@ -60,6 +60,7 @@ More recipes are in the [agent guide](/agents/agent-guide/#api-httplocalhost5622
 | GET | `/agent-guide.md` | The agent guide on its own (`text/markdown`), with this server's URLs. |
 | GET | `/api/me` | The reviewer: `{id, name}` (see [`LOCAL_REVIEW_USER`](/reference/environment/#local_review_user-the-reviewer)). |
 | GET | `/api/health` | `{ok: true, version}`: the running version. |
+| GET | `/api/busy` | `{busy, version, counts: {save, snapshot, sync}}`: the writes under way, which a restart would cut short (counts only, from memory; [`local-review busy`](/reference/cli/#local-review-busy) asks it). |
 | GET | `/api/events` | Server-Sent Events, below. |
 
 ### Commit fields

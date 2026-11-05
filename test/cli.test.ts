@@ -2,7 +2,8 @@
 // errors and serve's port handling. Runs from source via tsx, against a throwaway data home in the OS temp dir.
 import { after, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import http from 'node:http';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -168,5 +169,95 @@ describe('local-review CLI', () => {
     const bad = await lr([], { PORT: 'abc' });
     assert.equal(bad.code, 2);
     assert.match(bad.stderr, /PORT must be a port number \(0-65535\), not 'abc'/);
+  });
+});
+
+describe('serve and busy (cli-contract SPEC §3, §4)', () => {
+  const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+
+  test("serve: stdout's first line is `Local Review <version>: <url>`; runtime.json while it runs; busy finds it; SIGTERM cleans up", async () => {
+    const home = tmpDir('lr-test-serve-');
+    const e: Record<string, string | undefined> = { ...process.env, LOCAL_REVIEW_HOME: home };
+    for (const k of ['LOCAL_REVIEW_PROJECTS_DIR', 'PORT', 'LOCAL_REVIEW_DEV', 'FORCE_COLOR']) delete e[k];
+    // the first run: no data home yet, so the snapshot and first-run logs would come first if they went to stdout
+    fs.rmSync(home, { recursive: true, force: true });
+    const proc = spawn(process.execPath, ['--import', 'tsx', path.join(ROOT, 'server/cli.ts'), 'serve', '--port', '0'], { env: e, cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    proc.stdout.on('data', (d) => (stdout += d));
+    proc.stderr.on('data', (d) => (stderr += d));
+    const exited = new Promise<number | null>((res) => proc.on('exit', (code) => res(code)));
+    try {
+      for (let i = 0; i < 200 && !stdout.includes('\n'); i++) await new Promise((r) => setTimeout(r, 50));
+      const [first, second] = stdout.split('\n');
+      const m = new RegExp(`^Local Review ${VERSION.replace(/\./g, '\\.')}: (http://localhost:(\\d+))$`).exec(first);
+      assert.ok(m, `the first line: ${JSON.stringify(first)} (stderr: ${stderr})`);
+      for (let i = 0; i < 40 && !stdout.includes('Projects:'); i++) await new Promise((r) => setTimeout(r, 50));
+      assert.equal(stdout.split('\n')[1] ?? second, `Projects: ${path.join(home, 'projects')}`);
+      const port = Number(m[2]);
+      const rt = JSON.parse(fs.readFileSync(path.join(home, 'runtime.json'), 'utf8'));
+      assert.deepEqual({ ...rt, startedAt: typeof rt.startedAt }, { pid: proc.pid, port, url: `http://127.0.0.1:${port}`, version: VERSION, startedAt: 'string' });
+      if (process.platform !== 'win32') assert.equal(fs.statSync(path.join(home, 'runtime.json')).mode & 0o777, 0o600);
+
+      const api = await (await fetch(`http://127.0.0.1:${port}/api/busy`)).json();
+      assert.deepEqual(api, { busy: false, version: VERSION, counts: { save: 0, snapshot: 0, sync: 0 } });
+      const b = await lr(['busy'], { LOCAL_REVIEW_HOME: home });
+      assert.deepEqual([b.code, b.stdout, b.stderr], [0, "Local Review isn't busy.\n", '']);
+      const j = await lr(['busy', '--json'], { LOCAL_REVIEW_HOME: home });
+      assert.equal(j.code, 0);
+      assert.deepEqual(JSON.parse(j.stdout), { running: true, busy: false, url: `http://127.0.0.1:${port}`, version: VERSION, counts: { save: 0, snapshot: 0, sync: 0 } });
+      assert.equal(j.stderr, "Local Review isn't busy.\n", '--json: the prose goes to stderr');
+
+      // a save under way (adding the example projects runs git for a while) is busy, then it isn't
+      const seen: unknown[] = [];
+      let done = false;
+      const saving = fetch(`http://127.0.0.1:${port}/api/examples`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).finally(() => (done = true));
+      while (!done) {
+        seen.push((await (await fetch(`http://127.0.0.1:${port}/api/busy`)).json()).counts);
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      assert.equal((await saving).status, 201);
+      assert.ok(seen.some((c) => JSON.stringify(c) === JSON.stringify({ save: 1, snapshot: 0, sync: 0 })), `a save was seen in flight: ${JSON.stringify(seen)}`);
+      assert.deepEqual((await (await fetch(`http://127.0.0.1:${port}/api/busy`)).json()).counts, { save: 0, snapshot: 0, sync: 0 });
+
+      proc.kill('SIGTERM');
+      assert.equal(await exited, 0, 'a clean exit on SIGTERM');
+      assert.ok(!fs.existsSync(path.join(home, 'runtime.json')), 'runtime.json is removed on exit');
+      const gone = await lr(['busy', '--json'], { LOCAL_REVIEW_HOME: home });
+      assert.equal(gone.code, 3);
+      assert.deepEqual(JSON.parse(gone.stdout), { running: false, busy: false });
+    } finally {
+      proc.kill('SIGKILL');
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('busy: 75 and the counts when the instance is busy; 3 with no runtime.json, or one whose pid is dead', async () => {
+    const home = tmpDir('lr-test-busy-');
+    const server = http.createServer((req, res) => {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify(req.url === '/api/busy' ? { busy: true, version: '9.9.9', counts: { save: 1, snapshot: 0, sync: 2 } } : {}));
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const port = (server.address() as net.AddressInfo).port;
+    const write = (pid: number) =>
+      fs.writeFileSync(path.join(home, 'runtime.json'), JSON.stringify({ pid, port, url: `http://127.0.0.1:${port}`, version: '9.9.9', startedAt: new Date().toISOString() }));
+    try {
+      const none = await lr(['busy'], { LOCAL_REVIEW_HOME: home });
+      assert.deepEqual([none.code, none.stdout], [3, "Local Review isn't running.\n"]);
+      write(process.pid);
+      const b = await lr(['busy'], { LOCAL_REVIEW_HOME: home });
+      assert.deepEqual([b.code, b.stdout], [75, 'Local Review is busy: 1 save and 2 GitHub syncs are running.\n']);
+      const j = await lr(['busy', '--json'], { LOCAL_REVIEW_HOME: home });
+      assert.equal(j.code, 75);
+      assert.deepEqual(JSON.parse(j.stdout), { running: true, busy: true, url: `http://127.0.0.1:${port}`, version: '9.9.9', counts: { save: 1, snapshot: 0, sync: 2 } });
+      write(2 ** 22 + 12345); // no such process: a crashed instance's leftover
+      assert.equal((await lr(['busy'], { LOCAL_REVIEW_HOME: home })).code, 3);
+      const bad = await lr(['busy', 'now']);
+      assert.equal(bad.code, 2);
+    } finally {
+      server.close();
+      fs.rmSync(home, { recursive: true, force: true });
+    }
   });
 });

@@ -11,7 +11,7 @@ import path from 'node:path';
 import { tmpDir } from './fixture.ts';
 import type { RunResult, Runner, ServiceSpec } from '../server/service/manager.ts';
 import { SERVICE_FILE, removeServiceFile } from '../server/service/manager.ts';
-import { parseLaunchctlPrint, parsePlist, renderPlist } from '../server/service/launchd.ts';
+import { launchdManager, parseLaunchctlPrint, parsePlist, renderPlist } from '../server/service/launchd.ts';
 import { execWord, execWords, parseUnit, renderUnit } from '../server/service/systemd.ts';
 import { LABEL, buildSpec, isCheckout, portOf, refusal, serviceDir, servicePath, transientInstall, unsupported } from '../server/service/spec.ts';
 import { type ServiceContext, install, logs, restart, start, status, statusReport, stop, tailLines, uninstall } from '../server/service/index.ts';
@@ -315,6 +315,10 @@ function world(platform: 'darwin' | 'linux', { where = 'global', git = true }: {
     waitMs: 0,
     isListening: async () => false,
     health: async () => (state.running ? { version: '9.9.9' } : null),
+    // /api/busy: nothing answers, unless a test says otherwise
+    fetch: async () => {
+      throw new Error('connection refused');
+    },
   };
   const file = platform === 'darwin' ? path.join(userHome, 'Library', 'LaunchAgents', 'local-review.server.plist') : path.join(userHome, '.config', 'systemd', 'user', 'local-review-server.service');
   const take = () => {
@@ -478,7 +482,7 @@ describe('service install, on macOS (launchd)', () => {
     w.take();
     // a new port: launchd only reads a plist at bootstrap
     await install(w.ctx, { port: 6001 });
-    assert.ok(w.calls.join('\n').includes(`launchctl bootout gui/501/local-review.server\nlaunchctl enable gui/501/local-review.server\nlaunchctl bootstrap gui/501 ${w.file}`), w.calls.join('\n'));
+    assert.ok(w.calls.join('\n').includes(`launchctl bootout gui/501/local-review.server\nlaunchctl print gui/501/local-review.server\nlaunchctl enable gui/501/local-review.server\nlaunchctl bootstrap gui/501 ${w.file}`), w.calls.join('\n'));
   });
 });
 
@@ -600,7 +604,8 @@ describe('service status, start, stop, restart, logs and uninstall', () => {
     await install(w.ctx, {});
     w.take();
     assert.equal(await stop(w.ctx), 0);
-    assert.deepEqual(w.calls, ['launchctl print gui/501/local-review.server', 'launchctl bootout gui/501/local-review.server']);
+    // the bootout, then `print` until the job has gone (it already has here)
+    assert.deepEqual(w.calls, ['launchctl print gui/501/local-review.server', 'launchctl bootout gui/501/local-review.server', 'launchctl print gui/501/local-review.server']);
     assert.match(w.take().out, /^Stopped Local Review\. It starts again at your next login, or with `local-review service start`\./);
     assert.ok(fs.existsSync(w.file), 'the plist stays: RunAtLoad starts it at the next login');
     assert.equal(await start(w.ctx), 0);
@@ -752,5 +757,148 @@ describe('service status, start, stop, restart, logs and uninstall', () => {
     assert.deepEqual(fs.readdirSync(dir).sort(), ['local-review.server.plist', 'project.yaml']);
     assert.ok(SERVICE_FILE.test('local-review.server.plist') && !SERVICE_FILE.test('local-review.server.plist.bak'));
     assert.equal(LABEL, 'local-review.server');
+  });
+});
+
+describe('busy: service stop and restart refuse with 75 unless --force (cli-contract SPEC §4)', () => {
+  const answer = (body: unknown) => async () => new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
+  const BUSY = { busy: true, version: '9.9.9', counts: { save: 1, snapshot: 0, sync: 1 } };
+
+  for (const platform of ['linux', 'darwin'] as const)
+    test(`${platform}: busy, stop and restart refuse and change nothing; idle, they go ahead`, async () => {
+      const w = world(platform);
+      await install(w.ctx, {});
+      w.take();
+      const asked: string[] = [];
+      w.ctx.fetch = async (url) => {
+        asked.push(String(url));
+        return answer(BUSY)();
+      };
+      assert.equal(await stop(w.ctx), 75);
+      assert.deepEqual(asked, ['http://127.0.0.1:5622/api/busy'], 'it asks the port the service file names');
+      let r = w.take();
+      assert.equal(r.out, '');
+      assert.equal(
+        r.err,
+        'local-review: Local Review is busy: 1 save and 1 GitHub sync are running. Try again once it has finished (`local-review busy` says when), or stop it anyway with --force.\n',
+      );
+      assert.equal(w.state.running, true, 'still running');
+      assert.equal(await restart(w.ctx), 75);
+      r = w.take();
+      assert.match(r.err, /or restart it anyway with --force\.\n$/);
+      assert.ok(!r.out.includes('Restarted'));
+
+      w.ctx.fetch = answer({ busy: false, version: '9.9.9', counts: { save: 0, snapshot: 0, sync: 0 } });
+      assert.equal(await restart(w.ctx), 0);
+      assert.equal(w.take().err, '');
+      assert.equal(await stop(w.ctx), 0);
+      assert.equal(w.state.running, false);
+    });
+
+  test("status: what /api/busy says, and the schema's runningVersion and unit", async () => {
+    const w = world('linux');
+    await install(w.ctx, {});
+    w.take();
+    w.ctx.fetch = answer(BUSY);
+    assert.equal(await status(w.ctx), 0, 'busy is still running and answering');
+    assert.match(w.take().out, /^Busy:      yes \(1 save and 1 GitHub sync are running\)$/m);
+    assert.equal(await status(w.ctx, { json: true }), 0);
+    const j = JSON.parse(w.take().out);
+    assert.deepEqual(j.busy, { busy: true, counts: BUSY.counts });
+    assert.equal(j.runningVersion, '9.9.9');
+    assert.equal(j.unit, w.file);
+    w.ctx.fetch = answer({ busy: false, counts: {} });
+    await status(w.ctx);
+    assert.match(w.take().out, /^Busy:      no$/m);
+    // nothing answering /api/busy (an older version): no busy line, no busy field
+    w.ctx.fetch = async () => new Response('', { status: 404 });
+    await status(w.ctx, { json: true });
+    assert.equal(JSON.parse(w.take().out).busy, undefined);
+  });
+
+  test('--force: the same message, prefixed `Overriding:`, then it goes ahead', async () => {
+    const w = world('linux');
+    await install(w.ctx, {});
+    w.take();
+    w.ctx.fetch = answer({ busy: true, counts: { snapshot: 1 } });
+    assert.equal(await restart(w.ctx, { force: true }), 0);
+    let r = w.take();
+    assert.equal(r.err, 'Overriding: Local Review is busy: 1 backup snapshot is running.\n');
+    assert.match(r.out, /^Restarted Local Review/m);
+    assert.equal(await stop(w.ctx, { force: true }), 0);
+    r = w.take();
+    assert.equal(r.err, 'Overriding: Local Review is busy: 1 backup snapshot is running.\n');
+    assert.match(r.out, /^Stopped Local Review\./);
+  });
+
+  test("nothing answering, or an older version without /api/busy: it goes ahead (there's nothing to cut short)", async () => {
+    const w = world('linux');
+    await install(w.ctx, {});
+    w.take();
+    w.ctx.fetch = async () => new Response('{"error":"not found"}', { status: 404 });
+    assert.equal(await restart(w.ctx), 0);
+    assert.equal(w.take().err, '');
+    w.ctx.fetch = async () => {
+      throw new Error('connection refused');
+    };
+    assert.equal(await stop(w.ctx), 0);
+    // a stopped service isn't asked at all
+    let asked = 0;
+    w.ctx.fetch = async () => (asked++, answer(BUSY)());
+    assert.equal(await stop(w.ctx), 0);
+    assert.equal(asked, 0);
+  });
+});
+
+describe('launchd: the bootout → bootstrap race', () => {
+  function rig(script: { printsAfterBootout: number; bootstrapCodes: number[] }) {
+    const calls: string[] = [];
+    let loaded = true;
+    let prints = 0;
+    const codes = [...script.bootstrapCodes];
+    const run: Runner = async (cmd, args) => {
+      calls.push(`${cmd} ${args[0]}`);
+      const [verb] = args;
+      if (verb === 'bootout') {
+        prints = script.printsAfterBootout; // launchd is still taking it down for this many `print`s
+        return { code: 0, stdout: '', stderr: '' };
+      }
+      if (verb === 'print') {
+        if (prints > 0) return prints--, { code: 0, stdout: '\tstate = running\n', stderr: '' };
+        return loaded && prints === 0 && !calls.includes('launchctl bootout') ? { code: 0, stdout: '\tstate = running\n\tpid = 7\n', stderr: '' } : { code: 113, stdout: '', stderr: 'Could not find service' };
+      }
+      if (verb === 'bootstrap') {
+        const code = codes.shift() ?? 0;
+        if (code === 0) loaded = true;
+        return { code, stdout: '', stderr: code === 5 ? 'Bootstrap failed: 5: Input/output error' : '' };
+      }
+      return { code: 0, stdout: '', stderr: '' };
+    };
+    const slept: number[] = [];
+    const m = launchdManager({ dir: '/Users/me/Library/LaunchAgents', label: 'local-review.server', uid: 501, run, sleep: async (ms) => void slept.push(ms) });
+    return { m, calls, slept };
+  }
+
+  test('a reload waits until `print` no longer finds the job before it bootstraps', async () => {
+    const r = rig({ printsAfterBootout: 3, bootstrapCodes: [0] });
+    await r.m.restart({ reload: true });
+    const after = r.calls.slice(r.calls.indexOf('launchctl bootout'));
+    assert.deepEqual(after, ['launchctl bootout', 'launchctl print', 'launchctl print', 'launchctl print', 'launchctl print', 'launchctl enable', 'launchctl bootstrap']);
+    assert.deepEqual(r.slept, [250, 250, 250]);
+  });
+
+  test('error 5 from the bootstrap is retried once, after a second', async () => {
+    const r = rig({ printsAfterBootout: 0, bootstrapCodes: [5, 0] });
+    await r.m.restart({ reload: true });
+    assert.equal(r.calls.filter((c) => c === 'launchctl bootstrap').length, 2);
+    assert.deepEqual(r.slept, [1000]);
+  });
+
+  test('error 5 twice, or any other error, fails with what launchctl said', async () => {
+    const twice = rig({ printsAfterBootout: 0, bootstrapCodes: [5, 5] });
+    await assert.rejects(twice.m.restart({ reload: true }), /launchctl bootstrap gui\/501 .* failed \(exit 5\): Bootstrap failed: 5: Input\/output error/);
+    const other = rig({ printsAfterBootout: 0, bootstrapCodes: [37] });
+    await assert.rejects(other.m.restart({ reload: true }), /failed \(exit 37\)/);
+    assert.equal(other.calls.filter((c) => c === 'launchctl bootstrap').length, 1, 'not retried');
   });
 });

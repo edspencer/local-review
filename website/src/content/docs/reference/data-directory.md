@@ -30,6 +30,7 @@ them.
     <owner>/<repo>/<number>.json        # what GitHub says about one published PR
     <owner>/<repo>/sync.json            # that GitHub repo's last fetch, and its error if it failed
   config.yaml                           # optional: settings for this machine (the GitHub sync)
+  runtime.json                          # while `local-review` runs: its pid, port, URL and version (see below)
   logs/                                 # only if you run it as a service
     service.log                         # the service's output (see below)
 ```
@@ -61,6 +62,12 @@ in snapshots: delete it any time, and the next fetch rebuilds it. Off when only 
 
 **`config.yaml`** is optional: settings for this machine rather than any one project. See
 [config.yaml](/reference/config-yaml/).
+
+**`runtime.json`** is there while Local Review runs (`local-review`, or the service): its pid, port, URL, version and
+start time, readable only by you, so [`local-review busy`](/reference/cli/#local-review-busy) can find it. It writes it
+on start and removes it when it exits (see the [never-delete guarantee](/guarantees/never-delete/)). It's
+never your data. One left behind by a crash is ignored, because its pid is gone. A development server (`npm run dev`)
+doesn't write it.
 
 **`logs/`** is there only if you [run Local Review as a service](/getting-started/service/): launchd or systemd appends
 its output, stdout and stderr both, to `service.log`, which `local-review service logs` reads. A service installed

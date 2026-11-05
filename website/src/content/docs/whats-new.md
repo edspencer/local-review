@@ -7,6 +7,19 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
+## Coming in 0.15.0: `local-review busy`
+
+Not released yet.
+
+- **Restarts wait for your writes.** `local-review busy` says whether Local Review is saving, taking a backup
+  snapshot or syncing with GitHub. It exits 0 when it isn't, 75 when it is, and 3 when nothing is running. `service
+  stop` and `service restart` won't cut those writes short: they refuse with exit 75, and `--force` overrides that.
+  See [`local-review busy`](/reference/cli/#local-review-busy).
+- **A new first line, for scripts.** `local-review` now starts with `Local Review <version>: <url>`, followed by
+  `Projects: <dir>`. It used to start with `Local Review on <url>  (projects: <dir>)`, so update any script that waits
+  for that. The banner and the server's logs go to stderr.
+- **No more `Input/output error` on a macOS restart.** It now waits for launchd to finish stopping the service.
+
 ## 0.14.0: `service start`, `stop` and `logs`
 
 - **Stop and start the service without uninstalling it.** `local-review service stop` stops it until

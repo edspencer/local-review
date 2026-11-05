@@ -1,7 +1,8 @@
 // `local-review service install | uninstall | start | stop | restart | status | logs`: run Local Review in the
 // background, started at login and restarted if it exits, with the OS's own per-user service manager (manager.ts).
 // Modelled on Hallway's `hallway service …` for its daemon (server/commands/services.ts there), and following
-// edspencer/cli-contract's SPEC 0.1: `stop` doesn't disable, the one log file, exit 3 (not running) and 4 (not installed).
+// edspencer/cli-contract's SPEC 0.1: `stop` doesn't disable, the one log file, exit 3 (not running) and 4 (not installed),
+// and `stop` and `restart` refuse with 75 while the service is busy, unless --force (§4, with ../contract/busy-client.ts).
 // Local Review has no config file, so the port and the environment it reads live in the service's definition, and a
 // reinstall reads them back from it (they're kept unless you give new ones).
 //
@@ -16,6 +17,9 @@ import path from 'node:path';
 import { DEFAULT_PORT } from '../port.js';
 import { ServiceManagerError, type ServiceManager, type ServiceStatus } from './manager.js';
 import { type InstalledDefinition } from './manager.js';
+import { checkBusy as askBusy, describeCounts, guardBusy } from '../contract/busy-client.js';
+import { createOutput } from '../contract/output.js';
+import { BUSY_NOUNS } from '../busy.js';
 import { CARRIED_ENV, LOG_FILE, type PlatformContext, RefusalError, buildSpec, managerFor, portOf, refusal, which } from './spec.js';
 
 export interface ServiceContext extends PlatformContext {
@@ -36,6 +40,8 @@ export interface ServiceContext extends PlatformContext {
   pollMs?: number;
   /** Ends `logs --follow` (tests); otherwise it runs until it's interrupted. */
   signal?: AbortSignal;
+  /** How the busy check asks /api/busy. (Mocked in tests.) */
+  fetch?: typeof globalThis.fetch;
 }
 
 export const SERVICE_USAGE = 'service needs one of: install, uninstall, start, stop, restart, status, logs';
@@ -250,13 +256,35 @@ export async function start(ctx: ServiceContext): Promise<number> {
   return 0;
 }
 
+/**
+ * cli-contract SPEC §4: before a stop or restart, ask the service (on the port its definition names) whether it's
+ * busy. Null to go ahead; 75 after printing the refusal. With --force, the same message prefixed `Overriding:`.
+ * Nothing answering goes ahead: there's nothing to cut short.
+ */
+function checkBusy(ctx: ServiceContext, def: InstalledDefinition, port: number, force: boolean, what: string) {
+  return guardBusy({
+    home: dataHome(def.env, ctx.userHome),
+    url: `http://127.0.0.1:${port}`,
+    name: 'Local Review',
+    nouns: BUSY_NOUNS,
+    force,
+    fetch: ctx.fetch,
+    hint: `Try again once it has finished (\`local-review busy\` says when), or ${what} it anyway with --force.`,
+    out: createOutput({ tool: 'local-review', stdout: { write: ctx.out }, stderr: { write: ctx.err } }),
+  });
+}
+
 /** Stop it until `service start` or the next login: it stays installed and enabled (cli-contract SPEC §1). */
-export async function stop(ctx: ServiceContext): Promise<number> {
+export async function stop(ctx: ServiceContext, { force = false } = {}): Promise<number> {
   const m = managerFor(ctx);
   const def = installed(m);
   if (!def) return notInstalled(ctx);
   const port = portOf(def.program) ?? DEFAULT_PORT;
   const st = await m.status();
+  if (st.running) {
+    const refused = await checkBusy(ctx, def, port, force, 'stop');
+    if (refused !== null) return refused;
+  }
   await m.stop();
   if (!(await waitUntil(ctx, port, { gone: true }))) {
     ctx.err(`local-review: stopped the service, but something still answers on http://localhost:${port} (is \`local-review\` running in a terminal?)\n`);
@@ -288,6 +316,12 @@ export interface StatusReport extends ServiceStatus {
   answering: boolean;
   /** The version that answers, from its /api/health. */
   version: string | null;
+  /** The same, by the name cli-contract's schemas/service-status.schema.json gives it. */
+  runningVersion: string | null;
+  /** The service's file when it's installed (`file` is where it would be either way). */
+  unit: string | null;
+  /** What its /api/busy said, when it answers. */
+  busy?: { busy: boolean; counts: Record<string, number> };
   /** The version of the Local Review the service runs, on disk (what a restart would run). */
   installedVersion: string | null;
   node: string | null;
@@ -326,6 +360,7 @@ export async function statusReport(ctx: ServiceContext): Promise<StatusReport> {
   if (logs.length > 1) warnings.push(`It logs to ${logs.join(' and ')}, as an older Local Review set it up. \`local-review service restart\` moves it to one file, logs/${LOG_FILE}.`);
   const health = port && st.running ? await (ctx.health ?? defaultHealth)(port) : null;
   const installedVersion = versionAt(cli);
+  const busy = health && port ? await askBusy({ home: home!, url: `http://127.0.0.1:${port}`, fetch: ctx.fetch }) : null;
   if (health?.version && installedVersion && health.version !== installedVersion)
     warnings.push(`It's running ${health.version}, but ${installedVersion} is installed: \`local-review service restart\` runs ${installedVersion}.`);
   return {
@@ -336,6 +371,9 @@ export async function statusReport(ctx: ServiceContext): Promise<StatusReport> {
     url: port ? `http://localhost:${port}` : null,
     answering: !!health,
     version: health?.version ?? null,
+    runningVersion: health?.version ?? null,
+    unit: st.installed ? m.file : null,
+    ...(busy && (busy.state === 'busy' || busy.state === 'idle') ? { busy: { busy: busy.answer.busy, counts: busy.answer.counts ?? {} } } : {}),
     installedVersion,
     node,
     cli,
@@ -360,6 +398,7 @@ export async function status(ctx: ServiceContext, { json = false } = {}): Promis
     `Loaded:    ${r.loaded ? 'yes' : 'no'}${r.loaded && r.state ? ` (${r.state})` : ''}${r.enabled !== null ? `, ${r.enabled ? 'starts at login' : "doesn't start at login"}` : ''}`,
     `Running:   ${r.running ? `yes, pid ${r.pid}` : 'no'}${r.lastExitCode !== null ? ` (last exit status ${r.lastExitCode})` : ''}`,
     ...(r.url ? [`UI:        ${r.answering ? r.url : `nothing answering on ${r.url}`}`] : []),
+    ...(r.busy ? [`Busy:      ${r.busy.busy ? `yes (${describeCounts(r.busy.counts, BUSY_NOUNS) || 'busy'})` : 'no'}`] : []),
     ...(r.installedVersion ? [`Version:   ${r.installedVersion}`] : []),
     ...(r.node ? [`Node:      ${t(r.node)}`] : []),
     ...(r.cli ? [`Runs:      ${t(r.cli)}`] : []),
@@ -396,10 +435,12 @@ function refreshedSpec(ctx: ServiceContext, def: InstalledDefinition) {
   return { moved, spec: buildSpec({ cliScript, node, port, home: dataHome(carried, userHome), carried, inheritedPath: def.env.PATH, userHome }) };
 }
 
-export async function restart(ctx: ServiceContext): Promise<number> {
+export async function restart(ctx: ServiceContext, { force = false } = {}): Promise<number> {
   const m = managerFor(ctx);
   const def = installed(m);
   if (!def || !fs.existsSync(m.file)) return notInstalled(ctx);
+  const refused = await checkBusy(ctx, def, portOf(def.program) ?? DEFAULT_PORT, force, 'restart');
+  if (refused !== null) return refused;
   // a stale definition (an older format, or what it runs has gone) is rewritten first (cli-contract SPEC §1)
   const fresh = refreshedSpec(ctx, def);
   let changed = false;

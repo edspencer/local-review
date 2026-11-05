@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/@edspencer/cli-conformance/schemas/cli-contract.schema.json",
+  "name": "Local Review",
+  "serve": { "args": ["serve", "--port", "{port}", "--data-dir", "{home}/data"] },
+  "env": { "LOCAL_REVIEW_HOME": null, "LOCAL_REVIEW_PROJECTS_DIR": null, "LOCAL_REVIEW_DEV": null, "PORT": null },
+  "checks": {
+    "version": true,
+    "help": true,
+    "unknown-flag": true,
+    "service-status": true,
+    "service-status-json": true,
+    "busy": true,
+    "busy-json": true,
+    "serve-banner": true,
+    "serve-health": true
+  }
+}

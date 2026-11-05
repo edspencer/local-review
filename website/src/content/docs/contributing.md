@@ -97,7 +97,8 @@ server/   git.ts (read-only git), config.ts (data home, package paths), port.ts 
           derived data, keyed on file and ref stamps), reffiles.ts (stats a repo's ref files, for the branch poll),
           diskcache.ts (what git said about commits, kept in cache/), threads.ts (the Comments tab's data), plan.ts,
           cli.ts (the `local-review` CLI: serve, plan, init, asset, move, examples, guide, service), banner.ts (the
-          startup banner), service/ (`local-review service`: launchd, systemd), assets.ts (images), move.ts (`local-review move`), examples.ts (the
+          startup banner), busy.ts (the counts behind /api/busy), contract/ (copied from edspencer/cli-contract's
+          reference/: runtime.json, the busy client, exit codes, output), service/ (`local-review service`: launchd, systemd), assets.ts (images), move.ts (`local-review move`), examples.ts (the
           example projects), reviewer.ts (who you are), anchors.ts (line anchors + relocation), context.ts,
           events.ts (watch + SSE), index.ts (Hono), security.ts (localhost Host/Origin guard), stackviz.ts (stack
           picture and root-page thumbnails: SVG + PNG), fonts/ (bundled OFL fonts for it)
@@ -107,7 +108,7 @@ test/     npm test: projects/stacks/PR overrides, review store, anchors, git wra
           the CLI's other commands (cli.test.ts), landed PRs (landed.test.ts), linked projects (linked.test.ts),
           move, examples, assets, the server's cache (caching.test.ts) and git cache (diskcache.test.ts), the
           Comments tab (threads.test.ts), threads for GitHub (publish.test.ts), drafts, thread folding, the sidebar's
-          width, llms.txt, the banner, the service (service.test.ts, with a fake manager), the static never-delete guard
+          width, llms.txt, the banner, busy (busy.test.ts, and cli.test.ts against a real serve), the service (service.test.ts, with a fake manager), the static never-delete guard
           (fsguard.test.ts), the demo's lock (demo.test.ts) and the docs site's sync checks (docs.test.ts)
 src/      React UI: App (header, sidebar, SSE, j/k), Projects (the root page), Welcome (the first-run page),
           ProjectHome (/<project>), StackPage (a stack's page), CommitPage (PR header, Conversation),

@@ -42,6 +42,10 @@ jobs:
       # Packs the package, installs the tarball into a temp prefix and runs it as a user would (scripts/smoke-pack.mjs).
       - name: Smoke-test the npm package
         run: npm run smoke:pack
+      # edspencer/cli-contract's black-box checks of the packed CLI (cli-contract.json says which apply): --version,
+      # --help, exit codes, `service status --json`, `busy`, serve's first line and /api/health.
+      - name: CLI contract conformance
+        run: npx cli-conformance
 
   # `local-review service …` against the REAL service manager: launchd's gui/<uid> domain on the macOS runner,
   # systemd's user instance on the Ubuntu runner (lingering turned on so there is one). scripts/service-real.mjs packs

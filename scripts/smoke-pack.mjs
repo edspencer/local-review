@@ -96,7 +96,7 @@ try {
     server.stdout.on('data', (d) => {
       buf += d;
       printed += d;
-      const m = buf.match(/Local Review on (http:\/\/localhost:\d+)/);
+      const m = buf.match(/^Local Review [^:\s]+: (http:\/\/localhost:\d+)\n/);
       if (m) {
         clearTimeout(timer);
         resolve(m[1]);
@@ -105,9 +105,11 @@ try {
     server.on('exit', (code) => reject(new Error(`the server exited (${code}): ${buf}`)));
   });
   step(`serving on ${base}`);
-  // piped, so no banner: the line (after any [backups] note), then the hint for agents (server/banner.ts)
+  // stdout's first line is `Local Review <version>: <url>` (cli-contract SPEC §3: logs such as [backups] go to stderr),
+  // then the projects and the hint for agents; piped, so no banner (server/banner.ts)
   await new Promise((r) => setTimeout(r, 200));
-  assert.ok(/^Local Review on /m.test(printed) && !printed.includes('█'), `no banner when piped: ${printed}`);
+  assert.ok(printed.startsWith(`Local Review ${pkg.version}: ${base}\nProjects: ${path.join(data, 'projects')}\n`), `the first lines: ${printed}`);
+  assert.ok(!printed.includes('█'), `no banner when piped: ${printed}`);
   assert.ok(printed.includes(`Point Claude Code/Codex/pi/whatever at ${base}/llms.txt then ask it`), `the hint for agents: ${printed}`);
 
   step('llms.txt, llms-full.txt, agent-guide.md');
@@ -155,6 +157,16 @@ try {
   assert.deepEqual([reminders.after?.slug, reminders.repos[0].startsAfter, reminders.repos[0].commits.length, reminders.warnings], ['example-calendar-feed', true, 3, []]);
   assert.equal((await post('/api/examples/remove')).status, 200);
   assert.deepEqual((await (await get(base, '/api/projects', /json/)).json()).projects.map((p) => p.slug), ['demo']);
+
+  step('busy, then a clean exit on SIGTERM');
+  assert.equal(run('busy'), "Local Review isn't busy.\n");
+  const busy = JSON.parse(run('busy', '--json'));
+  assert.deepEqual(busy, { running: true, busy: false, url: base.replace('localhost', '127.0.0.1'), version: pkg.version, counts: { save: 0, snapshot: 0, sync: 0 } });
+  const exited = new Promise((r) => server.once('exit', r));
+  server.kill('SIGTERM');
+  assert.equal(await exited, 0, 'exit 0 on SIGTERM');
+  assert.ok(!fs.existsSync(path.join(data, 'runtime.json')), 'runtime.json removed');
+  fails(['busy'], 3, /^$/);
   console.log('smoke:pack: ok');
 } finally {
   if (server && server.exitCode === null) {
