@@ -204,13 +204,13 @@ try {
   assert.equal(lr('service', 'logs', '-n', '1').trimEnd().split('\n').length, 1);
 
   step('service restart');
-  assert.match(lr('service', 'restart'), new RegExp(`^Restarted Local Review: http://localhost:${port}$`, 'm'));
-  assert.ok(await answers(port));
-  // with nothing under way, --force changes nothing: no "Overriding:"
+  // with --force: with nothing under way it changes nothing, so no "Overriding:". (The next step restarts it without
+  // --force. One restart here, not two: systemd refuses a sixth start within 10 seconds, its default StartLimitBurst.)
   b = lrAny('service', 'restart', '--force');
   assert.equal(b.code, 0, b.stderr);
+  assert.match(b.stdout, new RegExp(`^Restarted Local Review: http://localhost:${port}$`, 'm'));
   assert.doesNotMatch(b.stderr, /Overriding/);
-  await until('it answers again', () => answers(port));
+  assert.ok(await answers(port));
 
   step('service restart rewrites a unit an older version wrote (two log files)');
   const current = fs.readFileSync(file, 'utf8');
@@ -237,7 +237,8 @@ try {
 
   step('service uninstall');
   // its start, reading the data home `service install` chose (its environment came from the service's file alone)
-  assert.ok(fs.readFileSync(log, 'utf8').includes(`Local Review ${version}: http://localhost:${port}\nProjects: ${path.join(data, 'projects')}\n`), 'it logged its start');
+  const logged = fs.readFileSync(log, 'utf8');
+  assert.ok(logged.includes(`Local Review ${version}: http://localhost:${port}\nProjects: ${path.join(data, 'projects')}\n`), `it logged its start:\n${logged}`);
   const dataBefore = fs.readdirSync(data).sort();
   assert.match(lr('service', 'uninstall'), /^Removed Local Review's service \(.*\)\. Your data in .* is untouched\.$/m);
   installed = false;
