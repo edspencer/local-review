@@ -248,7 +248,9 @@ try {
   await until(`nothing on ${port2}`, async () => !(await answers(port2)));
   assert.equal(statusJson().loaded, false);
   // (the server may still add to it as it stops, e.g. its cache: only what was there matters)
-  for (const f of dataBefore) assert.ok(fs.existsSync(path.join(data, f)), `${f} is still in the data home`);
+  // all but runtime.json, which the server removes as it exits (cli-contract SPEC §4)
+  for (const f of dataBefore.filter((f) => f !== 'runtime.json')) assert.ok(fs.existsSync(path.join(data, f)), `${f} is still in the data home`);
+  await until('runtime.json removed by its clean exit', async () => !fs.existsSync(runtime));
   assert.ok(fs.readFileSync(log, 'utf8').includes(`Local Review ${version}: `), 'the logs are kept');
   assert.match(lr('service', 'uninstall'), /wasn't installed as a service; nothing to do/);
   for (const verb of ['status', 'start', 'logs']) assert.equal(lrAny('service', verb).code, 4, `service ${verb} after uninstall`);
