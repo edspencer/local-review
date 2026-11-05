@@ -359,11 +359,19 @@ describe('service install, on Linux (systemd)', () => {
     const w = world('linux');
     await install(w.ctx, {});
     w.take();
-    // unchanged: no daemon-reload, no restart
+    // unchanged: no daemon-reload, but the running service is restarted, not left serving the old process: systemd's
+    // start leaves an active unit alone (cli-contract SPEC §1)
     assert.equal(await install(w.ctx, {}), 0);
+    const calls = [...w.calls];
     let r = w.take();
     assert.match(r.out, /^Installed Local Review as a systemd user unit: .* \(unchanged\)$/m);
-    assert.ok(!w.calls.some((c) => / (daemon-reload|restart) /.test(` ${c} `)), w.calls.join('\n'));
+    assert.ok(!calls.includes('systemctl --user daemon-reload'), calls.join('\n'));
+    assert.ok(calls.includes('systemctl --user restart local-review-server.service'), calls.join('\n'));
+    // stopped, and unchanged: a start, not a restart (systemd allows five starts in ten seconds)
+    w.state.running = false;
+    assert.equal(await install(w.ctx, {}), 0);
+    assert.ok(w.calls.includes('systemctl --user start local-review-server.service') && !w.calls.includes('systemctl --user restart local-review-server.service'), w.calls.join('\n'));
+    w.take();
     // a new port
     await install(w.ctx, { port: 6001 });
     assert.match(fs.readFileSync(w.file, 'utf8'), /--port 6001$/m);
@@ -476,9 +484,9 @@ describe('service install, on macOS (launchd)', () => {
     assert.deepEqual(def.program, [w.node, w.cli, 'serve', '--quiet', '--port', '5622']);
     assert.equal(def.env.PATH.split(':')[0], path.dirname(w.node));
 
-    // the same again: already running, nothing to do
+    // the same again, over the running service: it's replaced, not left serving the old process (cli-contract SPEC §1)
     await install(w.ctx, {});
-    assert.deepEqual(w.calls, ['launchctl print gui/501/local-review.server', 'launchctl enable gui/501/local-review.server', 'launchctl print gui/501/local-review.server']);
+    assert.deepEqual(w.calls, ['launchctl print gui/501/local-review.server', 'launchctl print gui/501/local-review.server', 'launchctl kickstart -k gui/501/local-review.server']);
     w.take();
     // a new port: launchd only reads a plist at bootstrap
     await install(w.ctx, { port: 6001 });
@@ -593,7 +601,11 @@ describe('service status, start, stop, restart, logs and uninstall', () => {
     assert.match(w.take().out, /^Local Review's service wasn't running\. /);
 
     assert.equal(await start(w.ctx), 0);
-    assert.deepEqual(w.calls.filter((c) => !c.includes(' show ')), ['systemctl --user enable --quiet local-review-server.service', 'systemctl --user start local-review-server.service']);
+    assert.deepEqual(w.calls.filter((c) => !c.includes(' show ')), [
+      'systemctl --user enable --quiet local-review-server.service',
+      'systemctl --user reset-failed local-review-server.service', // a unit that hit the start limit stays failed until this
+      'systemctl --user start local-review-server.service',
+    ]);
     assert.equal(w.take().out, 'Started Local Review: http://localhost:6003\n');
     assert.equal(await start(w.ctx), 0);
     assert.equal(w.take().out, 'Local Review is already running: http://localhost:6003\n');
@@ -632,7 +644,7 @@ describe('service status, start, stop, restart, logs and uninstall', () => {
     await install(w.ctx, { port: 6002 });
     w.take();
     assert.equal(await restart(w.ctx), 0);
-    assert.deepEqual(w.calls, ['systemctl --user enable --quiet local-review-server.service', 'systemctl --user restart local-review-server.service']);
+    assert.deepEqual(w.calls, ['systemctl --user enable --quiet local-review-server.service', 'systemctl --user reset-failed local-review-server.service', 'systemctl --user restart local-review-server.service']);
     assert.equal(w.take().out, 'Restarted Local Review: http://localhost:6002\n');
   });
 
@@ -887,18 +899,19 @@ describe('launchd: the bootout → bootstrap race', () => {
     assert.deepEqual(r.slept, [250, 250, 250]);
   });
 
-  test('error 5 from the bootstrap is retried once, after a second', async () => {
-    const r = rig({ printsAfterBootout: 0, bootstrapCodes: [5, 0] });
+  test('error 5 or 37 from the bootstrap is retried, 500 ms apart (cli-contract SPEC §7)', async () => {
+    const r = rig({ printsAfterBootout: 0, bootstrapCodes: [5, 37, 0] });
     await r.m.restart({ reload: true });
-    assert.equal(r.calls.filter((c) => c === 'launchctl bootstrap').length, 2);
-    assert.deepEqual(r.slept, [1000]);
+    assert.equal(r.calls.filter((c) => c === 'launchctl bootstrap').length, 3);
+    assert.deepEqual(r.slept, [500, 500]);
   });
 
-  test('error 5 twice, or any other error, fails with what launchctl said', async () => {
-    const twice = rig({ printsAfterBootout: 0, bootstrapCodes: [5, 5] });
-    await assert.rejects(twice.m.restart({ reload: true }), /launchctl bootstrap gui\/501 .* failed \(exit 5\): Bootstrap failed: 5: Input\/output error/);
-    const other = rig({ printsAfterBootout: 0, bootstrapCodes: [37] });
-    await assert.rejects(other.m.restart({ reload: true }), /failed \(exit 37\)/);
+  test('error 5 six times, or any other error, fails with what launchctl said', async () => {
+    const always = rig({ printsAfterBootout: 0, bootstrapCodes: [5, 5, 5, 5, 5, 5, 0] });
+    await assert.rejects(always.m.restart({ reload: true }), /launchctl bootstrap gui\/501 .* failed \(exit 5\): Bootstrap failed: 5: Input\/output error/);
+    assert.equal(always.calls.filter((c) => c === 'launchctl bootstrap').length, 6, 'bounded: five retries');
+    const other = rig({ printsAfterBootout: 0, bootstrapCodes: [112] });
+    await assert.rejects(other.m.restart({ reload: true }), /failed \(exit 112\)/);
     assert.equal(other.calls.filter((c) => c === 'launchctl bootstrap').length, 1, 'not retried');
   });
 });

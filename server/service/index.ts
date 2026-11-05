@@ -10,6 +10,7 @@
 // ~/.config/systemd/user/local-review-server.service), and the data home's logs/ directory. `uninstall` removes the
 // definition and nothing else: the data home, logs included, stays as it is. `restart` rewrites the definition only
 // when it's stale (an older format, or a Node or CLI that has gone), keeping what it runs otherwise. `logs` only reads.
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
@@ -19,8 +20,10 @@ import { ServiceManagerError, type ServiceManager, type ServiceStatus } from './
 import { type InstalledDefinition } from './manager.js';
 import { checkBusy as askBusy, describeCounts, guardBusy } from '../contract/busy-client.js';
 import { createOutput } from '../contract/output.js';
+import { readLiveRuntimeFile } from '../contract/runtime-file.js';
+import { updateNotice, updateSummary, type UpdateSummary } from '../contract/update-check.js';
 import { BUSY_NOUNS } from '../busy.js';
-import { CARRIED_ENV, LOG_FILE, type PlatformContext, RefusalError, buildSpec, managerFor, portOf, refusal, which } from './spec.js';
+import { CARRIED_ENV, LOG_FILE, type PlatformContext, RefusalError, buildSpec, isCheckout, managerFor, portOf, refusal, which } from './spec.js';
 
 export interface ServiceContext extends PlatformContext {
   /** Local Review's package root (config.ROOT): the service runs <root>/dist/server/cli.js. */
@@ -42,6 +45,10 @@ export interface ServiceContext extends PlatformContext {
   signal?: AbortSignal;
   /** How the busy check asks /api/busy. (Mocked in tests.) */
   fetch?: typeof globalThis.fetch;
+  /** This command's data home (config.HOME: --data-dir, LOCAL_REVIEW_HOME or ~/.local-review), for when nothing is installed. */
+  dataHome?: string;
+  /** This CLI's version, which `status` repeats an update check for (cli-contract SPEC §3). */
+  version?: string;
 }
 
 export const SERVICE_USAGE = 'service needs one of: install, uninstall, start, stop, restart, status, logs';
@@ -171,36 +178,52 @@ export interface InstallFlags {
   port?: number;
   dryRun?: boolean;
   fromCheckout?: boolean;
+  /**
+   * Re-render the installed service in this version's format, from what its definition records (port, data home,
+   * environment, PATH), not from this shell's environment; --port still wins. Exit 4 with nothing installed. It's what
+   * `update` runs through the new version's CLI (cli-contract SPEC §1, §5 step 11).
+   */
+  refresh?: boolean;
 }
 
 export async function install(ctx: ServiceContext, flags: InstallFlags): Promise<number> {
   const m = managerFor(ctx);
+  const before = installed(m);
+  if (flags.refresh && !before) {
+    ctx.err("local-review: Local Review isn't installed as a service, so there's nothing to refresh; install it with `local-review service install`\n");
+    return EXIT_NOT_INSTALLED;
+  }
   const cliScript = path.join(realOr(ctx.root), 'dist', 'server', 'cli.js');
-  const why = refusal(cliScript, { fromCheckout: flags.fromCheckout });
+  // a refresh keeps a service that was installed from a checkout on purpose
+  const why = refusal(cliScript, { fromCheckout: flags.fromCheckout || (flags.refresh && !!before?.program[1] && isCheckout(before.program[1])) });
   if (why) throw new RefusalError(why);
   if (!fs.existsSync(cliScript)) throw new RefusalError(`${cliScript} doesn't exist: build Local Review first (npm run build)`);
   const node = { path: realOr(ctx.execPath), version: ctx.nodeVersion };
 
-  // the port and environment: given now, else as installed before, else the defaults
-  const before = installed(m);
+  // the port and environment: given now, else as installed before, else the defaults. A refresh reads only the
+  // definition: what this shell happens to export isn't what the service was installed with
   const keptPort = flags.port === undefined ? (before && portOf(before.program)) : null;
   const port = flags.port ?? keptPort ?? DEFAULT_PORT;
   const carried: Record<string, string> = {};
   for (const k of CARRIED_ENV) {
-    const now = ctx.env[k];
+    const now = flags.refresh ? undefined : ctx.env[k];
     if (now) carried[k] = k === 'LOCAL_REVIEW_HOME' ? absoluteHome(now, ctx.userHome) : now;
     else if (before?.env[k]) carried[k] = before.env[k];
   }
-  const home = dataHome(carried, ctx.userHome);
-  const spec = buildSpec({ cliScript, node, port, home, carried, inheritedPath: ctx.env.PATH, userHome: ctx.userHome });
+  const userHome = (flags.refresh && before?.env.HOME) || ctx.userHome;
+  const inheritedPath = flags.refresh ? (before?.env.PATH ?? ctx.env.PATH) : ctx.env.PATH;
+  const home = dataHome(carried, userHome);
+  const spec = buildSpec({ cliScript, node, port, home, carried, inheritedPath, userHome });
   if (!which('git', spec.env.PATH))
     throw new RefusalError(`can't find git on your PATH (${spec.env.PATH}). Local Review runs git to read your repos; install it, then run \`local-review service install\` again.`);
 
   const t = (p: string) => tildify(p, ctx.userHome);
-  const notes = [
-    ...(keptPort && keptPort !== DEFAULT_PORT ? [`Port ${port}, as it was installed (--port changes it).`] : []),
-    ...CARRIED_ENV.filter((k) => carried[k] && !ctx.env[k]).map((k) => `${k}=${carried[k]}, as it was installed (uninstall first to drop it).`),
-  ];
+  const notes = flags.refresh
+    ? []
+    : [
+        ...(keptPort && keptPort !== DEFAULT_PORT ? [`Port ${port}, as it was installed (--port changes it).`] : []),
+        ...CARRIED_ENV.filter((k) => carried[k] && !ctx.env[k]).map((k) => `${k}=${carried[k]}, as it was installed (uninstall first to drop it).`),
+      ];
   if (flags.dryRun) {
     ctx.out(`Would write the ${m.noun} ${t(m.file)} (--dry-run: nothing written, nothing started):\n\n${m.render(spec)}\n`);
     for (const n of notes) ctx.out(`${n}\n`);
@@ -213,10 +236,14 @@ export async function install(ctx: ServiceContext, flags: InstallFlags): Promise
   fs.mkdirSync(path.dirname(spec.log), { recursive: true }); // launchd and systemd append to the logs, but won't make their directory
 
   const changed = await m.write(spec);
-  if (st.loaded && changed) await m.restart({ reload: true });
+  // A service that's running is replaced, not left serving the old process: systemd's start (like `enable --now`)
+  // leaves an active unit alone (cli-contract SPEC §1, §7). A refresh restarts it whatever it's doing: `update` runs
+  // it to bring up the version it has just installed. A first install only starts: systemd allows five starts in ten
+  // seconds.
+  if (st.loaded && (changed || st.running || flags.refresh)) await m.restart({ reload: changed });
   else await m.start();
 
-  ctx.out(`Installed Local Review as a ${m.noun}: ${t(m.file)}${changed ? '' : ' (unchanged)'}\n`);
+  ctx.out(`${flags.refresh ? 'Refreshed' : 'Installed'} Local Review as a ${m.noun}: ${t(m.file)}${changed ? '' : ' (unchanged)'}\n`);
   for (const n of notes) ctx.out(`${n}\n`);
   if (!(await waitUntil(ctx, port))) {
     ctx.err(`local-review: the service was started, but nothing answered on http://localhost:${port} in time.\n`);
@@ -225,6 +252,7 @@ export async function install(ctx: ServiceContext, flags: InstallFlags): Promise
     return 1;
   }
   ctx.out(`It's running: http://localhost:${port}\n`);
+  if (flags.refresh) return 0;
   ctx.out(`${m.lifetime}\n`);
   ctx.out(`Data: ${t(home)}. Log: ${t(spec.log)} (\`local-review service logs\`).\n`);
   return 0;
@@ -330,6 +358,8 @@ export interface StatusReport extends ServiceStatus {
   /** Its log file (`service logs`). */
   log: string | null;
   warnings: string[];
+  /** What the last `update --check` (or `doctor`) found, from <data>/update-check.json; left out, never null, when there's nothing to repeat. */
+  update?: UpdateSummary;
 }
 
 export async function statusReport(ctx: ServiceContext): Promise<StatusReport> {
@@ -363,6 +393,9 @@ export async function statusReport(ctx: ServiceContext): Promise<StatusReport> {
   const busy = health && port ? await askBusy({ home: home!, url: `http://127.0.0.1:${port}`, fetch: ctx.fetch }) : null;
   if (health?.version && installedVersion && health.version !== installedVersion)
     warnings.push(`It's running ${health.version}, but ${installedVersion} is installed: \`local-review service restart\` runs ${installedVersion}.`);
+  // never asks the registry: it repeats what `update --check` or `doctor` last found, for this version (SPEC §3)
+  const updateHome = home ?? ctx.dataHome;
+  const update = updateHome && ctx.version ? updateSummary(updateHome, { currentVersion: ctx.version }) : undefined;
   return {
     ...st,
     file: m.file,
@@ -380,6 +413,7 @@ export async function statusReport(ctx: ServiceContext): Promise<StatusReport> {
     home,
     log: logs[0] ?? null,
     warnings,
+    ...(update ? { update } : {}),
   };
 }
 
@@ -390,6 +424,8 @@ export async function status(ctx: ServiceContext, { json = false } = {}): Promis
   const r = await statusReport(ctx);
   if (json) {
     ctx.out(JSON.stringify(r, null, 2) + '\n');
+    // the prose goes to stderr, so it says the same with --json (cli-contract SPEC §3)
+    if (r.update?.updateAvailable && ctx.version) ctx.err(`${updateNoticeFor(ctx.version, r.update.latest)}\n`);
     return statusCode(r);
   }
   const t = (p: string) => tildify(p, ctx.userHome);
@@ -407,6 +443,7 @@ export async function status(ctx: ServiceContext, { json = false } = {}): Promis
     ...r.warnings.map((w) => `\nWarning: ${w}`),
   ];
   ctx.out(lines.join('\n') + '\n');
+  if (r.update?.updateAvailable && ctx.version) ctx.err(`\n${updateNoticeFor(ctx.version, r.update.latest)}\n`);
   return statusCode(r);
 }
 
@@ -527,9 +564,81 @@ function readRange(f: string, from: number, to: number): string {
   }
 }
 
-/** The context for the real thing: this process, this OS, the real launchctl / systemctl. */
-export function realContext(root: string): ServiceContext {
+/** SPEC §3's notice, as `status` repeats it from the cache. */
+export const updateNoticeFor = (current: string, latest: string) =>
+  updateNotice({ name: 'Local Review', current, target: latest, command: 'local-review update', changelog: changelogUrl(latest) });
+
+/** The release notes for a version: the notice's `Changes:` line. */
+export const changelogUrl = (v: string) => `https://github.com/edspencer/local-review/releases/tag/v${v}`;
+
+// ---------------------------------------------------------------------------------------------------------------
+// What `local-review update` needs from the service (cli-contract SPEC §5): ../update.ts
+// ---------------------------------------------------------------------------------------------------------------
+
+export interface UpdateServiceHooks {
+  /** The data home for update.lock and update-check.json: the service's, when one is installed (what `status` reads). */
+  home: string;
+  /** Where the busy check asks: the port the installed service's definition names, else runtime.json. */
+  busyUrl?: string;
+  hooks: {
+    inspect(): { installed: boolean; running: boolean; url?: string; log?: string };
+    stop(): void;
+    refresh(cli: string): { status: number | null; stdout: string; stderr: string };
+    tail(lines: number): string;
+  };
+}
+
+/**
+ * The service, for `update`. Its stop and refresh run a CLI as a child, synchronously, as update.ts's hooks are: the
+ * stop is this CLI's own `service stop --force` (update has asked the busy question already), and the refresh is
+ * `<node> <cli> service install --refresh` with whichever CLI update names (the new one, or the old one on a rollback).
+ */
+export async function updateHooks(ctx: ServiceContext, self: { cli: string; execArgv?: string[] }): Promise<UpdateServiceHooks> {
+  const m = managerFor(ctx);
+  const first = installed(m);
+  const home = first ? dataHome(first.env, ctx.userHome) : (ctx.dataHome ?? dataHome(ctx.env, ctx.userHome));
+  const portNow = () => {
+    const def = installed(m);
+    return def ? (portOf(def.program) ?? DEFAULT_PORT) : null;
+  };
+  const firstPort = portNow();
+  // is the service answering now? Only a hint for update's question; it never decides anything
+  const running = firstPort !== null && (await answering(ctx, firstPort));
+  const node = ctx.execPath;
+  const run = (args: string[]) => {
+    const r = spawnSync(node, args, { encoding: 'utf8', timeout: 120_000 });
+    return { status: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? (r.error ? String(r.error) : '') };
+  };
   return {
+    home,
+    ...(firstPort !== null ? { busyUrl: `http://127.0.0.1:${firstPort}` } : {}),
+    hooks: {
+      inspect() {
+        const def = installed(m);
+        if (!def) {
+          // a foreground `serve`, found the only honest way: its runtime.json (never a guessed port)
+          const live = readLiveRuntimeFile(home);
+          return { installed: false, running: live !== null, ...(live ? { url: live.url } : {}) };
+        }
+        return { installed: true, running, url: `http://127.0.0.1:${portOf(def.program) ?? DEFAULT_PORT}`, log: logsOf(def, ctx.userHome)[0] };
+      },
+      stop() {
+        const r = run([...(self.execArgv ?? []), self.cli, 'service', 'stop', '--force']);
+        if (r.status !== 0) throw new Error((r.stderr || r.stdout).trim().replace(/^local-review: /, '') || `service stop exited ${r.status}`);
+      },
+      refresh: (cli) => run([cli, 'service', 'install', '--refresh']),
+      tail(lines) {
+        const def = installed(m);
+        return (def && tailLines(logsOf(def, ctx.userHome)[0], lines)) || '';
+      },
+    },
+  };
+}
+
+/** The context for the real thing: this process, this OS, the real launchctl / systemctl. */
+export function realContext(root: string, o: { dataHome?: string; version?: string } = {}): ServiceContext {
+  return {
+    ...o,
     platform: process.platform,
     userHome: os.homedir(),
     env: process.env,
