@@ -106,6 +106,12 @@ export interface ServiceManager {
   status(): Promise<ServiceStatus>;
   /** Stop it, unload it and delete the definition. */
   remove(): Promise<void>;
+  /**
+   * Take back a definition `write` made for a first install the manager then refused (no systemd here, no user bus, a
+   * bootstrap launchd won't do): left behind, `status` would say it's installed, and the next login would try it again.
+   * Best effort, and never throws: the refusal is what the caller reports. Not for a reinstall, which keeps its file.
+   */
+  discard(): Promise<void>;
 }
 
 /** Write `text` to `file` atomically; false if it already had exactly that text. */

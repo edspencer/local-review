@@ -314,6 +314,48 @@ describe('serve and busy (cli-contract SPEC §3, §4)', () => {
     }
   });
 
+  test("serve rotates the service's log at boot, past 8 MB, in place; a foreground run with no log gets none", async () => {
+    const home = tmpDir('lr-test-rotate-');
+    const e: Record<string, string | undefined> = { ...process.env, LOCAL_REVIEW_HOME: home };
+    for (const k of ['LOCAL_REVIEW_PROJECTS_DIR', 'PORT', 'LOCAL_REVIEW_DEV', 'FORCE_COLOR']) delete e[k];
+    const log = path.join(home, 'logs', 'service.log');
+    const boot = async () => {
+      const proc = spawn(process.execPath, ['--import', 'tsx', path.join(ROOT, 'server/cli.ts'), 'serve', '--port', '0', '--quiet'], { env: e, cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+      let stdout = '';
+      proc.stdout.on('data', (d) => (stdout += d));
+      const exited = new Promise((res) => proc.on('exit', res));
+      for (let i = 0; i < 200 && !stdout.includes('\n'); i++) await new Promise((r) => setTimeout(r, 50));
+      proc.kill('SIGTERM');
+      await exited;
+      assert.match(stdout, /^Local Review /);
+    };
+    try {
+      // a foreground run: no log, and none made
+      await boot();
+      assert.ok(!fs.existsSync(log), 'a foreground serve writes no service log');
+      // the service's log, held open for appending as launchd and systemd hold it
+      fs.mkdirSync(path.dirname(log), { recursive: true });
+      fs.writeFileSync(log, 'x'.repeat(8 * 1024 * 1024 + 1));
+      const fd = fs.openSync(log, 'a');
+      const inode = fs.statSync(log).ino;
+      try {
+        await boot();
+        assert.equal(fs.statSync(`${log}.1`).size, 8 * 1024 * 1024 + 1, 'copied to service.log.1');
+        assert.equal(fs.statSync(log).ino, inode, 'the same file');
+        fs.writeSync(fd, 'after\n');
+        assert.equal(fs.readFileSync(log, 'utf8'), 'after\n', "truncated in place: the manager's next line lands at the start");
+      } finally {
+        fs.closeSync(fd);
+      }
+      // under the limit: left alone
+      await boot();
+      assert.equal(fs.readFileSync(log, 'utf8'), 'after\n');
+      assert.ok(!fs.existsSync(`${log}.2`));
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   test('busy: 75 and the counts when the instance is busy; 3 with no runtime.json, or one whose pid is dead', async () => {
     const home = tmpDir('lr-test-busy-');
     const server = http.createServer((req, res) => {

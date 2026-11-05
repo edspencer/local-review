@@ -12,7 +12,8 @@
 // `update` asks the npm registry, then installs local-review with npm and refreshes the service (server/update.ts);
 // it writes <data>/update.lock and update-check.json, never user data. `doctor` only reads, apart from
 // update-check.json (server/doctor.ts). They're the only commands that ask the registry, and only when run.
-// `serve` writes <data>/runtime.json (its pid, port, URL and version, for `busy`), and removes it when it exits.
+// `serve` writes <data>/runtime.json (its pid, port, URL and version, for `busy`), and removes it when it exits; it
+// rotates the service's own log, <data>/logs/service.log (contract/rotate.ts), and touches no other log.
 // First: `--data-dir` sets LOCAL_REVIEW_HOME before config.ts reads it.
 import './datadir.js';
 import fs from 'node:fs';
@@ -373,6 +374,9 @@ async function serve(flags: Record<string, string>) {
     const dev = !!process.env.LOCAL_REVIEW_DEV;
     // `npm run dev` is a development server: it leaves runtime.json to the real instance
     if (!dev) await announceRuntime(bound);
+    // the service's log, <data>/logs/service.log, which launchd or systemd appends to: rotated by copy and truncate
+    // past 8 MB, keeping 3 (cli-contract SPEC §7). A foreground run has no such file, so this does nothing
+    if (!dev) await rotateServiceLog();
     const { startupMessage } = await import('./banner.js');
     const s = startupMessage(
       { url: `http://localhost:${bound}`, version: version(), projectsDir: PROJECTS_DIR, quiet: !!flags.quiet, dev },
@@ -421,6 +425,12 @@ async function announceRuntime(port: number) {
   };
   process.on('SIGTERM', onSignal(0));
   process.on('SIGINT', onSignal(130));
+}
+
+async function rotateServiceLog() {
+  const { startLogRotation } = await import('./contract/rotate.js');
+  const { LOG_FILE } = await import('./service/spec.js');
+  startLogRotation(path.join(HOME, 'logs', LOG_FILE), { warn: (m) => process.stderr.write(`local-review: ${m}\n`) });
 }
 
 async function busy(flags: Record<string, string>): Promise<number> {

@@ -165,7 +165,7 @@ start a service with almost no environment of its own:
 - It still listens on **127.0.0.1 only**, as `local-review` always does. There's no option to change that
   ([Localhost security](/guarantees/localhost-security/)).
 - Its working directory is the data home, and its output, stdout and stderr both, is appended to `logs/service.log`
-  there. Local Review writes little (a line when it starts, a note per snapshot, and errors), so it isn't rotated.
+  there. Local Review rotates it itself, by copying and truncating, at 8 MB, keeping 3.
 
 Here is a generated unit, from `local-review service install --dry-run` on Linux:
 

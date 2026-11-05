@@ -35,6 +35,7 @@ them.
   update.lock                           # only while `local-review update` runs
   logs/                                 # only if you run it as a service
     service.log                         # the service's output (see below)
+    service.log.1 … .3                  # older output, once it has been rotated
 ```
 
 | File | Written by | Reference |
@@ -79,8 +80,9 @@ it's removed when it ends, and one left by a crash is ignored once its pid has g
 **`logs/`** is there only if you [run Local Review as a service](/getting-started/service/): launchd or systemd appends
 its output, stdout and stderr both, to `service.log`, which `local-review service logs` reads. A service installed
 before 0.14 wrote `server.out.log` and `server.err.log` instead; they're left here after `service restart` moves it to
-`service.log`. Local Review writes little (a line when it starts, a note per snapshot, and errors), so the logs
-aren't rotated. Empty or delete them whenever you like. `local-review service uninstall`
+`service.log`. Local Review rotates `service.log` itself: when it starts, and every 15 minutes while it runs, a log
+past 8 MB is copied to `service.log.1` and truncated in place (launchd and systemd hold it open, so it can't be
+renamed), older copies shift down, and three are kept. Empty or delete any of them whenever you like. `local-review service uninstall`
 leaves them, like everything else here. The service's own file isn't here: it's in `~/Library/LaunchAgents` or
 `~/.config/systemd/user` (`$XDG_CONFIG_HOME/systemd/user` if that's set).
 
