@@ -1,5 +1,41 @@
 # local-review
 
+## 0.17.0
+
+### Minor Changes
+
+- [#87](https://github.com/edspencer/local-review/pull/87) [`50372f8`](https://github.com/edspencer/local-review/commit/50372f8f6bd0c5bb7da775fb5b5700b263741065) Thanks [@edspencer](https://github.com/edspencer)! - **`--json` on `service install`, `uninstall`, `start`, `stop` and `restart`** (cli-contract SPEC §1), as `service
+  status` already had. With it, stdout carries exactly one JSON document, `{ ok, action, error?, … }` followed by every
+  field of `service status --json` as it is afterwards, and the messages that used to go to stdout go to stderr. The
+  exit code is the one without `--json`. `error` is `busy` on exit 75, `not installed` on exit 4, and the reason on exit
+  1, including an install that's refused (npx's cache, a checkout, a port in use). Each command adds what it found:
+  `install` `dryRun` (and `definition`, the file it would write), `refreshed` and `changed`; `start` and `stop`
+  `wasRunning`; `restart` `rewritten`; `uninstall` `wasInstalled`. It's the same shape as Hallway's.
+  
+  Scripts that passed `--json` to these commands used to get a usage error (exit 2); now they get the document.
+  `service logs --json` is still a usage error.
+
+### Patch Changes
+
+- [#89](https://github.com/edspencer/local-review/pull/89) [`e64b022`](https://github.com/edspencer/local-review/commit/e64b0229322a1ce8074d61db8de13523ac9b26e4) Thanks [@edspencer](https://github.com/edspencer)! - **`service install` checks linger on Linux** (cli-contract SPEC §7) instead of always printing a reminder. It asks
+  `loginctl show-user <user> -p Linger`, and only when linger is off does it say why it matters (the service stops when
+  you log out) and print `sudo loginctl enable-linger <user>`, the same line `doctor` gives. It never runs `sudo`. When
+  linger is on, or `loginctl` can't answer (no logind, a container), it says nothing about it. With `--json`, the
+  advice is in the document's `warnings`. The old reminder line, `loginctl enable-linger $USER` without `sudo`, has
+  gone from the install output.
+
+- [#85](https://github.com/edspencer/local-review/pull/85) [`464432c`](https://github.com/edspencer/local-review/commit/464432ca41c1c3cc2e37cb2a8055a74153380aa3) Thanks [@edspencer](https://github.com/edspencer)! - **The service's log is rotated.** `serve` now rotates `<data>/logs/service.log` itself, when it starts and every 15
+  minutes: past 8 MB it's copied to `service.log.1` and truncated in place (launchd and systemd keep it open), older
+  copies shift down, and three are kept, `service.log.1` to `.3`. Until now it grew without limit. You'll see the
+  numbered copies next to it in `logs/` once it passes 8 MB; a foreground `local-review` has no service log and does
+  nothing.
+  
+  **A first `service install` the service manager refuses no longer leaves a unit behind.** When systemd refuses to
+  reload, enable or start it, or launchd refuses to bootstrap it, `install` still fails (exit 1, with the reason), but it
+  now removes the unit or LaunchAgent it had just written, so `service status` says it isn't installed (exit 4) rather
+  than installed and not running, and the next login doesn't try it again. A reinstall that's refused keeps the unit it
+  had.
+
 ## 0.16.0
 
 ### Minor Changes
