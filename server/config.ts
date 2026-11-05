@@ -39,7 +39,8 @@ export function expandHome(p: string) {
  *   cache/<hash>.json          what git said about each repo's commits, so a restart needn't ask again (server/diskcache.ts)
  *   github/<owner>/<repo>/     what GitHub says about published PRs, if the GitHub sync is on (server/github.ts)
  *   config.yaml                settings for this machine: the GitHub sync (server/settings.ts)
- *   logs/server.{out,err}.log  the service's output, if it runs as one (`local-review service install`, server/service/)
+ *   logs/service.log           the service's output, if it runs as one (`local-review service install`, server/service/)
+ * `--data-dir <path>` sets LOCAL_REVIEW_HOME for one command (server/datadir.ts, before this module loads).
  */
 export const HOME = path.resolve(expandHome(process.env.LOCAL_REVIEW_HOME || path.join(os.homedir(), '.local-review')));
 /**

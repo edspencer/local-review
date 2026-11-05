@@ -23,9 +23,8 @@ export interface ServiceSpec {
   cwd: string;
   /** The whole environment the job gets: PATH and HOME, plus LOCAL_REVIEW_HOME / LOCAL_REVIEW_USER when they were set. */
   env: Record<string, string>;
-  /** Log files, appended to. */
-  stdout: string;
-  stderr: string;
+  /** The log file: stdout and stderr both, appended to (cli-contract SPEC §7: one file, read by `service logs`). */
+  log: string;
   /** The Node the job runs (and its PATH starts with), recorded as a comment in the file. */
   node: { path: string; version: string };
 }
@@ -70,7 +69,14 @@ export class ServiceManagerError extends Error {}
 export interface InstalledDefinition {
   program: string[];
   env: Record<string, string>;
+  /** The files its output goes to: one, or two (server.out.log, server.err.log) from a unit before 0.14. */
+  logs: string[];
+  /** The Node version its header comment records, if it has one. */
+  nodeVersion: string | null;
 }
+
+/** The `Node v22.12.0: /path/to/node` comment both renderers write: its version. */
+export const nodeVersionOf = (text: string) => /^\S*\s*Node (v[^:\s]+): /m.exec(text)?.[1] ?? null;
 
 export interface ServiceManager {
   kind: 'launchd' | 'systemd';
@@ -88,6 +94,13 @@ export interface ServiceManager {
   write(spec: ServiceSpec): Promise<boolean>;
   /** Make it run now, and at login; a no-op if it's already running. */
   start(): Promise<void>;
+  /**
+   * Stop it until `start`, or the next login (or boot): it stays enabled (cli-contract SPEC §1). A no-op if it isn't
+   * running.
+   */
+  stop(): Promise<void>;
+  /** For people, after a stop: when it comes back by itself. */
+  stopped: string;
   /** Restart it. `reload`: the definition changed, so re-read it first. Starts it if it wasn't loaded. */
   restart(opts?: { reload?: boolean }): Promise<void>;
   status(): Promise<ServiceStatus>;

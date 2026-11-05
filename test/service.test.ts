@@ -1,7 +1,7 @@
 // `local-review service …`: the generated LaunchAgent plist and systemd user unit, the PATH a service gets, the
-// refusals (npx's cache, a source checkout, no git), and the install / reinstall / status / restart / uninstall
-// lifecycle, with launchctl and systemctl mocked. The platform, HOME and every path are injected, so all of it runs
-// on Linux and macOS alike. Where this machine has them, the real tools check the generated files too:
+// refusals (npx's cache, a source checkout, no git), and the install / reinstall / status / start / stop / restart /
+// logs / uninstall lifecycle, with launchctl and systemctl mocked. The platform, HOME and every path are injected, so
+// all of it runs on Linux and macOS alike. Where this machine has them, the real tools check the generated files too:
 // `plutil -lint` on macOS, `systemd-analyze verify` on Linux. (scripts/service-real.mjs, in CI, runs the real thing.)
 import { after, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,7 +14,7 @@ import { SERVICE_FILE, removeServiceFile } from '../server/service/manager.ts';
 import { parseLaunchctlPrint, parsePlist, renderPlist } from '../server/service/launchd.ts';
 import { execWord, execWords, parseUnit, renderUnit } from '../server/service/systemd.ts';
 import { LABEL, buildSpec, isCheckout, portOf, refusal, serviceDir, servicePath, transientInstall, unsupported } from '../server/service/spec.ts';
-import { type ServiceContext, install, restart, status, statusReport, uninstall } from '../server/service/index.ts';
+import { type ServiceContext, install, logs, restart, start, status, statusReport, stop, tailLines, uninstall } from '../server/service/index.ts';
 
 const TMP = fs.realpathSync(tmpDir('lr-test-service-'));
 after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -67,8 +67,8 @@ describe('the LaunchAgent plist', () => {
     <key>KeepAlive</key>          <true/>
     <key>ThrottleInterval</key>   <integer>10</integer>
     <key>WorkingDirectory</key>   <string>/Users/me/.local-review</string>
-    <key>StandardOutPath</key>    <string>/Users/me/.local-review/logs/server.out.log</string>
-    <key>StandardErrorPath</key>  <string>/Users/me/.local-review/logs/server.err.log</string>
+    <key>StandardOutPath</key>    <string>/Users/me/.local-review/logs/service.log</string>
+    <key>StandardErrorPath</key>  <string>/Users/me/.local-review/logs/service.log</string>
     <key>EnvironmentVariables</key>
     <dict>
       <key>PATH</key>               <string>/opt/homebrew/Cellar/node/22.12.0/bin:/usr/bin:/bin</string>
@@ -85,7 +85,7 @@ describe('the LaunchAgent plist', () => {
     const text = renderPlist(spec);
     assert.match(text, /<string>\/a &amp; b\/node<\/string>/);
     assert.match(text, /<!-- Node v22: \/a- -b\/node -->/, 'no -- inside an XML comment');
-    assert.deepEqual(parsePlist(text), { program: spec.program, env: spec.env });
+    assert.deepEqual(parsePlist(text), { program: spec.program, env: spec.env, logs: [SPEC.log], nodeVersion: 'v22' });
     assert.equal(parsePlist('<plist/>'), null);
   });
 
@@ -119,8 +119,8 @@ ExecStart=/opt/homebrew/Cellar/node/22.12.0/bin/node /usr/local/lib/node_modules
 Environment="PATH=/usr/bin:/bin"
 Environment="HOME=/home/me"
 Environment="LOCAL_REVIEW_HOME=/home/me/review data"
-StandardOutput=append:/Users/me/.local-review/logs/server.out.log
-StandardError=append:/Users/me/.local-review/logs/server.err.log
+StandardOutput=append:/Users/me/.local-review/logs/service.log
+StandardError=append:/Users/me/.local-review/logs/service.log
 Restart=always
 RestartSec=10
 
@@ -139,7 +139,7 @@ WantedBy=default.target
     const env = { PATH: '/p 1:/q%', LOCAL_REVIEW_USER: 'Ed "the reviewer" $x' };
     const text = renderUnit({ ...SPEC, program, env });
     assert.deepEqual(execWords(/^ExecStart=(.*)$/m.exec(text)![1]), program);
-    assert.deepEqual(parseUnit(text), { program, env });
+    assert.deepEqual(parseUnit(text), { program, env, logs: [SPEC.log], nodeVersion: 'v22.12.0' });
     assert.equal(parseUnit('[Service]\n'), null);
   });
 
@@ -258,6 +258,7 @@ function world(platform: 'darwin' | 'linux', { where = 'global', git = true }: {
         : path.join(base, 'code', 'local-review');
   fs.mkdirSync(path.join(root, 'dist', 'server'), { recursive: true });
   fs.writeFileSync(path.join(root, 'dist', 'server', 'cli.js'), '');
+  fs.writeFileSync(path.join(root, 'package.json'), '{"name": "local-review", "version": "9.9.9"}');
   const bin = path.join(base, 'bin');
   fs.mkdirSync(bin, { recursive: true });
   fs.mkdirSync(userHome, { recursive: true });
@@ -313,7 +314,7 @@ function world(platform: 'darwin' | 'linux', { where = 'global', git = true }: {
     err: (s) => err.push(s),
     waitMs: 0,
     isListening: async () => false,
-    answering: async () => state.running,
+    health: async () => (state.running ? { version: '9.9.9' } : null),
   };
   const file = platform === 'darwin' ? path.join(userHome, 'Library', 'LaunchAgents', 'local-review.server.plist') : path.join(userHome, '.config', 'systemd', 'user', 'local-review-server.service');
   const take = () => {
@@ -335,7 +336,8 @@ describe('service install, on Linux (systemd)', () => {
     assert.match(text, new RegExp(`^Environment="PATH=${path.dirname(w.node)}:${w.bin}:/usr/bin:/bin`, 'm'));
     assert.match(text, new RegExp(`^Environment="HOME=${w.userHome}"$`, 'm'), 'HOME: the one install resolved the data home from');
     assert.doesNotMatch(text, /LOCAL_REVIEW_HOME|LOCAL_REVIEW_USER|PORT=/, 'nothing carried over that was never set');
-    assert.match(text, new RegExp(`^StandardOutput=append:${w.userHome}/.local-review/logs/server.out.log$`, 'm'));
+    assert.match(text, new RegExp(`^StandardOutput=append:${w.userHome}/.local-review/logs/service.log$`, 'm'));
+    assert.match(text, new RegExp(`^StandardError=append:${w.userHome}/.local-review/logs/service.log$`, 'm'), 'one log file for both');
     assert.ok(fs.statSync(path.join(w.userHome, '.local-review', 'logs')).isDirectory(), 'the logs directory exists for systemd to append to');
     assert.equal(
       out,
@@ -343,7 +345,7 @@ describe('service install, on Linux (systemd)', () => {
         "Installed Local Review as a systemd user unit: ~/.config/systemd/user/local-review-server.service",
         "It's running: http://localhost:5622",
         "It starts with your user session and is restarted if it exits. To keep it running while you're logged out, and start it at boot, enable lingering once: `loginctl enable-linger $USER`.",
-        'Data: ~/.local-review. Logs: ~/.local-review/logs/server.out.log and server.err.log.',
+        'Data: ~/.local-review. Log: ~/.local-review/logs/service.log (`local-review service logs`).',
         '',
       ].join('\n'),
     );
@@ -381,7 +383,7 @@ describe('service install, on Linux (systemd)', () => {
     assert.match(text, /^Environment="LOCAL_REVIEW_USER=Ed"$/m);
     assert.match(text, new RegExp(`^WorkingDirectory=${data}$`, 'm'));
     assert.ok(fs.existsSync(path.join(data, 'logs')));
-    assert.match(w.take().out, /Data: ~\/review-data\. Logs: ~\/review-data\/logs\/server\.out\.log/);
+    assert.match(w.take().out, /Data: ~\/review-data\. Log: ~\/review-data\/logs\/service\.log/);
     w.ctx.env = { PATH: w.ctx.env.PATH };
     await install(w.ctx, {});
     text = fs.readFileSync(w.file, 'utf8');
@@ -442,15 +444,15 @@ describe('service install, on Linux (systemd)', () => {
     assert.ok(!fs.existsSync(busy.file));
   });
 
-  test("a service that doesn't come up: exit 1, with the last lines of its logs", async () => {
+  test("a service that doesn't come up: exit 1, with the last lines of its log", async () => {
     const w = world('linux');
-    w.ctx.answering = async () => false;
+    w.ctx.health = async () => null;
     const logs = path.join(w.userHome, '.local-review', 'logs');
     fs.mkdirSync(logs, { recursive: true });
-    fs.writeFileSync(path.join(logs, 'server.err.log'), 'local-review: port 5622 is already in use; pick another with --port <n>\n');
+    fs.writeFileSync(path.join(logs, 'service.log'), 'Local Review on …\nlocal-review: port 5622 is already in use; pick another with --port <n>\n');
     assert.equal(await install(w.ctx, {}), 1);
     const { err } = w.take();
-    assert.match(err, /^local-review: the service was started, but nothing answered on http:\/\/localhost:5622 in time\.\n\nThe last lines of its logs:\n==> .*server\.err\.log <==\nlocal-review: port 5622 is already in use/);
+    assert.match(err, /^local-review: the service was started, but nothing answered on http:\/\/localhost:5622 in time\.\n\nThe last lines of its log:\n==> .*service\.log <==\nLocal Review on …\nlocal-review: port 5622 is already in use/);
   });
 });
 
@@ -480,18 +482,30 @@ describe('service install, on macOS (launchd)', () => {
   });
 });
 
-describe('service status, restart and uninstall', () => {
-  test('status: not installed', async () => {
+describe('service status, start, stop, restart, logs and uninstall', () => {
+  test('status: not installed (exit 4)', async () => {
     const w = world('linux');
-    assert.equal(await status(w.ctx), 0);
+    assert.equal(await status(w.ctx), 4);
     assert.equal(w.take().out, 'Service:   not installed (`local-review service install`)\nLoaded:    no\nRunning:   no\n');
+    assert.equal(await status(w.ctx, { json: true }), 4);
+    assert.equal(JSON.parse(w.take().out).installed, false);
   });
 
-  test('status: installed and running, as text and JSON', async () => {
+  test('status: no service manager to ask (no systemd), and no file: not installed (exit 4); with a file: an error', async () => {
+    const w = world('linux');
+    w.ctx.run = async () => ({ code: 127, stdout: '', stderr: 'systemctl: command not found' });
+    assert.equal(await status(w.ctx), 4);
+    assert.match(w.take().out, /^Service:   not installed/);
+    fs.mkdirSync(path.dirname(w.file), { recursive: true });
+    fs.writeFileSync(w.file, '[Service]\n');
+    await assert.rejects(status(w.ctx), /systemctl is not available/);
+  });
+
+  test('status: installed and running (exit 0), as text and JSON; stopped (exit 3)', async () => {
     const w = world('linux');
     await install(w.ctx, { port: 6001 });
     w.take();
-    await status(w.ctx);
+    assert.equal(await status(w.ctx), 0);
     const t = (p: string) => p.replace(w.userHome, '~');
     assert.equal(
       w.take().out,
@@ -500,25 +514,45 @@ describe('service status, restart and uninstall', () => {
         'Loaded:    yes (active (running)), starts at login',
         `Running:   yes, pid ${w.state.pid}`,
         'UI:        http://localhost:6001',
+        'Version:   9.9.9',
         `Node:      ${t(w.node)}`,
         `Runs:      ${t(w.cli)}`,
         'Data:      ~/.local-review',
-        'Logs:      ~/.local-review/logs/server.out.log and server.err.log',
+        'Log:       ~/.local-review/logs/service.log',
         '',
       ].join('\n'),
     );
     const r = await statusReport(w.ctx);
     assert.equal(r.port, 6001);
     assert.equal(r.answering, true);
+    assert.equal(r.version, '9.9.9');
+    assert.equal(r.installedVersion, '9.9.9');
     assert.equal(r.manager, 'systemd');
     assert.deepEqual(r.warnings, []);
-    await status(w.ctx, { json: true });
+    assert.equal(await status(w.ctx, { json: true }), 0);
     assert.equal(JSON.parse(w.take().out).url, 'http://localhost:6001');
+
+    // installed but not running: 3, with --json too
+    w.state.running = false;
+    assert.equal(await status(w.ctx), 3);
+    assert.match(w.take().out, /^Running:   no$/m);
+    assert.equal(await status(w.ctx, { json: true }), 3);
+    const j = JSON.parse(w.take().out);
+    assert.equal(j.running, false);
+    assert.equal(j.version, null);
+    assert.equal(j.installedVersion, '9.9.9');
+    // running, but not answering: 3 as well
+    w.state.running = true;
+    w.ctx.health = async () => null;
+    assert.equal(await status(w.ctx), 3);
+    assert.match(w.take().out, /^UI:        nothing answering on http:\/\/localhost:6001$/m);
   });
 
-  test("status warns when what it runs is gone, or isn't this local-review", async () => {
+  test("status warns when what it runs is gone, or isn't this local-review, or an older version still runs", async () => {
     const w = world('linux');
     await install(w.ctx, {});
+    w.ctx.health = async () => ({ version: '9.8.0' });
+    assert.match((await statusReport(w.ctx)).warnings.join('\n'), /It's running 9\.8\.0, but 9\.9\.9 is installed: `local-review service restart` runs 9\.9\.9\./);
     fs.rmSync(w.node);
     assert.match((await statusReport(w.ctx)).warnings.join('\n'), /The Node it runs, .*node, isn't there any more: run `local-review service install` again\./);
     const other = world('linux');
@@ -526,9 +560,70 @@ describe('service status, restart and uninstall', () => {
     assert.match((await statusReport(other.ctx)).warnings.join('\n'), /It runs .*, not this local-review \(.*\)\. `local-review service install` points it at this one\./);
   });
 
-  test('restart: restarts an installed service; refuses one that is not installed', async () => {
+  test('start, stop, restart and logs: exit 4 when not installed', async () => {
     const w = world('linux');
-    await assert.rejects(restart(w.ctx), /isn't installed as a service; install it with `local-review service install`/);
+    for (const verb of [start, stop, restart, logs]) {
+      assert.equal(await verb(w.ctx), 4, verb.name);
+      assert.equal(w.take().err, "local-review: Local Review isn't installed as a service; install it with `local-review service install`\n");
+    }
+    assert.ok(!fs.existsSync(w.file));
+  });
+
+  test('stop (systemd): stopped, not disabled; start brings it back', async () => {
+    const w = world('linux');
+    await install(w.ctx, { port: 6003 });
+    w.take();
+    assert.equal(await stop(w.ctx), 0);
+    assert.deepEqual(w.calls.filter((c) => !c.includes(' show ')), ['systemctl --user stop local-review-server.service']);
+    assert.equal(
+      w.take().out,
+      'Stopped Local Review. It starts again with your next login session (or at boot, with lingering on), or with `local-review service start`. To keep it off, `local-review service uninstall`.\n',
+    );
+    assert.equal(w.state.running, false);
+    assert.equal(w.state.enabled, true, 'still enabled: the next login starts it');
+    assert.ok(fs.existsSync(w.file), 'still installed');
+    assert.equal(await status(w.ctx), 3);
+    w.take();
+    // again: nothing was running
+    assert.equal(await stop(w.ctx), 0);
+    assert.match(w.take().out, /^Local Review's service wasn't running\. /);
+
+    assert.equal(await start(w.ctx), 0);
+    assert.deepEqual(w.calls.filter((c) => !c.includes(' show ')), ['systemctl --user enable --quiet local-review-server.service', 'systemctl --user start local-review-server.service']);
+    assert.equal(w.take().out, 'Started Local Review: http://localhost:6003\n');
+    assert.equal(await start(w.ctx), 0);
+    assert.equal(w.take().out, 'Local Review is already running: http://localhost:6003\n');
+  });
+
+  test('stop (launchd): booted out, never disabled; start bootstraps it again', async () => {
+    const w = world('darwin');
+    await install(w.ctx, {});
+    w.take();
+    assert.equal(await stop(w.ctx), 0);
+    assert.deepEqual(w.calls, ['launchctl print gui/501/local-review.server', 'launchctl bootout gui/501/local-review.server']);
+    assert.match(w.take().out, /^Stopped Local Review\. It starts again at your next login, or with `local-review service start`\./);
+    assert.ok(fs.existsSync(w.file), 'the plist stays: RunAtLoad starts it at the next login');
+    assert.equal(await start(w.ctx), 0);
+    assert.ok(w.calls.includes(`launchctl bootstrap gui/501 ${w.file}`), w.calls.join('\n'));
+    assert.ok(!w.calls.some((c) => c.includes(' disable ')));
+  });
+
+  test("start: refuses a port taken by something else; a service that doesn't answer is exit 1 with its log", async () => {
+    const w = world('linux');
+    await install(w.ctx, {});
+    await stop(w.ctx);
+    w.take();
+    w.ctx.isListening = async () => true;
+    await assert.rejects(start(w.ctx), /port 5622 is already in use \(is `local-review` running in a terminal\?\)/);
+    w.ctx.isListening = async () => false;
+    w.ctx.health = async () => null;
+    fs.writeFileSync(path.join(w.userHome, '.local-review', 'logs', 'service.log'), 'Error: boom\n');
+    assert.equal(await start(w.ctx), 1);
+    assert.match(w.take().err, /^local-review: started the service, but nothing answered on http:\/\/localhost:5622 in time\.\n\nThe last lines of its log:\n==> .*service\.log <==\nError: boom\n$/);
+  });
+
+  test('restart: restarts an installed service, leaving a current unit alone', async () => {
+    const w = world('linux');
     await install(w.ctx, { port: 6002 });
     w.take();
     assert.equal(await restart(w.ctx), 0);
@@ -536,16 +631,101 @@ describe('service status, restart and uninstall', () => {
     assert.equal(w.take().out, 'Restarted Local Review: http://localhost:6002\n');
   });
 
+  test('restart: a unit an older version wrote (two log files) is rewritten in this format, keeping what it runs', async () => {
+    const w = world('linux');
+    w.ctx.env = { ...w.ctx.env, LOCAL_REVIEW_HOME: '~/rd' };
+    await install(w.ctx, { port: 6004 });
+    const data = path.join(w.userHome, 'rd');
+    const current = fs.readFileSync(w.file, 'utf8');
+    const old = current
+      .replace(/^StandardOutput=append:.*$/m, `StandardOutput=append:${data}/logs/server.out.log`)
+      .replace(/^StandardError=append:.*$/m, `StandardError=append:${data}/logs/server.err.log`);
+    fs.writeFileSync(w.file, old);
+    fs.writeFileSync(path.join(data, 'logs', 'server.out.log'), 'Local Review on http://localhost:6004\n');
+    fs.writeFileSync(path.join(data, 'logs', 'server.err.log'), 'a warning\n');
+    w.take();
+    w.ctx.env = { PATH: w.ctx.env.PATH }; // from a shell without LOCAL_REVIEW_HOME: still kept
+
+    // status and logs say what's going on first
+    assert.match((await statusReport(w.ctx)).warnings.join('\n'), /as an older Local Review set it up\. `local-review service restart` moves it to one file, logs\/service\.log\./);
+    assert.equal(await logs(w.ctx), 0);
+    let r = w.take();
+    assert.match(r.err, /two log files/);
+    assert.equal(r.out, `==> ${data}/logs/server.out.log <==\nLocal Review on http://localhost:6004\n==> ${data}/logs/server.err.log <==\na warning\n`);
+
+    assert.equal(await restart(w.ctx), 0);
+    assert.equal(fs.readFileSync(w.file, 'utf8'), current, 'exactly what install writes now');
+    assert.ok(w.calls.includes('systemctl --user daemon-reload'), w.calls.join('\n'));
+    r = w.take();
+    assert.equal(r.out, `Updated its systemd user unit (~/.config/systemd/user/local-review-server.service). Log: ~/rd/logs/service.log.\nRestarted Local Review: http://localhost:6004\n`);
+    assert.ok(fs.existsSync(path.join(data, 'logs', 'server.out.log')), 'the old logs stay');
+    assert.deepEqual((await statusReport(w.ctx)).warnings, []);
+  });
+
+  test('restart: a unit whose Node has gone is pointed at this local-review and its Node', async () => {
+    const w = world('linux');
+    await install(w.ctx, {});
+    const gone = path.join(path.dirname(w.node), 'old-node');
+    fs.writeFileSync(w.file, fs.readFileSync(w.file, 'utf8').replace(`ExecStart=${w.node} `, `ExecStart=${gone} `));
+    w.take();
+    assert.equal(await restart(w.ctx), 0);
+    assert.match(fs.readFileSync(w.file, 'utf8'), new RegExp(`^ExecStart=${w.node} ${w.cli} serve`, 'm'));
+    assert.match(w.take().out, /^Updated its systemd user unit \(.*\): it runs .*cli\.js now, with Node v22\.12\.0\. Log: /);
+  });
+
+  test('logs: the last 50 lines, -n, a log not written yet, and -f following what comes next', async () => {
+    const w = world('linux');
+    await install(w.ctx, {});
+    const log = path.join(w.userHome, '.local-review', 'logs', 'service.log');
+    w.take();
+    assert.equal(await logs(w.ctx), 0);
+    assert.match(w.take().err, /^No log yet at ~\/\.local-review\/logs\/service\.log: the service writes it when it starts\.\n$/);
+
+    fs.writeFileSync(log, Array.from({ length: 120 }, (_, i) => `line ${i + 1}`).join('\n') + '\n');
+    assert.equal(await logs(w.ctx), 0);
+    let { out } = w.take();
+    assert.equal(out.split('\n').length, 51);
+    assert.ok(out.startsWith('line 71\n') && out.endsWith('line 120\n'));
+    await logs(w.ctx, { lines: 3 });
+    assert.equal(w.take().out, 'line 118\nline 119\nline 120\n');
+    await logs(w.ctx, { lines: 0 });
+    assert.equal(w.take().out, '');
+
+    const ac = new AbortController();
+    w.ctx.signal = ac.signal;
+    w.ctx.pollMs = 10;
+    const following = logs(w.ctx, { lines: 1, follow: true });
+    await new Promise((r) => setTimeout(r, 30));
+    fs.appendFileSync(log, 'line 121\n');
+    await new Promise((r) => setTimeout(r, 50));
+    fs.appendFileSync(log, 'line 122\n');
+    ac.abort();
+    assert.equal(await following, 0);
+    ({ out } = w.take());
+    assert.equal(out, 'line 120\nline 121\nline 122\n');
+  });
+
+  test('tailLines reads only the end, across chunk boundaries', () => {
+    const f = path.join(TMP, 'big.log');
+    const lines = Array.from({ length: 20000 }, (_, i) => `${i} ${'x'.repeat(i % 50)}`);
+    fs.writeFileSync(f, lines.join('\n') + '\n');
+    assert.equal(tailLines(f, 3), lines.slice(-3).join('\n') + '\n');
+    assert.equal(tailLines(f, 5000), lines.slice(-5000).join('\n') + '\n');
+    fs.writeFileSync(f, 'no newline at the end');
+    assert.equal(tailLines(f, 2), 'no newline at the end\n');
+    assert.equal(tailLines(path.join(TMP, 'none.log'), 2), null);
+  });
+
   test('uninstall: stops it and removes its file, and nothing else; a second time has nothing to do', async () => {
     const w = world('linux');
     await install(w.ctx, {});
     const data = path.join(w.userHome, '.local-review');
-    fs.writeFileSync(path.join(data, 'logs', 'server.out.log'), 'Local Review on http://localhost:5622\n');
+    fs.writeFileSync(path.join(data, 'logs', 'service.log'), 'Local Review on http://localhost:5622\n');
     w.take();
     assert.equal(await uninstall(w.ctx), 0);
     assert.equal(w.take().out, "Removed Local Review's service (~/.config/systemd/user/local-review-server.service). Your data in ~/.local-review is untouched.\n");
     assert.ok(!fs.existsSync(w.file));
-    assert.equal(fs.readFileSync(path.join(data, 'logs', 'server.out.log'), 'utf8'), 'Local Review on http://localhost:5622\n', 'the logs stay');
+    assert.equal(fs.readFileSync(path.join(data, 'logs', 'service.log'), 'utf8'), 'Local Review on http://localhost:5622\n', 'the logs stay');
     assert.equal(await uninstall(w.ctx), 0);
     assert.equal(w.take().out, "Local Review wasn't installed as a service; nothing to do.\n");
   });

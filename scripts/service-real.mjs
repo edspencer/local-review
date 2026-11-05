@@ -5,9 +5,11 @@
 // it must not run on a machine that uses Local Review as a service (the label is the real one). The data home is a
 // throwaway. It removes what it installs, and checks that uninstall leaves the data home alone.
 //
-// What it checks: refused from npx's cache (writing nothing); install; it answers; a second install changes nothing;
-// status; the server killed, and launchd's KeepAlive / systemd's Restart=always bringing it back; restart; a new port;
-// a reinstall without --port keeping it; uninstall removing the file and stopping it, and nothing else.
+// What it checks: refused from npx's cache (writing nothing); install; it answers, with its version; a second install
+// changes nothing; status and its exit codes (0, 3, 4); the server killed, and launchd's KeepAlive / systemd's
+// Restart=always bringing it back; stop (stopped, still installed, not disabled) and start; logs; restart; restart
+// rewriting a unit in the older two-log format; a new port; a reinstall without --port keeping it; uninstall removing
+// the file and stopping it, and nothing else; start, stop, restart and logs exiting 4 with nothing installed.
 import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -40,7 +42,23 @@ const lr = (...args) => {
     throw new Error(`local-review ${args.join(' ')} exited ${e.status}:\n${e.stdout}\n${e.stderr}`);
   }
 };
-const statusJson = () => JSON.parse(lr('service', 'status', '--json'));
+/** Any exit status: { code, stdout, stderr }. */
+const lrAny = (...args) => {
+  try {
+    return { code: 0, stdout: execFileSync(bin, args, { cwd: work, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }), stderr: '' };
+  } catch (e) {
+    if (typeof e.status !== 'number') throw e;
+    return { code: e.status, stdout: e.stdout, stderr: e.stderr };
+  }
+};
+/** `service status --json`, checking its exit status agrees with what it says (cli-contract SPEC §2). */
+const statusJson = () => {
+  const r = lrAny('service', 'status', '--json');
+  const s = JSON.parse(r.stdout);
+  assert.equal(r.code, !s.installed ? 4 : s.running && s.answering ? 0 : 3, `status exit ${r.code} for ${r.stdout}`);
+  return s;
+};
+const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
 const freePort = () =>
   new Promise((resolve) => {
     const s = net.createServer().listen(0, '127.0.0.1', () => {
@@ -62,13 +80,15 @@ async function until(what, fn, ms = 30000) {
     await sleep(250);
   }
 }
-const answers = async (port) => {
+const health = async (port) => {
   try {
-    return (await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(2000) })).ok;
+    const r = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(2000) });
+    return r.ok ? await r.json() : null;
   } catch {
-    return false;
+    return null;
   }
 };
+const answers = async (port) => !!(await health(port));
 
 let installed = false;
 try {
@@ -81,6 +101,14 @@ try {
   const before = statusJson();
   assert.equal(before.installed, false, `a service is already installed here (${before.file}); this must run on a throwaway machine`);
   const file = before.file;
+  step('nothing installed: status, start, stop, restart and logs exit 4');
+  assert.equal(lrAny('service', 'status').code, 4);
+  for (const verb of ['start', 'stop', 'restart', 'logs']) {
+    const r = lrAny('service', verb);
+    assert.equal(r.code, 4, `service ${verb}: ${r.stderr}`);
+    assert.match(r.stderr, /isn't installed as a service/);
+  }
+  assert.ok(!fs.existsSync(file), 'nothing written');
 
   step("refused from npx's cache, writing nothing");
   try {
@@ -103,10 +131,12 @@ try {
   let o = lr('service', 'install', '--port', String(port));
   assert.match(o, new RegExp(`It's running: http://localhost:${port}`));
   console.log(o);
-  assert.ok(await answers(port));
+  assert.deepEqual(await health(port), { ok: true, version }, '/api/health has the version');
   const text = fs.readFileSync(file, 'utf8');
   assert.ok(text.includes(cli), `the service runs the installed CLI (${cli}):\n${text}`);
   assert.ok(text.includes(data), 'with the data home');
+  const log = path.join(data, 'logs', 'service.log');
+  assert.equal(text.split(log).length - 1, 2, `stdout and stderr both to ${log}:\n${text}`);
   if (process.platform === 'darwin') execFileSync('plutil', ['-lint', file], { stdio: 'inherit' });
 
   step('again: unchanged');
@@ -120,6 +150,9 @@ try {
   assert.equal(s.port, port);
   assert.equal(s.answering, true);
   assert.equal(s.cli, cli);
+  assert.equal(s.version, version);
+  assert.equal(s.installedVersion, version);
+  assert.equal(s.log, log);
   assert.deepEqual(s.warnings, []);
 
   step(`killed (pid ${s.pid}): restarted by the service manager`);
@@ -132,9 +165,51 @@ try {
   s = statusJson();
   step(`back as pid ${s.pid}`);
 
+  step('service stop: stopped, still installed, not disabled');
+  assert.match(lr('service', 'stop'), /^Stopped Local Review\. It starts again/);
+  assert.ok(!(await answers(port)), 'nothing answers');
+  s = statusJson(); // exit 3
+  assert.equal(s.installed, true);
+  assert.equal(s.running, false);
+  assert.ok(fs.existsSync(file), 'the service file stays');
+  if (process.platform === 'linux') {
+    const enabled = execFileSync('systemctl', ['--user', 'is-enabled', path.basename(file)], { encoding: 'utf8' }).trim();
+    assert.equal(enabled, 'enabled', 'still enabled: the next login starts it');
+  } else {
+    // booted out, and not disabled: `launchctl print-disabled` doesn't list it as disabled
+    const disabled = execFileSync('launchctl', ['print-disabled', `gui/${process.getuid()}`], { encoding: 'utf8' });
+    assert.doesNotMatch(disabled, /"local-review\.server" => (true|disabled)/, disabled);
+  }
+  assert.match(lr('service', 'stop'), /wasn't running/);
+
+  step('service start');
+  assert.match(lr('service', 'start'), new RegExp(`^Started Local Review: http://localhost:${port}$`, 'm'));
+  assert.ok(await answers(port));
+  assert.match(lr('service', 'start'), /already running/);
+  statusJson(); // exit 0
+
+  step('service logs');
+  o = lr('service', 'logs', '-n', '200');
+  assert.ok(o.includes(`Local Review on http://localhost:${port}`), `its start is in its log:\n${o}`);
+  assert.equal(lr('service', 'logs', '-n', '1').trimEnd().split('\n').length, 1);
+
   step('service restart');
   assert.match(lr('service', 'restart'), new RegExp(`^Restarted Local Review: http://localhost:${port}$`, 'm'));
   assert.ok(await answers(port));
+
+  step('service restart rewrites a unit an older version wrote (two log files)');
+  const current = fs.readFileSync(file, 'utf8');
+  const outLog = path.join(data, 'logs', 'server.out.log');
+  const errLog = path.join(data, 'logs', 'server.err.log');
+  let n = 0;
+  fs.writeFileSync(file, current.split(log).map((part, i, all) => part + (i < all.length - 1 ? (n++ === 0 ? outLog : errLog) : '')).join(''));
+  if (process.platform === 'linux') execFileSync('systemctl', ['--user', 'daemon-reload']);
+  assert.match(statusJson().warnings.join('\n'), /older Local Review/);
+  o = lr('service', 'restart');
+  assert.match(o, /^Updated its /m);
+  assert.equal(fs.readFileSync(file, 'utf8'), current, 'back to the current format');
+  await until('it answers again', () => answers(port));
+  assert.deepEqual(statusJson().warnings, []);
 
   const port2 = await freePort();
   step(`a new port, ${port2}; then a reinstall without --port keeps it`);
@@ -146,9 +221,8 @@ try {
   assert.match(o, new RegExp(`Port ${port2}, as it was installed`));
 
   step('service uninstall');
-  const logs = path.join(data, 'logs');
   // its start, reading the data home `service install` chose (its environment came from the service's file alone)
-  assert.ok(fs.readFileSync(path.join(logs, 'server.out.log'), 'utf8').includes(`Local Review on http://localhost:${port}  (projects: ${path.join(data, 'projects')})`), 'it logged its start');
+  assert.ok(fs.readFileSync(log, 'utf8').includes(`Local Review on http://localhost:${port}  (projects: ${path.join(data, 'projects')})`), 'it logged its start');
   const dataBefore = fs.readdirSync(data).sort();
   assert.match(lr('service', 'uninstall'), /^Removed Local Review's service \(.*\)\. Your data in .* is untouched\.$/m);
   installed = false;
@@ -157,8 +231,9 @@ try {
   assert.equal(statusJson().loaded, false);
   // (the server may still add to it as it stops, e.g. its cache: only what was there matters)
   for (const f of dataBefore) assert.ok(fs.existsSync(path.join(data, f)), `${f} is still in the data home`);
-  assert.ok(fs.readFileSync(path.join(logs, 'server.out.log'), 'utf8').includes('Local Review on'), 'the logs are kept');
+  assert.ok(fs.readFileSync(log, 'utf8').includes('Local Review on'), 'the logs are kept');
   assert.match(lr('service', 'uninstall'), /wasn't installed as a service; nothing to do/);
+  for (const verb of ['status', 'start', 'logs']) assert.equal(lrAny('service', verb).code, 4, `service ${verb} after uninstall`);
   step('ok');
 } finally {
   if (installed) {

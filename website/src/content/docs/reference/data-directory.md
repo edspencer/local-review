@@ -31,7 +31,7 @@ them.
     <owner>/<repo>/sync.json            # that GitHub repo's last fetch, and its error if it failed
   config.yaml                           # optional: settings for this machine (the GitHub sync)
   logs/                                 # only if you run it as a service
-    server.out.log, server.err.log      # the service's output (see below)
+    service.log                         # the service's output (see below)
 ```
 
 | File | Written by | Reference |
@@ -63,8 +63,10 @@ in snapshots: delete it any time, and the next fetch rebuilds it. Off when only 
 [config.yaml](/reference/config-yaml/).
 
 **`logs/`** is there only if you [run Local Review as a service](/getting-started/service/): launchd or systemd appends
-its output to `server.out.log` and `server.err.log`. Local Review writes little (a line when it starts, a note per
-snapshot, and errors), so they aren't rotated; empty or delete them whenever you like. `local-review service uninstall`
+its output, stdout and stderr both, to `service.log`, which `local-review service logs` reads. A service installed
+before 0.14 wrote `server.out.log` and `server.err.log` instead; they're left here after `service restart` moves it to
+`service.log`. Local Review writes little (a line when it starts, a note per snapshot, and errors), so the logs
+aren't rotated. Empty or delete them whenever you like. `local-review service uninstall`
 leaves them, like everything else here. The service's own file isn't here: it's in `~/Library/LaunchAgents` or
 `~/.config/systemd/user` (`$XDG_CONFIG_HOME/systemd/user` if that's set).
 

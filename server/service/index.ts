@@ -1,19 +1,22 @@
-// `local-review service install | uninstall | status | restart`: run Local Review in the background, started at login
-// and restarted if it exits, with the OS's own per-user service manager (manager.ts). Modelled on Hallway's
-// `hallway service …` for its daemon (server/commands/services.ts there): the same subcommands, the same wording.
+// `local-review service install | uninstall | start | stop | restart | status | logs`: run Local Review in the
+// background, started at login and restarted if it exits, with the OS's own per-user service manager (manager.ts).
+// Modelled on Hallway's `hallway service …` for its daemon (server/commands/services.ts there), and following
+// edspencer/cli-contract's SPEC 0.1: `stop` doesn't disable, the one log file, exit 3 (not running) and 4 (not installed).
 // Local Review has no config file, so the port and the environment it reads live in the service's definition, and a
 // reinstall reads them back from it (they're kept unless you give new ones).
 //
 // What this writes: the service's definition (~/Library/LaunchAgents/local-review.server.plist or
 // ~/.config/systemd/user/local-review-server.service), and the data home's logs/ directory. `uninstall` removes the
-// definition and nothing else: the data home, logs included, stays as it is.
+// definition and nothing else: the data home, logs included, stays as it is. `restart` rewrites the definition only
+// when it's stale (an older format, or a Node or CLI that has gone), keeping what it runs otherwise. `logs` only reads.
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { DEFAULT_PORT } from '../port.js';
 import { ServiceManagerError, type ServiceManager, type ServiceStatus } from './manager.js';
-import { CARRIED_ENV, type PlatformContext, RefusalError, buildSpec, managerFor, portOf, refusal, which } from './spec.js';
+import { type InstalledDefinition } from './manager.js';
+import { CARRIED_ENV, LOG_FILE, type PlatformContext, RefusalError, buildSpec, managerFor, portOf, refusal, which } from './spec.js';
 
 export interface ServiceContext extends PlatformContext {
   /** Local Review's package root (config.ROOT): the service runs <root>/dist/server/cli.js. */
@@ -27,11 +30,19 @@ export interface ServiceContext extends PlatformContext {
   waitMs?: number;
   /** Is something listening on 127.0.0.1:<port>? (Mocked in tests.) */
   isListening?: (port: number) => Promise<boolean>;
-  /** Does Local Review answer on it? (Mocked in tests.) */
-  answering?: (port: number) => Promise<boolean>;
+  /** Does Local Review answer on it, and as which version? Null if it doesn't. (Mocked in tests.) */
+  health?: (port: number) => Promise<{ version: string | null } | null>;
+  /** How often `logs --follow` looks for more. */
+  pollMs?: number;
+  /** Ends `logs --follow` (tests); otherwise it runs until it's interrupted. */
+  signal?: AbortSignal;
 }
 
-export const SERVICE_USAGE = 'service needs one of: install, uninstall, status, restart';
+export const SERVICE_USAGE = 'service needs one of: install, uninstall, start, stop, restart, status, logs';
+
+/** cli-contract SPEC §2. */
+export const EXIT_NOT_RUNNING = 3;
+export const EXIT_NOT_INSTALLED = 4;
 
 /** `/Users/me/x` → `~/x`, for messages. */
 const tildify = (p: string, home: string) => (p === home ? '~' : p.startsWith(home + '/') ? `~${p.slice(home.length)}` : p);
@@ -53,22 +64,53 @@ const defaultIsListening = (port: number) =>
     s.once('error', () => resolve(false));
   });
 
-const defaultAnswering = async (port: number) => {
+const defaultHealth = async (port: number) => {
   try {
     const r = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(1500) });
-    return r.ok && (await r.json()).ok === true;
+    const body = r.ok ? await r.json() : null;
+    return body?.ok === true ? { version: typeof body.version === 'string' ? body.version : null } : null;
   } catch {
-    return false;
+    return null;
   }
 };
+const answering = async (ctx: ServiceContext, port: number) => !!(await (ctx.health ?? defaultHealth)(port));
 
-async function waitUntilAnswering(ctx: ServiceContext, port: number): Promise<boolean> {
-  const answering = ctx.answering ?? defaultAnswering;
+/** Wait (up to ctx.waitMs) until Local Review answers on `port`, or, with `gone`, until it doesn't. */
+async function waitUntil(ctx: ServiceContext, port: number, { gone = false } = {}): Promise<boolean> {
   const end = Date.now() + (ctx.waitMs ?? 15_000);
   for (;;) {
-    if (await answering(port)) return true;
+    if ((await answering(ctx, port)) !== gone) return true;
     if (Date.now() >= end) return false;
     await new Promise((r) => setTimeout(r, 250));
+  }
+}
+
+/** The last `lines` lines of a file, reading only as much of its end as that takes; null if it can't be read. */
+export function tailLines(file: string, lines: number): string | null {
+  let fd: number;
+  try {
+    fd = fs.openSync(file, 'r');
+  } catch {
+    return null;
+  }
+  try {
+    const size = fs.fstatSync(fd).size;
+    const chunks: Buffer[] = [];
+    let pos = size;
+    let newlines = 0;
+    // one more newline than lines: the file's own trailing one
+    while (pos > 0 && newlines <= lines) {
+      const len = Math.min(65536, pos);
+      pos -= len;
+      const buf = Buffer.alloc(len);
+      fs.readSync(fd, buf, 0, len, pos);
+      chunks.unshift(buf);
+      for (const b of buf) if (b === 10) newlines++;
+    }
+    const text = Buffer.concat(chunks).toString('utf8').replace(/\n$/, '');
+    return lines <= 0 || !text ? '' : text.split('\n').slice(-lines).join('\n') + '\n';
+  } finally {
+    fs.closeSync(fd);
   }
 }
 
@@ -76,14 +118,8 @@ async function waitUntilAnswering(ctx: ServiceContext, port: number): Promise<bo
 function logTail(files: string[], lines = 20): string {
   return files
     .map((f) => {
-      let text = '';
-      try {
-        text = fs.readFileSync(f, 'utf8');
-      } catch {
-        return '';
-      }
-      const tail = text.trimEnd().split('\n').slice(-lines).join('\n');
-      return tail ? `==> ${f} <==\n${tail}\n` : '';
+      const tail = tailLines(f, lines);
+      return tail ? `==> ${f} <==\n${tail}` : '';
     })
     .filter(Boolean)
     .join('\n');
@@ -103,6 +139,25 @@ const dataHome = (env: Record<string, string | undefined>, userHome: string) => 
 
 /** A LOCAL_REVIEW_HOME as given (`~/x`, a relative path) → the absolute path the job needs. */
 const absoluteHome = (v: string, userHome: string) => path.resolve(v === '~' ? userHome : v.startsWith('~/') ? path.join(userHome, v.slice(2)) : v);
+
+/** The files an installed service logs to: what its definition names, else where this version would put them. */
+const logsOf = (def: InstalledDefinition, userHome: string) => (def.logs.length ? def.logs : [path.join(dataHome(def.env, userHome), 'logs', LOG_FILE)]);
+
+/** start, stop, restart and logs with no service to act on: exit 4 (cli-contract SPEC §2). */
+function notInstalled(ctx: ServiceContext): number {
+  ctx.err("local-review: Local Review isn't installed as a service; install it with `local-review service install`\n");
+  return EXIT_NOT_INSTALLED;
+}
+
+/** The version of the Local Review whose dist/server/cli.js this is, or null. */
+function versionAt(cli: string | null): string | null {
+  if (!cli) return null;
+  try {
+    return JSON.parse(fs.readFileSync(path.join(path.dirname(path.dirname(path.dirname(cli))), 'package.json'), 'utf8')).version ?? null;
+  } catch {
+    return null;
+  }
+}
 
 // ---------------------------------------------------------------------------------------------------------------
 
@@ -149,7 +204,7 @@ export async function install(ctx: ServiceContext, flags: InstallFlags): Promise
   const st = await m.status();
   if (!st.running && (await (ctx.isListening ?? defaultIsListening)(port)))
     throw new Error(`port ${port} is already in use (is \`local-review\` running in a terminal?). Stop that first, or pick another port with --port <n>.`);
-  fs.mkdirSync(path.dirname(spec.stdout), { recursive: true }); // launchd and systemd append to the logs, but won't make their directory
+  fs.mkdirSync(path.dirname(spec.log), { recursive: true }); // launchd and systemd append to the logs, but won't make their directory
 
   const changed = await m.write(spec);
   if (st.loaded && changed) await m.restart({ reload: true });
@@ -157,15 +212,57 @@ export async function install(ctx: ServiceContext, flags: InstallFlags): Promise
 
   ctx.out(`Installed Local Review as a ${m.noun}: ${t(m.file)}${changed ? '' : ' (unchanged)'}\n`);
   for (const n of notes) ctx.out(`${n}\n`);
-  if (!(await waitUntilAnswering(ctx, port))) {
+  if (!(await waitUntil(ctx, port))) {
     ctx.err(`local-review: the service was started, but nothing answered on http://localhost:${port} in time.\n`);
-    const tail = logTail([spec.stderr, spec.stdout]);
-    ctx.err(tail ? `\nThe last lines of its logs:\n${tail}` : `\nIt wrote nothing to its logs (${t(spec.stdout)}). \`local-review service status\` says more.\n`);
+    const tail = logTail([spec.log]);
+    ctx.err(tail ? `\nThe last lines of its log:\n${tail}` : `\nIt wrote nothing to its log (${t(spec.log)}). \`local-review service status\` says more.\n`);
     return 1;
   }
   ctx.out(`It's running: http://localhost:${port}\n`);
   ctx.out(`${m.lifetime}\n`);
-  ctx.out(`Data: ${t(home)}. Logs: ${t(spec.stdout)} and ${path.basename(spec.stderr)}.\n`);
+  ctx.out(`Data: ${t(home)}. Log: ${t(spec.log)} (\`local-review service logs\`).\n`);
+  return 0;
+}
+
+/** Nothing answered after a start: say so, with the last lines of its log. Exit 1. */
+function didntAnswer(ctx: ServiceContext, what: string, port: number, def: InstalledDefinition): number {
+  ctx.err(`local-review: ${what}, but nothing answered on http://localhost:${port} in time.\n`);
+  const tail = logTail(logsOf(def, ctx.userHome));
+  if (tail) ctx.err(`\nThe last lines of its log:\n${tail}`);
+  return 1;
+}
+
+export async function start(ctx: ServiceContext): Promise<number> {
+  const m = managerFor(ctx);
+  const def = installed(m);
+  if (!def) return notInstalled(ctx);
+  const port = portOf(def.program) ?? DEFAULT_PORT;
+  const st = await m.status();
+  if (st.running && (await answering(ctx, port))) {
+    ctx.out(`Local Review is already running: http://localhost:${port}\n`);
+    return 0;
+  }
+  if (!st.running && (await (ctx.isListening ?? defaultIsListening)(port)))
+    throw new Error(`port ${port} is already in use (is \`local-review\` running in a terminal?). Stop that first, or move the service with \`local-review service install --port <n>\`.`);
+  await m.start();
+  if (!(await waitUntil(ctx, port))) return didntAnswer(ctx, 'started the service', port, def);
+  ctx.out(`Started Local Review: http://localhost:${port}\n`);
+  return 0;
+}
+
+/** Stop it until `service start` or the next login: it stays installed and enabled (cli-contract SPEC §1). */
+export async function stop(ctx: ServiceContext): Promise<number> {
+  const m = managerFor(ctx);
+  const def = installed(m);
+  if (!def) return notInstalled(ctx);
+  const port = portOf(def.program) ?? DEFAULT_PORT;
+  const st = await m.status();
+  await m.stop();
+  if (!(await waitUntil(ctx, port, { gone: true }))) {
+    ctx.err(`local-review: stopped the service, but something still answers on http://localhost:${port} (is \`local-review\` running in a terminal?)\n`);
+    return 1;
+  }
+  ctx.out(`${st.running ? 'Stopped Local Review.' : "Local Review's service wasn't running."} ${m.stopped} To keep it off, \`local-review service uninstall\`.\n`);
   return 0;
 }
 
@@ -189,16 +286,28 @@ export interface StatusReport extends ServiceStatus {
   port: number | null;
   url: string | null;
   answering: boolean;
+  /** The version that answers, from its /api/health. */
+  version: string | null;
+  /** The version of the Local Review the service runs, on disk (what a restart would run). */
+  installedVersion: string | null;
   node: string | null;
   cli: string | null;
   home: string | null;
-  logs: { out: string; err: string } | null;
+  /** Its log file (`service logs`). */
+  log: string | null;
   warnings: string[];
 }
 
 export async function statusReport(ctx: ServiceContext): Promise<StatusReport> {
   const m = managerFor(ctx);
-  const st = await m.status();
+  let st: ServiceStatus;
+  try {
+    st = await m.status();
+  } catch (e) {
+    // no service file, and no service manager to ask (a container without systemd): not installed, all the same
+    if (!(e instanceof ServiceManagerError) || fs.existsSync(m.file)) throw e;
+    st = { installed: false, loaded: false, running: false, pid: null, lastExitCode: null, state: null, enabled: null };
+  }
   const def = installed(m);
   const port = def ? portOf(def.program) : null;
   const home = def ? dataHome(def.env, ctx.userHome) : null;
@@ -213,26 +322,37 @@ export async function statusReport(ctx: ServiceContext): Promise<StatusReport> {
   const here = path.join(realOr(ctx.root), 'dist', 'server', 'cli.js');
   if (cli && fs.existsSync(cli) && cli !== here && !refusal(here))
     warnings.push(`It runs ${cli}, not this local-review (${here}). \`local-review service install\` points it at this one.`);
+  const logs = def ? logsOf(def, ctx.userHome) : [];
+  if (logs.length > 1) warnings.push(`It logs to ${logs.join(' and ')}, as an older Local Review set it up. \`local-review service restart\` moves it to one file, logs/${LOG_FILE}.`);
+  const health = port && st.running ? await (ctx.health ?? defaultHealth)(port) : null;
+  const installedVersion = versionAt(cli);
+  if (health?.version && installedVersion && health.version !== installedVersion)
+    warnings.push(`It's running ${health.version}, but ${installedVersion} is installed: \`local-review service restart\` runs ${installedVersion}.`);
   return {
     ...st,
     file: m.file,
     manager: m.kind,
     port,
     url: port ? `http://localhost:${port}` : null,
-    answering: port ? await (ctx.answering ?? defaultAnswering)(port) : false,
+    answering: !!health,
+    version: health?.version ?? null,
+    installedVersion,
     node,
     cli,
     home,
-    logs: home ? { out: path.join(home, 'logs', 'server.out.log'), err: path.join(home, 'logs', 'server.err.log') } : null,
+    log: logs[0] ?? null,
     warnings,
   };
 }
+
+/** status's exit code: 0 running and answering, 3 installed but not, 4 not installed (cli-contract SPEC §2). */
+export const statusCode = (r: StatusReport) => (!r.installed ? EXIT_NOT_INSTALLED : r.running && r.answering ? 0 : EXIT_NOT_RUNNING);
 
 export async function status(ctx: ServiceContext, { json = false } = {}): Promise<number> {
   const r = await statusReport(ctx);
   if (json) {
     ctx.out(JSON.stringify(r, null, 2) + '\n');
-    return 0;
+    return statusCode(r);
   }
   const t = (p: string) => tildify(p, ctx.userHome);
   const lines = [
@@ -240,31 +360,130 @@ export async function status(ctx: ServiceContext, { json = false } = {}): Promis
     `Loaded:    ${r.loaded ? 'yes' : 'no'}${r.loaded && r.state ? ` (${r.state})` : ''}${r.enabled !== null ? `, ${r.enabled ? 'starts at login' : "doesn't start at login"}` : ''}`,
     `Running:   ${r.running ? `yes, pid ${r.pid}` : 'no'}${r.lastExitCode !== null ? ` (last exit status ${r.lastExitCode})` : ''}`,
     ...(r.url ? [`UI:        ${r.answering ? r.url : `nothing answering on ${r.url}`}`] : []),
+    ...(r.installedVersion ? [`Version:   ${r.installedVersion}`] : []),
     ...(r.node ? [`Node:      ${t(r.node)}`] : []),
     ...(r.cli ? [`Runs:      ${t(r.cli)}`] : []),
     ...(r.home ? [`Data:      ${t(r.home)}`] : []),
-    ...(r.logs ? [`Logs:      ${t(r.logs.out)} and ${path.basename(r.logs.err)}`] : []),
+    ...(r.log ? [`Log:       ${t(r.log)}`] : []),
     ...r.warnings.map((w) => `\nWarning: ${w}`),
   ];
   ctx.out(lines.join('\n') + '\n');
-  return 0;
+  return statusCode(r);
+}
+
+/**
+ * The definition this version would write for an installed service: the same Node, CLI, port and environment, in
+ * this version's format. If the Node or CLI it names has gone, this local-review and its Node instead. Null when the
+ * definition can't be read well enough to keep what it runs.
+ */
+function refreshedSpec(ctx: ServiceContext, def: InstalledDefinition) {
+  let [nodePath, cliScript] = def.program;
+  const port = portOf(def.program);
+  if (!nodePath || !cliScript || !port) return null;
+  let node = { path: nodePath, version: def.nodeVersion ?? 'unknown' };
+  let moved = false;
+  if (!fs.existsSync(nodePath) || !fs.existsSync(cliScript)) {
+    const here = path.join(realOr(ctx.root), 'dist', 'server', 'cli.js');
+    const why = refusal(here) ?? (fs.existsSync(here) ? null : `${here} doesn't exist`);
+    if (why) throw new RefusalError(`the Node or Local Review the service runs (${nodePath}, ${cliScript}) has gone, and this local-review can't take its place: ${why}`);
+    node = { path: realOr(ctx.execPath), version: ctx.nodeVersion };
+    cliScript = here;
+    moved = true;
+  }
+  const carried: Record<string, string> = {};
+  for (const k of CARRIED_ENV) if (def.env[k]) carried[k] = def.env[k];
+  const userHome = def.env.HOME || ctx.userHome;
+  return { moved, spec: buildSpec({ cliScript, node, port, home: dataHome(carried, userHome), carried, inheritedPath: def.env.PATH, userHome }) };
 }
 
 export async function restart(ctx: ServiceContext): Promise<number> {
   const m = managerFor(ctx);
   const def = installed(m);
-  if (!def || !fs.existsSync(m.file)) throw new RefusalError("Local Review isn't installed as a service; install it with `local-review service install`");
-  await m.restart();
-  const port = portOf(def.program) ?? DEFAULT_PORT;
-  if (!(await waitUntilAnswering(ctx, port))) {
-    ctx.err(`local-review: restarted the service, but nothing answered on http://localhost:${port} in time.\n`);
-    const home = dataHome(def.env, ctx.userHome);
-    const tail = logTail([path.join(home, 'logs', 'server.err.log'), path.join(home, 'logs', 'server.out.log')]);
-    if (tail) ctx.err(`\nThe last lines of its logs:\n${tail}`);
-    return 1;
+  if (!def || !fs.existsSync(m.file)) return notInstalled(ctx);
+  // a stale definition (an older format, or what it runs has gone) is rewritten first (cli-contract SPEC §1)
+  const fresh = refreshedSpec(ctx, def);
+  let changed = false;
+  if (fresh) {
+    fs.mkdirSync(path.dirname(fresh.spec.log), { recursive: true });
+    changed = await m.write(fresh.spec);
   }
+  if (changed) await m.restart({ reload: true });
+  else await m.restart();
+  const port = portOf(def.program) ?? DEFAULT_PORT;
+  if (changed)
+    ctx.out(
+      `Updated its ${m.noun} (${tildify(m.file, ctx.userHome)})${fresh!.moved ? `: it runs ${tildify(fresh!.spec.program[1], ctx.userHome)} now, with Node ${fresh!.spec.node.version}` : ''}. Log: ${tildify(fresh!.spec.log, ctx.userHome)}.\n`,
+    );
+  if (!(await waitUntil(ctx, port))) return didntAnswer(ctx, 'restarted the service', port, fresh && changed ? { ...def, logs: [fresh.spec.log] } : def);
   ctx.out(`Restarted Local Review: http://localhost:${port}\n`);
   return 0;
+}
+
+export interface LogsFlags {
+  follow?: boolean;
+  /** How many lines from the end (default 50). */
+  lines?: number;
+}
+
+/** `service logs [-f] [-n <lines>]`: the end of the service's log file, and with -f what it writes next. Only reads. */
+export async function logs(ctx: ServiceContext, { follow = false, lines = 50 }: LogsFlags = {}): Promise<number> {
+  const m = managerFor(ctx);
+  const def = installed(m);
+  if (!def) return notInstalled(ctx);
+  const files = logsOf(def, ctx.userHome);
+  const t = (p: string) => tildify(p, ctx.userHome);
+  if (files.length > 1) ctx.err(`(An older Local Review set this service up with two log files. \`local-review service restart\` moves it to one, logs/${LOG_FILE}.)\n`);
+  const offsets = new Map<string, number>();
+  for (const f of files) {
+    const tail = tailLines(f, lines);
+    if (files.length > 1) ctx.out(`==> ${f} <==\n`);
+    if (tail === null) ctx.err(`No log yet at ${t(f)}${files.length > 1 ? '' : ': the service writes it when it starts'}.\n`);
+    else ctx.out(tail);
+    offsets.set(f, sizeOf(f));
+  }
+  if (!follow) return 0;
+  let last = files.at(-1);
+  await new Promise<void>((resolve) => {
+    const tick = () => {
+      for (const f of files) {
+        const size = sizeOf(f);
+        let from = offsets.get(f) ?? 0;
+        if (size < from) from = 0; // truncated or replaced: from its start
+        if (size > from) {
+          if (files.length > 1 && last !== f) ctx.out(`\n==> ${f} <==\n`);
+          last = f;
+          ctx.out(readRange(f, from, size));
+        }
+        offsets.set(f, size);
+      }
+    };
+    const timer = setInterval(tick, ctx.pollMs ?? 500);
+    ctx.signal?.addEventListener('abort', () => {
+      clearInterval(timer);
+      tick();
+      resolve();
+    });
+  });
+  return 0;
+}
+
+const sizeOf = (f: string) => {
+  try {
+    return fs.statSync(f).size;
+  } catch {
+    return 0;
+  }
+};
+
+function readRange(f: string, from: number, to: number): string {
+  const fd = fs.openSync(f, 'r');
+  try {
+    const buf = Buffer.alloc(to - from);
+    fs.readSync(fd, buf, 0, buf.length, from);
+    return buf.toString('utf8');
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 
 /** The context for the real thing: this process, this OS, the real launchctl / systemctl. */

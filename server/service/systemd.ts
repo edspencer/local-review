@@ -3,11 +3,12 @@
 //   RunAtLoad          → `[Install] WantedBy=default.target`, and `systemctl --user enable`
 //   KeepAlive          → `Restart=always`
 //   ThrottleInterval   → `RestartSec=10`
-//   StandardOut/ErrorPath → `StandardOutput=append:<file>` / `StandardError=append:<file>`, in the data home's logs/
+//   StandardOut/ErrorPath → `StandardOutput=append:<file>` / `StandardError=append:<file>`: the one logs/service.log in
+//                           the data home, not the journal, so `service logs` reads a file on both OSes
 import fs from 'node:fs';
 // POSIX paths whatever OS this runs on, so this platform's logic is tested on every OS
 import { posix as path } from 'node:path';
-import { type InstalledDefinition, type Runner, type ServiceManager, ServiceManagerError, type ServiceSpec, type ServiceStatus, defaultRunner, removeServiceFile, writeIfChanged } from './manager.js';
+import { type InstalledDefinition, type Runner, type ServiceManager, ServiceManagerError, type ServiceSpec, type ServiceStatus, defaultRunner, nodeVersionOf, removeServiceFile, writeIfChanged } from './manager.js';
 
 /** `local-review.server` → `local-review-server.service`. */
 export const unitName = (label: string) => `${label.replace(/\./g, '-')}.service`;
@@ -46,8 +47,8 @@ export function renderUnit(spec: ServiceSpec): string {
     `WorkingDirectory=${pct(spec.cwd)}`,
     `ExecStart=${spec.program.map(execWord).join(' ')}`,
     ...Object.entries(spec.env).map(([k, v]) => `Environment="${cEscape(pct(`${k}=${v}`))}"`),
-    `StandardOutput=append:${pct(spec.stdout)}`,
-    `StandardError=append:${pct(spec.stderr)}`,
+    `StandardOutput=append:${pct(spec.log)}`,
+    `StandardError=append:${pct(spec.log)}`,
     'Restart=always',
     'RestartSec=10',
     '',
@@ -68,7 +69,8 @@ export function parseUnit(text: string): InstalledDefinition | null {
     const i = kv.indexOf('=');
     if (i > 0) env[kv.slice(0, i)] = kv.slice(i + 1);
   }
-  return { program: execWords(exec[1]), env };
+  const logs = [...text.matchAll(/^Standard(?:Output|Error)=append:(.*)$/gm)].map((m) => m[1].replace(/%%/g, '%'));
+  return { program: execWords(exec[1]), env, logs: [...new Set(logs)], nodeVersion: nodeVersionOf(text) };
 }
 
 /** `systemctl --user show -p …` output: KEY=VALUE lines. */
@@ -130,6 +132,7 @@ export function systemdManager({ dir, label, run = defaultRunner }: SystemdOptio
     noun: 'systemd user unit',
     lifetime:
       "It starts with your user session and is restarted if it exits. To keep it running while you're logged out, and start it at boot, enable lingering once: `loginctl enable-linger $USER`.",
+    stopped: 'It starts again with your next login session (or at boot, with lingering on), or with `local-review service start`.',
     file,
     render: renderUnit,
     parse: parseUnit,
@@ -141,6 +144,10 @@ export function systemdManager({ dir, label, run = defaultRunner }: SystemdOptio
     async start() {
       await systemctl(['enable', '--quiet', unit]);
       await systemctl(['start', unit]);
+    },
+    async stop() {
+      // stop, not disable: it's still enabled, so the next login (or boot, with lingering) starts it again
+      await systemctl(['stop', unit], [0, 5]);
     },
     async restart() {
       // `write` already ran daemon-reload for a changed unit, and restart starts an inactive one

@@ -61,7 +61,7 @@ try {
 
   step('--version, --help, guide');
   assert.equal(run('--version').trim(), pkg.version);
-  assert.match(run('--help'), /^Usage: local-review \[serve\]/);
+  assert.match(run('--help'), /^Usage: local-review \[--data-dir <path>\] \[serve\]/);
   assert.equal(run('guide'), fs.readFileSync(path.join(root, 'AGENT-GUIDE.md'), 'utf8'));
   fails(['frobnicate'], 2, /unknown command 'frobnicate'/);
 
