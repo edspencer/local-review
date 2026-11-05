@@ -74,12 +74,10 @@ runs if the install or the hand-over fails.
 
 ## Without a service
 
-If you run `local-review` (`serve`) yourself, in a terminal, there's no service to stop or start, so `update` does
-steps 1 to 6 and then:
-
-- **if that `local-review` is answering, it asks you to stop it** (Ctrl-C in its terminal) **and exits 3**, before
-  installing anything: it won't install under a running server. Run `update` again once it's stopped.
-- otherwise it installs the new version and stops there. **Restart Local Review to use it.**
+If you run `local-review serve` yourself and it's answering, **`update` asks you to stop it first and exits 3**;
+stop it (Ctrl-C in its terminal), run `update` again, then start `serve` again. It stops before installing anything:
+it won't install under a running server. With no service and nothing answering, `update` does steps 1 to 6 and the
+install, and the next `local-review` you start is the new version.
 
 ## Options
 
