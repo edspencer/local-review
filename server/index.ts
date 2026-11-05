@@ -837,7 +837,8 @@ app.get('/llms.txt', (c) => agentText(c, llmsTxt(llmsInput(c)), 'text/plain'));
 app.get('/llms-full.txt', (c) => agentText(c, llmsFullTxt(llmsInput(c)), 'text/plain'));
 app.get('/agent-guide.md', (c) => agentText(c, agentGuide(llmsInput(c)), 'text/markdown'));
 
-app.get('/api/health', (c) => c.json({ ok: true }));
+// the version too, so `service status` and an update's health check can tell which build answers (cli-contract SPEC §8)
+app.get('/api/health', (c) => c.json({ ok: true, version: VERSION }));
 app.get('/api/me', (c) => c.json(REVIEWER));
 app.all('/api/*', (c) => c.json({ error: 'not found' }, 404));
 

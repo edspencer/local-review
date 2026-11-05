@@ -7,7 +7,10 @@
 // `move` copies prs / reviews files into another project (create-only) and renames the originals to .bak.
 // `github refresh` reads GitHub (gh api graphql queries only, server/gh.ts) and writes only its own cache, <data>/github/;
 // `github status` reads that cache and config.yaml, nothing else.
-// `service` writes only its own LaunchAgent / systemd user unit (and makes the data home's logs/), never user data.
+// `service` writes only its own LaunchAgent / systemd user unit (and makes the data home's logs/), never user data;
+// `service logs` only reads its log.
+// First: `--data-dir` sets LOCAL_REVIEW_HOME before config.ts reads it.
+import './datadir.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { AGENT_GUIDE, DEFAULT_PORT, EXAMPLE_PROJECT, PROJECTS_DIR, ROOT, SAFE_NAME, parsePort } from './config.js';
@@ -17,7 +20,7 @@ import { ExistsError, atomicWrite } from './safefs.js';
 import { AssetError, addAsset, setPublishedUrl } from './assets.js';
 import { MAX_ASSET_BYTES, typeOfName } from '../shared/assets.js';
 
-const USAGE = `Usage: local-review [serve] [--port <n>] [--quiet]
+const USAGE = `Usage: local-review [--data-dir <path>] [serve] [--port <n>] [--quiet]
        local-review plan <project> [--repo <name>] [--stack <n>] [--include-follow-on] [--format md|json|yaml]
        local-review init <project>
        local-review asset add <project> <file> [--alt <text>]
@@ -26,7 +29,8 @@ const USAGE = `Usage: local-review [serve] [--port <n>] [--quiet]
        local-review examples [remove]
        local-review github refresh [<project>] | status [<project>]
        local-review service install [--port <n>] [--dry-run] [--from-checkout]
-       local-review service uninstall | status [--json] | restart
+       local-review service uninstall | start | stop | restart | status [--json]
+       local-review service logs [-f] [-n <lines>]
        local-review guide
        local-review --version | --help
 
@@ -90,19 +94,33 @@ const USAGE = `Usage: local-review [serve] [--port <n>] [--quiet]
           --from-checkout  run a source checkout's build (dist/) as the service, on purpose
   service uninstall
           Stop the service and remove its file. Your data (and its logs/) stays where it is.
-  service status
-          Whether it's installed, loaded and running, on which port, and what it runs.
-          --json           as JSON
+  service start
+          Start the installed service, and wait until it answers.
+  service stop
+          Stop it until \`service start\` or your next login. It stays installed: \`service uninstall\` removes it.
   service restart
-          Restart it, e.g. after \`npm i -g local-review@latest\`.
+          Restart it, e.g. after \`npm i -g local-review@latest\`. A service file an older version wrote, or one
+          whose Node or local-review has gone, is rewritten first, keeping its port and environment.
+  service status
+          Whether it's installed, loaded, running and answering, on which port, which version, and what it runs.
+          Exits 0 if it's running and answering, 3 if it's installed but not, 4 if it isn't installed.
+          --json           as JSON
+  service logs
+          The end of the service's log, <data>/logs/service.log.
+          -f, --follow     then keep printing what it writes, until interrupted
+          -n, --lines <n>  how many lines (default 50)
   guide   Print the guide for agents using Local Review to get their work reviewed (AGENT-GUIDE.md).
 
-Data: $LOCAL_REVIEW_HOME/projects (default ~/.local-review/projects). Agents: run \`local-review guide\`.`;
+  --data-dir <path>
+          The data home for this command, as LOCAL_REVIEW_HOME sets it (default ~/.local-review).
+
+Data: $LOCAL_REVIEW_HOME/projects (default ~/.local-review/projects). Agents: run \`local-review guide\`.
+Exit codes: 0 done, 1 failed, 2 bad usage, 3 not running, 4 not installed (\`service\`).`;
 
 /** Bad usage: exit 2, with the usage. Anything else thrown exits 1. */
 class UsageError extends Error {}
 
-const VALUE_FLAGS = ['repo', 'stack', 'format', 'port', 'alt', 'to-repo'];
+const VALUE_FLAGS = ['repo', 'stack', 'format', 'port', 'alt', 'to-repo', 'lines', 'data-dir'];
 
 function parseArgs(argv: string[]) {
   const pos: string[] = [];
@@ -116,6 +134,11 @@ function parseArgs(argv: string[]) {
     else if (a === '--from-checkout') flags['from-checkout'] = '1';
     else if (a === '--json') flags.json = '1';
     else if (a === '-q' || a === '--quiet') flags.quiet = '1';
+    else if (a === '-f' || a === '--follow') flags.follow = '1';
+    else if (a === '-n') {
+      if (argv[i + 1] === undefined) throw new UsageError('-n needs a value');
+      flags.lines = argv[++i];
+    }
     else if (a.startsWith('--')) {
       const eq = a.indexOf('=');
       const [k, v] = eq > 0 ? [a.slice(2, eq), a.slice(eq + 1)] : [a.slice(2), argv[++i]];
@@ -335,12 +358,23 @@ async function service(args: string[], flags: Record<string, string>): Promise<n
       case 'uninstall':
         check('service uninstall', flags, [], rest, 0);
         return await svc.uninstall(ctx);
+      case 'start':
+        check('service start', flags, [], rest, 0);
+        return await svc.start(ctx);
+      case 'stop':
+        check('service stop', flags, [], rest, 0);
+        return await svc.stop(ctx);
       case 'status':
         check('service status', flags, ['json'], rest, 0);
         return await svc.status(ctx, { json: !!flags.json });
       case 'restart':
         check('service restart', flags, [], rest, 0);
         return await svc.restart(ctx);
+      case 'logs': {
+        check('service logs', flags, ['follow', 'lines'], rest, 0);
+        if (flags.lines !== undefined && !/^[0-9]{1,7}$/.test(flags.lines)) throw new UsageError(`-n must be a number of lines, not '${flags.lines}'`);
+        return await svc.logs(ctx, { follow: !!flags.follow, lines: flags.lines === undefined ? undefined : Number(flags.lines) });
+      }
       default:
         throw new UsageError(sub ? `unknown service command '${sub}'; ${svc.SERVICE_USAGE}` : svc.SERVICE_USAGE);
     }
@@ -354,6 +388,11 @@ async function service(args: string[], flags: Record<string, string>): Promise<n
 /** Resolves with the exit code, or undefined while the server runs. */
 async function main(argv: string[]): Promise<number | undefined> {
   const { pos, flags } = parseArgs(argv);
+  // every command takes it, and datadir.ts has already acted on it
+  if (flags['data-dir'] !== undefined) {
+    if (!flags['data-dir']) throw new UsageError('--data-dir needs a path');
+    delete flags['data-dir'];
+  }
   if (flags.help) {
     process.stdout.write(USAGE + '\n');
     return 0;

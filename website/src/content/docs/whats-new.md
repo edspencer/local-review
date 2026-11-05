@@ -7,6 +7,19 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
+## Coming in 0.14.0: `service start`, `stop` and `logs`
+
+Not released yet.
+
+- **Stop and start the service without uninstalling it.** `local-review service stop` stops it until
+  `service start` or your next login. It stays installed, as `systemctl --user stop` and `launchctl bootout` leave
+  it. `local-review service logs [-f] [-n <lines>]` prints its log, now one file, `~/.local-review/logs/service.log`.
+  `service restart` moves an older service to that file. See [Run it as a service](/getting-started/service/).
+- **Exit codes scripts can use.** `service status` exits 0 when it's running and answering, 3 when it's installed but
+  isn't, and 4 when it isn't installed. `start`, `stop`, `restart` and `logs` exit 4 with no service. It used to exit
+  0 every time. Its `--json` gains `version` and `installedVersion`, and `/api/health` gives the version too.
+- **`--data-dir <path>`** sets the data home for one command, as `LOCAL_REVIEW_HOME` does.
+
 ## 0.13.0: GitHub status
 
 - **See what GitHub says about your published PRs.** Turn it on with `github: {sync: on}` in

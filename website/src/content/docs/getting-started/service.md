@@ -16,7 +16,7 @@ $ local-review service install
 Installed Local Review as a LaunchAgent: ~/Library/LaunchAgents/local-review.server.plist
 It's running: http://localhost:5622
 It starts at login and is restarted if it exits.
-Data: ~/.local-review. Logs: ~/.local-review/logs/server.out.log and server.err.log.
+Data: ~/.local-review. Log: ~/.local-review/logs/service.log (`local-review service logs`).
 ```
 
 It registers Local Review with your OS's own service manager and starts it:
@@ -36,15 +36,20 @@ Both start at **login**, not at boot (except a Linux unit with lingering on).
 
 ```sh
 local-review service install [--port <n>] [--dry-run] [--from-checkout]
-local-review service status [--json]
+local-review service start
+local-review service stop
 local-review service restart
+local-review service status [--json]
+local-review service logs [-f] [-n <lines>]
 local-review service uninstall
 ```
+
+`start`, `stop`, `restart` and `logs` exit 4 when there's no service installed, and say how to install one.
 
 ### `service install`
 
 Writes the service's file and starts it, then waits up to 15 seconds for it to answer. If it doesn't, it says so,
-prints the last lines of its logs and exits 1.
+prints the last lines of its log and exits 1.
 
 - **`--port <n>`** picks the port (default 5622). `$PORT` isn't used, so a `PORT` exported for something else can't
   end up in the service by accident.
@@ -55,6 +60,20 @@ prints the last lines of its logs and exits 1.
 - If the port is already taken by something else (most likely `local-review` running in a terminal), it stops before
   writing anything: stop that first, or pick another port.
 
+### `service start` and `service stop`
+
+`service start` starts the installed service and waits until it answers, as `install` does, printing the end of its
+log if it doesn't. It refuses if something else has the port (a `local-review` in a terminal, say).
+
+`service stop` stops it **until you start it again or until your next login**, whichever comes first. It doesn't
+disable it, so it's still installed, and on Linux with lingering on, the next boot starts it too. That's what
+`systemctl --user stop` and `launchctl bootout` do on their own. To keep it off for good, use `service uninstall`.
+
+```text
+$ local-review service stop
+Stopped Local Review. It starts again at your next login, or with `local-review service start`. To keep it off, `local-review service uninstall`.
+```
+
 ### `service status`
 
 ```text
@@ -63,18 +82,36 @@ Service:   ~/.config/systemd/user/local-review-server.service
 Loaded:    yes (active (running)), starts at login
 Running:   yes, pid 48213
 UI:        http://localhost:5622
+Version:   0.14.0
 Node:      ~/.nvm/versions/node/v22.12.0/bin/node
 Runs:      ~/.nvm/versions/node/v22.12.0/lib/node_modules/local-review/dist/server/cli.js
 Data:      ~/.local-review
-Logs:      ~/.local-review/logs/server.out.log and server.err.log
+Log:       ~/.local-review/logs/service.log
 ```
 
-It warns when the Node or the `local-review` the service runs has gone (after a Node upgrade, say), or when it runs a
-different `local-review` from the one you just ran. `--json` gives the same as JSON, for scripts.
+It warns when the Node or the `local-review` the service runs has gone (after a Node upgrade, say), when it runs a
+different `local-review` from the one you just ran, or when the version answering isn't the one installed (you
+upgraded but haven't restarted). `--json` gives the same as JSON, for scripts: `version` is the version answering,
+`installedVersion` the one on disk.
+
+It exits **0** when the service is running and answering, **3** when it's installed but isn't (stopped, or
+not answering), and **4** when it isn't installed, with or without `--json`. Those are the codes `systemctl status`
+uses.
 
 ### `service restart`
 
-Restarts it, for instance after an upgrade (below).
+Restarts it, for instance after an upgrade (below). If the service's file is stale, it's rewritten first, keeping
+the port and the environment it was installed with. A file is stale when an older Local Review wrote it (one from
+before 0.14 logs to two files), or when the Node or `local-review` it names has gone. In that last case, it's pointed
+at the `local-review` you ran and its Node.
+
+### `service logs`
+
+Prints the last 50 lines of the service's log, `logs/service.log` in the data home. `-n <lines>` prints more or fewer,
+and `-f` keeps printing what it writes until you press Ctrl-C. Local Review writes that file itself on both OSes,
+not the systemd journal, so it's the same command everywhere. A service installed before 0.14 writes `server.out.log`
+and `server.err.log` instead. `service logs` shows both until `service restart` moves the service to the one file.
+The old files are left where they are.
 
 ### `service uninstall`
 
@@ -102,8 +139,8 @@ start a service with almost no environment of its own:
   (`LOCAL_REVIEW_HOME` made absolute). Nothing else from your environment is.
 - It still listens on **127.0.0.1 only**, as `local-review` always does. There's no option to change that
   ([Localhost security](/guarantees/localhost-security/)).
-- Its working directory is the data home, and its output is appended to `logs/server.out.log` and `server.err.log`
-  there. Local Review writes little (a line when it starts, a note per snapshot, and errors), so they aren't rotated.
+- Its working directory is the data home, and its output, stdout and stderr both, is appended to `logs/service.log`
+  there. Local Review writes little (a line when it starts, a note per snapshot, and errors), so it isn't rotated.
 
 Here is a generated unit, from `local-review service install --dry-run` on Linux:
 
@@ -119,8 +156,8 @@ WorkingDirectory=/home/you/.local-review
 ExecStart=/usr/local/bin/node /usr/local/lib/node_modules/local-review/dist/server/cli.js serve --quiet --port 5622
 Environment="PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 Environment="HOME=/home/you"
-StandardOutput=append:/home/you/.local-review/logs/server.out.log
-StandardError=append:/home/you/.local-review/logs/server.err.log
+StandardOutput=append:/home/you/.local-review/logs/service.log
+StandardError=append:/home/you/.local-review/logs/service.log
 Restart=always
 RestartSec=10
 
@@ -168,9 +205,11 @@ keeps the port and data home. `local-review service status` warns when this is n
 ## How much of this has been tested
 
 - **Tests, on Linux and macOS:** the generated plist and unit, read back again; escaping; the `PATH`; the refusals;
-  install, reinstall, status, restart and uninstall with launchctl and systemctl stood in for. On macOS the plist also
+  install, reinstall, start, stop, status and its exit codes, restart (and a stale file rewritten), logs and
+  uninstall, with launchctl and systemctl stood in for. On macOS the plist also
   passes `plutil -lint`, and on Linux the unit passes `systemd-analyze verify`.
 - **For real, in CI:** the package as you'd install it, against launchd on a GitHub macOS runner and a systemd user
   instance on a GitHub Ubuntu runner: refused from npx, installed, reinstalled, killed (and restarted by
-  launchd or systemd), restarted, moved to another port, and uninstalled with the data home untouched.
+  launchd or systemd), stopped (and still installed and enabled), started, restarted, its log read, moved to another
+  port, and uninstalled with the data home untouched.
 - **Not tested yet:** a real logout and login, or a reboot, on either OS.

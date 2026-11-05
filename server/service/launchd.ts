@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 // POSIX paths whatever OS this runs on, so this platform's logic is tested on every OS
 import { posix as path } from 'node:path';
-import { type InstalledDefinition, type Runner, type ServiceManager, ServiceManagerError, type ServiceSpec, type ServiceStatus, defaultRunner, removeServiceFile, writeIfChanged } from './manager.js';
+import { type InstalledDefinition, type Runner, type ServiceManager, ServiceManagerError, type ServiceSpec, type ServiceStatus, defaultRunner, nodeVersionOf, removeServiceFile, writeIfChanged } from './manager.js';
 
 const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const unxml = (s: string) => s.replace(/&quot;/g, '"').replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
@@ -30,8 +30,8 @@ export function renderPlist(spec: ServiceSpec): string {
     `${key('KeepAlive')}          <true/>`,
     `${key('ThrottleInterval')}   <integer>10</integer>`,
     `${key('WorkingDirectory')}   ${str(spec.cwd)}`,
-    `${key('StandardOutPath')}    ${str(spec.stdout)}`,
-    `${key('StandardErrorPath')}  ${str(spec.stderr)}`,
+    `${key('StandardOutPath')}    ${str(spec.log)}`,
+    `${key('StandardErrorPath')}  ${str(spec.log)}`,
     key('EnvironmentVariables'),
     '    <dict>',
     ...Object.entries(spec.env).map(([k, v]) => `      <key>${xml(k)}</key>${' '.repeat(Math.max(1, 19 - k.length))}${str(v)}`),
@@ -51,7 +51,8 @@ export function parsePlist(text: string): InstalledDefinition | null {
   const env: Record<string, string> = {};
   const dict = /<key>EnvironmentVariables<\/key>\s*<dict>([\s\S]*?)<\/dict>/.exec(text);
   if (dict) for (const m of dict[1].matchAll(/<key>([^<]*)<\/key>\s*<string>([^<]*)<\/string>/g)) env[unxml(m[1])] = unxml(m[2]);
-  return { program, env };
+  const logs = [...text.matchAll(/<key>Standard(?:Out|Error)Path<\/key>\s*<string>([^<]*)<\/string>/g)].map((m) => unxml(m[1]));
+  return { program, env, logs: [...new Set(logs)], nodeVersion: nodeVersionOf(text) };
 }
 
 /** `launchctl print gui/<uid>/<label>`: the job's top-level `state`, `pid` and `last exit code`. */
@@ -118,6 +119,7 @@ export function launchdManager({ dir, label, uid, run = defaultRunner, sleep = (
     kind: 'launchd',
     noun: 'LaunchAgent',
     lifetime: 'It starts at login and is restarted if it exits.',
+    stopped: 'It starts again at your next login, or with `local-review service start`.',
     file,
     render: renderPlist,
     parse: parsePlist,
@@ -131,6 +133,11 @@ export function launchdManager({ dir, label, uid, run = defaultRunner, sleep = (
       if (st.running) return;
       if (!st.loaded) return bootstrap(); // bootstrap starts a RunAtLoad job
       await launchctl(['kickstart', target]);
+    },
+    async stop() {
+      // bootout unloads it and leaves the plist: RunAtLoad loads it again at the next login. Never `disable`, which
+      // would keep it off for good (that's what uninstall is for)
+      await bootout();
     },
     async restart({ reload = false } = {}) {
       const st = await status();

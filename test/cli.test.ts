@@ -33,10 +33,10 @@ describe('local-review CLI', () => {
     assert.equal(v.stdout.trim(), JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version);
     const h = await lr(['--help']);
     assert.equal(h.code, 0);
-    assert.match(h.stdout, /^Usage: local-review \[serve\]/);
+    assert.match(h.stdout, /^Usage: local-review \[--data-dir <path>\] \[serve\]/);
     assert.match(h.stdout, /--port <n> +the port \(default 5622, or \$PORT\)/);
     for (const cmd of ['plan', 'init', 'guide']) assert.match(h.stdout, new RegExp(`^  ${cmd} `, 'm'));
-    for (const sub of ['install', 'uninstall', 'status', 'restart']) assert.match(h.stdout, new RegExp(`^  service ${sub}$`, 'm'));
+    for (const sub of ['install', 'uninstall', 'start', 'stop', 'restart', 'status', 'logs']) assert.match(h.stdout, new RegExp(`^  service ${sub}$`, 'm'));
     // the docs site's CLI reference shows it verbatim
     const ref = fs.readFileSync(path.join(ROOT, 'website/src/content/docs/reference/cli.md'), 'utf8');
     const block = /## `local-review --help`\n\n```text\n([\s\S]*?)```/.exec(ref)?.[1];
@@ -81,7 +81,14 @@ describe('local-review CLI', () => {
       [['serve', '--format', 'md'], /serve doesn't take --format/],
       [['--port', 'nope'], /--port must be a port number/],
       [['--port', '70000'], /--port must be a port number/],
-      [['service'], /service needs one of: install, uninstall, status, restart/],
+      [['service'], /service needs one of: install, uninstall, start, stop, restart, status, logs/],
+      [['service', 'logs', '-n', 'x'], /-n must be a number of lines, not 'x'/],
+      [['service', 'logs', '-n'], /-n needs a value/],
+      [['service', 'stop', '--json'], /service stop doesn't take --json/],
+      [['service', 'start', 'now'], /unexpected argument 'now'/],
+      [['plan', 'x', '-f'], /plan doesn't take --follow/],
+      [['init', 'x', '--data-dir='], /--data-dir needs a path/],
+      [['init', 'x', '--data-dir'], /--data-dir needs a value/],
       [['service', 'frob'], /unknown service command 'frob'; service needs one of/],
       [['service', 'install', '--port', '0'], /--port must be a port number \(1-65535\), not '0'/],
       [['service', 'install', '--json'], /service install doesn't take --json/],
@@ -95,6 +102,21 @@ describe('local-review CLI', () => {
       assert.match(r.stderr, /Usage: local-review/);
     }
     assert.ok(!fs.existsSync(PROJECTS), 'no usage error wrote anything');
+  });
+
+  test('--data-dir sets the data home for one command, before or after it, as LOCAL_REVIEW_HOME does', async () => {
+    const dir = tmpDir('lr-test-cli-datadir-');
+    try {
+      let r = await lr(['--data-dir', dir, 'init', 'here']);
+      assert.equal(r.code, 0, r.stderr);
+      assert.ok(fs.existsSync(path.join(dir, 'projects', 'here', 'project.yaml')));
+      r = await lr(['init', 'there', `--data-dir=${dir}`]);
+      assert.equal(r.code, 0, r.stderr);
+      assert.ok(fs.existsSync(path.join(dir, 'projects', 'there', 'project.yaml')));
+      assert.ok(!fs.existsSync(path.join(PROJECTS, 'here')) && !fs.existsSync(path.join(PROJECTS, 'there')), 'not in LOCAL_REVIEW_HOME');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test('init creates project.yaml from the example, and never replaces one', async () => {

@@ -23,7 +23,7 @@ local-review service install              # after `npm i -g local-review`: run i
 ## `local-review --help`
 
 ```text
-Usage: local-review [serve] [--port <n>] [--quiet]
+Usage: local-review [--data-dir <path>] [serve] [--port <n>] [--quiet]
        local-review plan <project> [--repo <name>] [--stack <n>] [--include-follow-on] [--format md|json|yaml]
        local-review init <project>
        local-review asset add <project> <file> [--alt <text>]
@@ -32,7 +32,8 @@ Usage: local-review [serve] [--port <n>] [--quiet]
        local-review examples [remove]
        local-review github refresh [<project>] | status [<project>]
        local-review service install [--port <n>] [--dry-run] [--from-checkout]
-       local-review service uninstall | status [--json] | restart
+       local-review service uninstall | start | stop | restart | status [--json]
+       local-review service logs [-f] [-n <lines>]
        local-review guide
        local-review --version | --help
 
@@ -96,14 +97,28 @@ Usage: local-review [serve] [--port <n>] [--quiet]
           --from-checkout  run a source checkout's build (dist/) as the service, on purpose
   service uninstall
           Stop the service and remove its file. Your data (and its logs/) stays where it is.
-  service status
-          Whether it's installed, loaded and running, on which port, and what it runs.
-          --json           as JSON
+  service start
+          Start the installed service, and wait until it answers.
+  service stop
+          Stop it until `service start` or your next login. It stays installed: `service uninstall` removes it.
   service restart
-          Restart it, e.g. after `npm i -g local-review@latest`.
+          Restart it, e.g. after `npm i -g local-review@latest`. A service file an older version wrote, or one
+          whose Node or local-review has gone, is rewritten first, keeping its port and environment.
+  service status
+          Whether it's installed, loaded, running and answering, on which port, which version, and what it runs.
+          Exits 0 if it's running and answering, 3 if it's installed but not, 4 if it isn't installed.
+          --json           as JSON
+  service logs
+          The end of the service's log, <data>/logs/service.log.
+          -f, --follow     then keep printing what it writes, until interrupted
+          -n, --lines <n>  how many lines (default 50)
   guide   Print the guide for agents using Local Review to get their work reviewed (AGENT-GUIDE.md).
 
+  --data-dir <path>
+          The data home for this command, as LOCAL_REVIEW_HOME sets it (default ~/.local-review).
+
 Data: $LOCAL_REVIEW_HOME/projects (default ~/.local-review/projects). Agents: run `local-review guide`.
+Exit codes: 0 done, 1 failed, 2 bad usage, 3 not running, 4 not installed (`service`).
 ```
 
 ## `local-review [serve]`
@@ -323,7 +338,8 @@ Then: check both project.yaml files: each repo's range (…) and its stacks' sta
 
 ```text
 local-review service install [--port <n>] [--dry-run] [--from-checkout]
-local-review service uninstall | status [--json] | restart
+local-review service uninstall | start | stop | restart | status [--json]
+local-review service logs [-f] [-n <lines>]
 ```
 
 Runs Local Review in the background, started at login and restarted if it exits: a launchd LaunchAgent on macOS
@@ -334,8 +350,11 @@ story, with the generated file: [Run it as a service](/getting-started/service/)
 | Command | |
 | --- | --- |
 | `service install` | Write the service's file and start it, then wait for it to answer. It runs this `local-review` and this Node, by absolute path, with a `PATH` that must find git, on 127.0.0.1 only. Running it again rewrites the file, restarting the service only if it changed, and keeps the port, `LOCAL_REVIEW_HOME` and `LOCAL_REVIEW_USER` it was installed with unless you give new ones. |
-| `service status` | Whether it's installed, loaded and running, its port, and the Node and `local-review` it runs, with a warning if either has gone. `--json` for scripts. |
-| `service restart` | Restart it, e.g. after `npm i -g local-review@latest`. |
+| `service start` | Start the installed service, and wait until it answers. |
+| `service stop` | Stop it until `service start` or your next login. It stays installed and enabled; `service uninstall` removes it. |
+| `service restart` | Restart it, e.g. after `npm i -g local-review@latest`. A stale service file (an older version's, or one whose Node or `local-review` has gone) is rewritten first, keeping its port and environment. |
+| `service status` | Whether it's installed, loaded, running and answering, its port, the version installed and the version answering, the Node and `local-review` it runs, and its log, with a warning if something is off. Exits 0, 3 (installed, not running or not answering) or 4 (not installed). `--json` for scripts. |
+| `service logs` | The last 50 lines of its log, `<data>/logs/service.log`. `-n <lines>` for more or fewer, `-f` to keep printing what it writes. |
 | `service uninstall` | Stop it and remove its file. Nothing else: the data home, `logs/` included, is untouched. |
 
 | Option (`install`) | |
@@ -354,7 +373,13 @@ version that matches the Local Review it is driving, without a checkout.
 
 ## `--version`, `--help`
 
-`-v` / `--version` prints the version; `-h` / `--help` prints the usage above.
+`-v` / `--version` prints the version and nothing else; `-h` / `--help` prints the usage above.
+
+## `--data-dir`
+
+`--data-dir <path>` sets the data home for one command, before or after it: `local-review --data-dir /tmp/lr-demo`
+is the same as `LOCAL_REVIEW_HOME=/tmp/lr-demo local-review`. `service install --data-dir <path>` installs a service
+that uses it, as `LOCAL_REVIEW_HOME` would.
 
 ## Exit codes
 
@@ -363,6 +388,10 @@ version that matches the Local Review it is driving, without a checkout.
 | `0` | Success. |
 | `1` | An error, printed as `local-review: <message>` (no such project, the port is in use, `init`'s file exists, a file that isn't an image, a `move` that would replace a file, a `service install` refused or not answering, …). |
 | `2` | Bad usage (an unknown command or option, a missing argument, a bad project or asset name, a URL `asset url` can't use): the message, then the usage. |
+| `3` | `service status`: installed, but not running or not answering. |
+| `4` | `service status`, `start`, `stop`, `restart`, `logs`: there's no service installed. |
+
+These follow the [CLI contract](https://github.com/edspencer/cli-contract) shared by Local Review and its sibling tools.
 
 ## Environment
 

@@ -10,6 +10,8 @@ import { launchdManager } from './launchd.js';
 import { systemdManager } from './systemd.js';
 
 export const LABEL = 'local-review.server';
+/** The service's one log file, in the data home's logs/ (cli-contract SPEC §7). Before 0.14: server.out.log and server.err.log. */
+export const LOG_FILE = 'service.log';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Where it's running from
@@ -182,8 +184,7 @@ export function buildSpec(i: SpecInput): ServiceSpec {
     // HOME as well: launchd and systemd set one, but this makes sure the data home, the logs and git's user.name (the
     // reviewer's id) are the ones `service install` resolved, even where the two would differ
     env: { PATH: servicePath(path.posix.dirname(i.node.path), i.inheritedPath), HOME: i.userHome, ...i.carried },
-    stdout: path.posix.join(logs, 'server.out.log'),
-    stderr: path.posix.join(logs, 'server.err.log'),
+    log: path.posix.join(logs, LOG_FILE),
     node: i.node,
   };
 }

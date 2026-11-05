@@ -8,7 +8,7 @@ thinks you are.
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `LOCAL_REVIEW_HOME` | `~/.local-review` | The [data directory](/reference/data-directory/): `projects/`, `backups/`, `examples/`, `cache/` and `logs/` all move. `~` is expanded. |
+| `LOCAL_REVIEW_HOME` | `~/.local-review` | The [data directory](/reference/data-directory/): `projects/`, `backups/`, `examples/`, `cache/` and `logs/` all move. `~` is expanded. `--data-dir <path>` sets it for one command. |
 | `PORT` | `5622` | The port `local-review` serves on. `--port` wins over it. Also used in the URL `init` prints. Not used by `service install`. |
 | `LOCAL_REVIEW_USER` | `git config user.name`, else `$USER` | Who you are: your comments are stored under this name's id. See [The reviewer](#local_review_user-the-reviewer). |
 | `NO_COLOR`, `FORCE_COLOR` | colour on a terminal | The startup banner's colours. See [Colour](#colour-no_color-and-force_color). |
@@ -23,7 +23,7 @@ Point it at a throwaway directory to try Local Review, or run a second instance,
 LOCAL_REVIEW_HOME=/tmp/lr-demo npx local-review --port 5050
 ```
 
-Snapshots then go to `/tmp/lr-demo/backups/`. Everything under it is described in
+`npx local-review --data-dir /tmp/lr-demo --port 5050` does the same. Snapshots then go to `/tmp/lr-demo/backups/`. Everything under it is described in
 [Where your data lives](/reference/data-directory/).
 
 ## `PORT`
