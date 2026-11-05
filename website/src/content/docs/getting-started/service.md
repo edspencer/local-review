@@ -28,7 +28,7 @@ Both start at **login**, not at boot (except a Linux service with lingering on, 
 ## Installing
 
 ```sh
-local-review service install [--port <n>] [--dry-run] [--from-checkout] [--refresh]
+local-review service install [--port <n>] [--dry-run] [--from-checkout] [--refresh] [--json]
 ```
 
 - **`--port <n>`** picks the port (default 5622). `$PORT` isn't used, so a `PORT` exported for something else can't
@@ -110,6 +110,8 @@ status` and `doctor` warn, and `service install` again fixes it.** It keeps the 
 | `service logs [-f] [-n <lines>]` | The last 50 lines of its log; `-f` follows, `-n` sets how many. |
 
 `start`, `stop`, `restart` and `logs` exit 4 when there's no service installed, and say how to install one.
+`install`, `uninstall`, `start`, `stop` and `restart` take `--json` too: one JSON document on stdout, the messages on
+stderr, and the same exit code ([the fields](/reference/cli/#local-review-service)). `logs` doesn't.
 
 ### `service start` and `service stop`
 
