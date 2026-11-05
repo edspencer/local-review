@@ -1,4 +1,4 @@
-// From edspencer/cli-contract reference/busy-client.ts @ 0.2; local changes: imports end in .js, not .ts
+// From edspencer/cli-contract reference/busy-client.ts @ 1.0; local changes: imports end in .js, not .ts
 // The CLI's side of the busy check (SPEC §4): find the running instance through `<home>/runtime.json`, ask its
 // `/api/busy`, and map the answer to exit 0 (idle), 75 (busy) or 3 (nothing answers), with §4's messages.
 // Used by `<tool> busy`, and before `service stop`, `service restart` and `update`. Node built-ins only.
