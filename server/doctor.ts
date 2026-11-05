@@ -6,10 +6,8 @@
 //
 // It only reads, apart from <data>/update-check.json: like `update --check`, it writes what it found there, so
 // `service status` can repeat it (SPEC §3). It asks the npm registry only because a person ran it; --offline doesn't.
-import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import { describeInstall, detectInstall, updateCommand, type InstallInfo } from './contract/install-method.js';
 import { fetchHealth } from './contract/health.js';
@@ -21,6 +19,7 @@ import { updateNotice, writeUpdateCheck } from './contract/update-check.js';
 import { DEFAULT_PORT } from './port.js';
 import { type ServiceContext, changelogUrl, statusReport } from './service/index.js';
 import { which } from './service/spec.js';
+import { lingerOf, lingerUser } from './service/linger.js';
 
 export type CheckStatus = 'pass' | 'warn' | 'fail' | 'skip';
 
@@ -126,7 +125,7 @@ export async function diagnose(i: DoctorInput): Promise<{ checks: Check[]; notic
   // ---- linger, on Linux: without it the service stops when you log out
   if (ctx.platform !== 'linux') add({ id: 'linger', status: 'skip', message: 'linger is a Linux thing' });
   else {
-    const user = ctx.env.USER || os.userInfo().username;
+    const user = lingerUser(ctx.env);
     const on = await (i.linger ?? (() => lingerOf(user)))();
     if (on === true) add({ id: 'linger', status: 'pass', message: `linger is on for ${user}: the service runs while you're logged out, and starts at boot` });
     else if (on === false && report?.installed)
@@ -216,13 +215,3 @@ const defaultIsListening = (port: number) =>
     s.once('timeout', () => (s.destroy(), resolve(false)));
     s.once('error', () => resolve(false));
   });
-
-/** `loginctl show-user <user> -p Linger`: true, false, or null when it can't say (no loginctl, no logind). */
-export function lingerOf(user: string): Promise<boolean | null> {
-  return new Promise((resolve) => {
-    execFile('loginctl', ['show-user', user, '-p', 'Linger'], { timeout: 5000 }, (err, stdout) => {
-      const m = /^Linger=(yes|no)$/m.exec(String(stdout ?? ''));
-      resolve(err || !m ? null : m[1] === 'yes');
-    });
-  });
-}

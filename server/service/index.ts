@@ -23,6 +23,7 @@ import { createOutput } from '../contract/output.js';
 import { readLiveRuntimeFile } from '../contract/runtime-file.js';
 import { updateNotice, updateSummary, type UpdateSummary } from '../contract/update-check.js';
 import { BUSY_NOUNS } from '../busy.js';
+import { lingerAdvice, lingerOf, lingerUser } from './linger.js';
 import { CARRIED_ENV, LOG_FILE, type PlatformContext, RefusalError, buildSpec, isCheckout, managerFor, portOf, refusal, which } from './spec.js';
 
 export interface ServiceContext extends PlatformContext {
@@ -51,6 +52,8 @@ export interface ServiceContext extends PlatformContext {
   version?: string;
   /** With `--json` (withJson): what a command adds to its JSON document, beyond the status report. */
   facts?: Record<string, unknown>;
+  /** Linux's linger for this user: true, false, or null when loginctl can't say. (Mocked in tests.) */
+  linger?: () => Promise<boolean | null>;
 }
 
 /** Record what `--json` should carry: a no-op without it. */
@@ -274,6 +277,15 @@ export async function install(ctx: ServiceContext, flags: InstallFlags): Promise
   if (flags.refresh) return 0;
   ctx.out(`${m.lifetime}\n`);
   ctx.out(`Data: ${t(home)}. Log: ${t(spec.log)} (\`local-review service logs\`).\n`);
+  // Linux: linger is checked, never set; it takes sudo, which Local Review never runs (cli-contract SPEC §7)
+  if (ctx.platform === 'linux') {
+    const user = lingerUser(ctx.env);
+    const advice = lingerAdvice(await (ctx.linger ?? (() => lingerOf(user)))(), user);
+    if (advice) {
+      ctx.out(`\n${advice}\n`);
+      note(ctx, { warnings: [advice] });
+    }
+  }
   return 0;
 }
 
@@ -395,7 +407,9 @@ export async function withJson(ctx: ServiceContext, action: ServiceAction, run: 
   } catch {
     /* no service manager to ask: the document says what the command found */
   }
-  ctx.out(JSON.stringify({ ok: code === 0, action, ...(error ? { error } : {}), ...facts, ...report }, null, 2) + '\n');
+  // what the command warned of (linger, on an install) comes first, then what status warns of
+  const warnings = [...((facts.warnings as string[] | undefined) ?? []), ...(report.warnings ?? [])];
+  ctx.out(JSON.stringify({ ok: code === 0, action, ...(error ? { error } : {}), ...facts, ...report, ...(facts.warnings || report.warnings ? { warnings } : {}) }, null, 2) + '\n');
   if (thrown) throw thrown;
   return code;
 }
