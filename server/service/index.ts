@@ -235,13 +235,22 @@ export async function install(ctx: ServiceContext, flags: InstallFlags): Promise
     throw new Error(`port ${port} is already in use (is \`local-review\` running in a terminal?). Stop that first, or pick another port with --port <n>.`);
   fs.mkdirSync(path.dirname(spec.log), { recursive: true }); // launchd and systemd append to the logs, but won't make their directory
 
-  const changed = await m.write(spec);
-  // A service that's running is replaced, not left serving the old process: systemd's start (like `enable --now`)
-  // leaves an active unit alone (cli-contract SPEC §1, §7). A refresh restarts it whatever it's doing: `update` runs
-  // it to bring up the version it has just installed. A first install only starts: systemd allows five starts in ten
-  // seconds.
-  if (st.loaded && (changed || st.running || flags.refresh)) await m.restart({ reload: changed });
-  else await m.start();
+  // A first install the service manager refuses takes back the file it wrote, so `status` doesn't say it's installed
+  // and the next login doesn't try it again. A reinstall keeps its file: it's what's installed either way.
+  const existed = fs.existsSync(m.file);
+  let changed: boolean;
+  try {
+    changed = await m.write(spec);
+    // A service that's running is replaced, not left serving the old process: systemd's start (like `enable --now`)
+    // leaves an active unit alone (cli-contract SPEC §1, §7). A refresh restarts it whatever it's doing: `update` runs
+    // it to bring up the version it has just installed. A first install only starts: systemd allows five starts in ten
+    // seconds.
+    if (st.loaded && (changed || st.running || flags.refresh)) await m.restart({ reload: changed });
+    else await m.start();
+  } catch (e) {
+    if (!existed) await m.discard();
+    throw e;
+  }
 
   ctx.out(`${flags.refresh ? 'Refreshed' : 'Installed'} Local Review as a ${m.noun}: ${t(m.file)}${changed ? '' : ' (unchanged)'}\n`);
   for (const n of notes) ctx.out(`${n}\n`);

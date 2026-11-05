@@ -1,6 +1,6 @@
 // A static guard: no server code may delete, truncate, overwrite or rename files except the few reviewed call
 // sites below (temp-file cleanup and no-clobber renames in safefs.ts, snapshot copying and pruning in
-// backups.ts, `serve`'s own runtime.json in contract/runtime-file.ts, and `local-review service uninstall` removing its own LaunchAgent / systemd unit in service/manager.ts). If this fails, you've added a way to lose data: route it through server/safefs.ts instead, or
+// backups.ts, `serve`'s own runtime.json in contract/runtime-file.ts, the service's own log rotated in contract/rotate.ts, and `local-review service uninstall` removing its own LaunchAgent / systemd unit in service/manager.ts). If this fails, you've added a way to lose data: route it through server/safefs.ts instead, or
 // (after careful review) update ALLOWED with a comment saying why it can't destroy anything.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -63,6 +63,15 @@ const ALLOWED: Record<string, Record<string, number>> = {
     // `update`'s writability probe (SPEC §5 step 5): an empty directory it has just made with mkdtemp in npm's global
     // folder, removed at once (checked below). Never inside the data home
     rm: 1,
+  },
+  'contract/rotate.ts': {
+    // <data>/logs/service.log, the service manager's own log of stdout and stderr (cli-contract SPEC §7), never user
+    // data: past 8 MB it's copied to service.log.1 and truncated in place, the older copies shift down to .3, and the
+    // oldest copy goes. Only ever service.log and its numbered copies (checked below)
+    rm: 1, // service.log.<keep>, the oldest copy
+    rename: 1, // service.log.<n> -> .<n+1>
+    copy: 1, // service.log -> service.log.1
+    truncate: 1, // service.log, in place: launchd and systemd hold it open
   },
   'service/manager.ts': {
     // `service uninstall` removing the service's own generated definition (local-review.server.plist /
@@ -137,6 +146,18 @@ test("update's files remove only update.lock, their own temp file and the probe 
   assert.match(check, /const tmp = `\$\{file\}\.\$\{process\.pid\}\.tmp`;/);
   assert.match(check, /fs\.rmSync\(tmp, \{ force: true \}\);/);
   assert.match(read('package-manager.ts'), /fs\.rmSync\(fs\.mkdtempSync\(path\.join\(probe, '\.update-probe-'\)\), \{ recursive: true, force: true \}\);/);
+});
+
+test("the log rotation touches only the file it's given and that file's numbered copies", () => {
+  const src = stripComments(fs.readFileSync(path.join(SERVER, 'contract', 'rotate.ts'), 'utf8'));
+  assert.match(src, /const gen = \(n: number\): string => `\$\{file\}\.\$\{String\(n\)\}`;/);
+  assert.match(src, /fs\.rmSync\(gen\(keep\), \{ force: true \}\);/);
+  assert.match(src, /fs\.renameSync\(gen\(n\), gen\(n \+ 1\)\);/);
+  assert.match(src, /fs\.copyFileSync\(file, gen\(1\)\);/);
+  assert.match(src, /fs\.truncateSync\(file, 0\);/);
+  // and it's only ever given the service's log
+  const cli = stripComments(fs.readFileSync(path.join(SERVER, 'cli.ts'), 'utf8'));
+  assert.deepEqual(cli.match(/startLogRotation\([^;]*\);/g), ["startLogRotation(path.join(HOME, 'logs', LOG_FILE), { warn: (m) => process.stderr.write(`local-review: ${m}\\n`) });"]);
 });
 
 test('the guard catches the patterns it is meant to', () => {

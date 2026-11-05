@@ -169,5 +169,13 @@ export function launchdManager({ dir, label, uid, run = defaultRunner, sleep = (
       await launchctl(['enable', target]);
       removeServiceFile(file, dir);
     },
+    async discard() {
+      // bootstrap refused it, so nothing is loaded: only the plist to take back (cli-contract d5ddc0e)
+      try {
+        removeServiceFile(file, dir);
+      } catch {
+        /* it's the refusal that gets reported */
+      }
+    },
   };
 }
