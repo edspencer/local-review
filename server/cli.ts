@@ -33,9 +33,9 @@ const USAGE = `Usage: local-review [--data-dir <path>] [serve] [--port <n>] [--q
        local-review move <from> <to> <repo> (<sha>… | --stack <n>) [--to-repo <name>] [--dry-run]
        local-review examples [remove]
        local-review github refresh [<project>] | status [<project>]
-       local-review service install [--port <n>] [--dry-run] [--from-checkout] [--refresh]
+       local-review service install [--port <n>] [--dry-run] [--from-checkout] [--refresh] [--json]
        local-review service uninstall | start | status [--json]
-       local-review service stop | restart [--force]
+       local-review service stop | restart [--force] [--json]
        local-review service logs [-f] [-n <lines>]
        local-review busy [--json]
        local-review update [--check] [--to <version|tag>] [--yes] [--force] [--json]
@@ -105,19 +105,25 @@ const USAGE = `Usage: local-review [--data-dir <path>] [serve] [--port <n>] [--q
           --refresh        rewrite the installed service for this version, from what it was installed with (its
                            port, data home and environment, not this shell's), and restart it. Exits 4 if
                            nothing is installed. \`update\` runs it.
+          --json           one JSON document on stdout, { ok, action, error?, … } with \`service status --json\`'s
+                           fields; the messages go to stderr
   service uninstall
           Stop the service and remove its file. Your data (and its logs/) stays where it is.
+          --json           as \`service install\`
   service start
           Start the installed service, and wait until it answers.
+          --json           as \`service install\`
   service stop
           Stop it until \`service start\` or your next login. It stays installed: \`service uninstall\` removes it.
           Refuses (exit 75) while it's busy saving, snapshotting or syncing with GitHub (see \`busy\`).
           --force          stop it anyway
+          --json           as \`service install\`
   service restart
           Restart it, e.g. after \`npm i -g local-review@latest\`. A service file an older version wrote, or one
           whose Node or local-review has gone, is rewritten first, keeping its port and environment. Refuses
           (exit 75) while it's busy, as \`stop\` does.
           --force          restart it anyway
+          --json           as \`service install\`
   service status
           Whether it's installed, loaded, running and answering, on which port, which version, and what it runs.
           Exits 0 if it's running and answering, 3 if it's installed but not, 4 if it isn't installed.
@@ -473,29 +479,31 @@ async function service(args: string[], flags: Record<string, string>): Promise<n
   const [sub, ...rest] = args;
   const svc = await import('./service/index.js');
   const ctx = svc.realContext(ROOT, { dataHome: HOME, version: version() });
+  // --json: one document on stdout, the prose on stderr (cli-contract SPEC §1); `logs` doesn't take it
+  const json = (action: import('./service/index.js').ServiceAction, run: (c: typeof ctx) => Promise<number>) => (flags.json ? svc.withJson(ctx, action, run) : run(ctx));
   try {
     switch (sub) {
       case 'install': {
-        check('service install', flags, ['port', 'dry-run', 'from-checkout', 'refresh'], rest, 0);
+        check('service install', flags, ['port', 'dry-run', 'from-checkout', 'refresh', 'json'], rest, 0);
         const port = flags.port === undefined ? undefined : parsePort(flags.port);
         if (port === null || port === 0) throw new UsageError(`--port must be a port number (1-65535), not '${flags.port}'`);
-        return await svc.install(ctx, { port, dryRun: !!flags['dry-run'], fromCheckout: !!flags['from-checkout'], refresh: !!flags.refresh });
+        return await json('install', (c) => svc.install(c, { port, dryRun: !!flags['dry-run'], fromCheckout: !!flags['from-checkout'], refresh: !!flags.refresh }));
       }
       case 'uninstall':
-        check('service uninstall', flags, [], rest, 0);
-        return await svc.uninstall(ctx);
+        check('service uninstall', flags, ['json'], rest, 0);
+        return await json('uninstall', (c) => svc.uninstall(c));
       case 'start':
-        check('service start', flags, [], rest, 0);
-        return await svc.start(ctx);
+        check('service start', flags, ['json'], rest, 0);
+        return await json('start', (c) => svc.start(c));
       case 'stop':
-        check('service stop', flags, ['force'], rest, 0);
-        return await svc.stop(ctx, { force: !!flags.force });
+        check('service stop', flags, ['force', 'json'], rest, 0);
+        return await json('stop', (c) => svc.stop(c, { force: !!flags.force }));
       case 'status':
         check('service status', flags, ['json'], rest, 0);
         return await svc.status(ctx, { json: !!flags.json });
       case 'restart':
-        check('service restart', flags, ['force'], rest, 0);
-        return await svc.restart(ctx, { force: !!flags.force });
+        check('service restart', flags, ['force', 'json'], rest, 0);
+        return await json('restart', (c) => svc.restart(c, { force: !!flags.force }));
       case 'logs': {
         check('service logs', flags, ['follow', 'lines'], rest, 0);
         if (flags.lines !== undefined && !/^[0-9]{1,7}$/.test(flags.lines)) throw new UsageError(`-n must be a number of lines, not '${flags.lines}'`);
