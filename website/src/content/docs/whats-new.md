@@ -7,6 +7,19 @@ The highlights of each release. The full list is in
 [CHANGELOG.md](https://github.com/edspencer/local-review/blob/main/CHANGELOG.md), and each version's notes are on
 [GitHub Releases](https://github.com/edspencer/local-review/releases).
 
+## Coming in 0.16.0: `local-review update` and `doctor`
+
+Not released yet.
+
+- **`local-review update`** installs the latest version and restarts the service onto it. It asks first, waits while
+  Local Review is busy, and if the new version doesn't start it puts the old one back. `--check` only reports. See
+  [Updating](/getting-started/updating/).
+- **`local-review doctor`** checks the install (Node, how it was installed, the service, the port, linger, the data
+  home, git and gh, and whether there's a newer version) and prints a fix under each problem. See
+  [`local-review doctor`](/reference/cli/#local-review-doctor).
+- **Reinstalling over a running service restarts it**, and `service install --refresh` rewrites the service for this
+  version from what it was installed with.
+
 ## 0.15.0: `local-review busy`
 
 - **Restarts wait for your writes.** `local-review busy` says whether Local Review is saving, taking a backup

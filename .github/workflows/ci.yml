@@ -43,7 +43,9 @@ jobs:
       - name: Smoke-test the npm package
         run: npm run smoke:pack
       # edspencer/cli-contract's black-box checks of the packed CLI (cli-contract.json says which apply): --version,
-      # --help, exit codes, `service status --json`, `busy`, serve's first line and /api/health.
+      # --help, exit codes, `service status --json`, `busy`, serve's first line and /api/health, and `update` against a
+      # local registry in a throwaway npm prefix (up to date, --check --json, no TTY, busy, npx, a checkout, a global
+      # folder it can't write, an update and a downgrade). The two that need a real service run in the service job.
       - name: CLI contract conformance
         run: npx cli-conformance
 
@@ -77,6 +79,13 @@ jobs:
         env:
           LOCAL_REVIEW_REAL_SERVICE: '1'
         run: node scripts/service-real.mjs
+      # cli-contract's `update` checks that need the real service manager: install the service at this version, then
+      # `update --yes` to a newer build from a local registry (it must come up on it), and to one whose `serve` exits at
+      # once (it must roll back: exit 6, the old version installed and answering again).
+      - name: The update, with the real service (cli-contract)
+        env:
+          CI_REAL_SERVICE: '1'
+        run: npx cli-conformance --only update-service,update-rollback
 
   website:
     name: Docs site build
