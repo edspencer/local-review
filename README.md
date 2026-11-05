@@ -78,7 +78,7 @@ npm i -g local-review
 local-review service install
 ```
 
-See [Run it as a service](https://local-review.edspencer.net/getting-started/service/).
+See [Running as a service](https://local-review.edspencer.net/getting-started/service/).
 
 > **Upgrading from before 0.2.0?** The default port was 5000; it's now 5622 (macOS uses 5000 for AirPlay). Update
 > bookmarks and agent prompts, or run `npx local-review --port 5000`.
@@ -111,7 +111,7 @@ To hand a reviewed project to your agent, paste the
 
 - **Getting started:** [Quickstart](https://local-review.edspencer.net/getting-started/quickstart/) ·
   [Installation](https://local-review.edspencer.net/getting-started/installation/) ·
-  [Run it as a service](https://local-review.edspencer.net/getting-started/service/)
+  [Running as a service](https://local-review.edspencer.net/getting-started/service/)
 - **Concepts:** [Projects & repos](https://local-review.edspencer.net/concepts/projects-and-repos/) ·
   [PR stacks](https://local-review.edspencer.net/concepts/pr-stacks/) ·
   [Readiness](https://local-review.edspencer.net/concepts/readiness/) ·

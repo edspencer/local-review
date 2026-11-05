@@ -1,10 +1,14 @@
 ---
-title: Run it as a service
-description: Keep Local Review running in the background, started at login, as a launchd LaunchAgent on macOS or a systemd user unit on Linux.
+title: Running as a service
+description: Keep Local Review running in the background, started at login, as a launchd LaunchAgent on macOS or a systemd user service on Linux.
 ---
 
-`npx local-review` runs until you close the terminal. To have the UI always there on `http://localhost:5622`,
-install Local Review and make it a service:
+`local-review service install` sets Local Review up to start when you log in and to restart if it stops: a
+LaunchAgent on macOS, a systemd user service on Linux. **Windows isn't supported yet**: there, `service install` says
+so and does nothing. Run `local-review` in a terminal, or set up a Task Scheduler task yourself.
+
+`npx local-review` runs until you close the terminal. To have the UI always there on `http://localhost:5622`, install
+Local Review and make it a service:
 
 ```sh
 npm i -g local-review
@@ -19,79 +23,108 @@ It starts at login and is restarted if it exits.
 Data: ~/.local-review. Log: ~/.local-review/logs/service.log (`local-review service logs`).
 ```
 
-It registers Local Review with your OS's own service manager and starts it:
+Both start at **login**, not at boot (except a Linux service with lingering on, below).
 
-- **macOS:** a LaunchAgent, `~/Library/LaunchAgents/local-review.server.plist`, loaded now and at every login, and
-  restarted if it exits.
-- **Linux:** a systemd user unit, `~/.config/systemd/user/local-review-server.service` (under `$XDG_CONFIG_HOME` if
-  that's set), enabled and started, and restarted if it exits. A user unit runs while you're logged in; to keep it
-  running without a login session, and start it at boot, enable lingering once with `loginctl enable-linger $USER`.
-  Local Review never does that for you.
-- **Windows:** not supported. `local-review service install` says so and does nothing. Run `local-review` in a
-  terminal, or set up a Task Scheduler task yourself.
-
-Both start at **login**, not at boot (except a Linux unit with lingering on).
-
-## The commands
+## Installing
 
 ```sh
-local-review service install [--port <n>] [--dry-run] [--from-checkout]
-local-review service start
-local-review service stop [--force]
-local-review service restart [--force]
-local-review service status [--json]
-local-review service logs [-f] [-n <lines>]
-local-review service uninstall
+local-review service install [--port <n>] [--dry-run] [--from-checkout] [--refresh]
 ```
-
-`start`, `stop`, `restart` and `logs` exit 4 when there's no service installed, and say how to install one.
-
-### `service install`
-
-Writes the service's file and starts it, then waits up to 15 seconds for it to answer. If it doesn't, it says so,
-prints the last lines of its log and exits 1.
 
 - **`--port <n>`** picks the port (default 5622). `$PORT` isn't used, so a `PORT` exported for something else can't
   end up in the service by accident.
-- **It's safe to run again.** It rewrites the file (`(unchanged)` if nothing in it changed), and a service that's
-  running is restarted onto it, so the old process never keeps serving. A reinstall **keeps the port, `LOCAL_REVIEW_HOME` and `LOCAL_REVIEW_USER` the service was
-  installed with** unless you give new ones, and says when it kept one. To drop one, `uninstall` first.
-- **`--dry-run`** prints the file it would write and does nothing else: no file, no directory, nothing started.
-- **`--refresh`** rewrites the installed service in this version's format from what *it* records (its port, data home,
-  environment and `PATH`), not from the shell you run it in, then restarts it. `--port` still wins. With nothing
+- **It waits until Local Review answers** before it returns, for up to 15 seconds. If it doesn't answer, it says so,
+  prints the last 20 lines of its log and exits 1.
+- **Running it again is safe:** it keeps the port and settings the service already has, unless you give new ones, and
+  restarts the running service onto them. Those settings are the port, `LOCAL_REVIEW_HOME` and `LOCAL_REVIEW_USER`;
+  it says when it kept one, and to drop one, `uninstall` first. It rewrites the file (`(unchanged)` if nothing in it
+  changed), and the old process never keeps serving.
+- **`--dry-run` prints the unit and writes nothing**: no file, no directory, nothing started.
+- **`--refresh`** rewrites the installed service in this version's format from what *it* records (its port, data
+  home, environment and `PATH`), not from the shell you run it in, then restarts it. `--port` still wins. With nothing
   installed it exits 4 rather than installing with defaults. It's what [`local-review update`](/getting-started/updating/)
   runs with the new version.
-- If the port is already taken by something else (most likely `local-review` running in a terminal), it stops before
-  writing anything: stop that first, or pick another port.
+- It refuses to install **from an npx cache** (the folder is temporary), **from a git checkout unless you add
+  `--from-checkout`**, and **when something else holds the port** (most likely `local-review` running in a terminal:
+  stop that first, or pick another port). Each refusal writes nothing. More on the first two below.
+- If systemd or launchd refuses a first install, it takes back the file it wrote, so `service status` doesn't say
+  it's installed. A refused reinstall keeps the file it had.
+
+### Linux: linger
+
+**Without linger, the service stops when you log out**, and starts only when you log in. With it, the service runs
+while you're logged out, and starts at boot. Turn it on once:
+
+```sh
+sudo loginctl enable-linger $USER
+```
+
+`install` reminds you of it, and [`doctor`](/reference/cli/#local-review-doctor) checks, and prints
+`sudo loginctl enable-linger <user>` when it's off. **Local Review never runs `sudo` itself.**
+
+### Not from npx
+
+`local-review service install` refuses to run from npx's cache, which npm can delete at any time: the service would
+break at some later login, and it would stay on that one version. It refuses pnpm dlx, bunx and yarn dlx for the same
+reason, writes nothing and says what to do instead:
+
+```text
+$ npx local-review service install
+local-review: Local Review is running from npx's cache, which npm can delete at any time, so a service that runs it would break at some later login. Install it first: `npm i -g local-review`, then run `local-review service install` again.
+```
+
+### Not from a checkout, unless you mean it
+
+From a clone of the repo, it refuses too: the service would run whatever the checkout last built, and break when it's
+cleaned or rebuilt. If that's what you want (you're working on Local Review itself), build it and add
+`--from-checkout`:
+
+```sh
+npm run build
+npm run lr -- service install --from-checkout
+```
+
+## Where things are
+
+| | macOS | Linux |
+| --- | --- | --- |
+| The unit | `~/Library/LaunchAgents/local-review.server.plist` | `~/.config/systemd/user/local-review-server.service` (under `$XDG_CONFIG_HOME` if that's set) |
+| The log | `~/.local-review/logs/service.log` | the same |
+
+The log is in the data home, so it's `logs/service.log` under `LOCAL_REVIEW_HOME` if you installed with that set.
+
+The unit runs this Node and this install's `cli.js` by their real paths, never the `local-review` shim (see
+[What the service runs](#what-the-service-runs)). So **if you remove that Node version (nvm, fnm, volta), `service
+status` and `doctor` warn, and `service install` again fixes it.** It keeps the port and data home.
+
+## The commands
+
+| Command | |
+| --- | --- |
+| `service install` | Write the unit, start it, and wait until it answers ([Installing](#installing)). |
+| `service uninstall` | Stop it and remove the unit. Your data and logs stay. |
+| `service start` | Start the installed service, and wait until it answers. |
+| `service stop [--force]` | Stop it until `service start`, or the next login or boot. Refuses while it's [busy](#busy). |
+| `service restart [--force]` | Stop it and start it again, rewriting a stale unit first. Refuses while it's [busy](#busy). |
+| `service status [--json]` | Installed? Running? Which version? Answering? Busy? |
+| `service logs [-f] [-n <lines>]` | The last 50 lines of its log; `-f` follows, `-n` sets how many. |
+
+`start`, `stop`, `restart` and `logs` exit 4 when there's no service installed, and say how to install one.
 
 ### `service start` and `service stop`
 
 `service start` starts the installed service and waits until it answers, as `install` does, printing the end of its
 log if it doesn't. It refuses if something else has the port (a `local-review` in a terminal, say).
 
-`service stop` stops it **until you start it again or until your next login**, whichever comes first. It doesn't
-disable it, so it's still installed, and on Linux with lingering on, the next boot starts it too. That's what
-`systemctl --user stop` and `launchctl bootout` do on their own. To keep it off for good, use `service uninstall`.
+`service stop` **stops it until `service start`, or the next login or boot. It doesn't disable the service. To keep it
+off for good, use `service uninstall`.** That's what `systemctl --user stop` and `launchctl bootout` do on their own
+(the next boot only starts a Linux unit with lingering on). Like `restart`, it first checks whether Local Review is
+[busy](#busy).
 
 ```text
 $ local-review service stop
 Stopped Local Review. It starts again at your next login, or with `local-review service start`. To keep it off, `local-review service uninstall`.
 ```
-
-### Busy: `stop` and `restart` wait for you
-
-`service stop` and `service restart` first ask the service whether it's [busy](/reference/cli/#local-review-busy):
-saving a comment or a description, taking a backup snapshot, or syncing with GitHub. If it is, they don't stop it.
-Instead they say what's under way and exit 75:
-
-```text
-$ local-review service restart
-local-review: Local Review is busy: 1 GitHub sync is running. Try again once it has finished (`local-review busy` says when), or restart it anyway with --force.
-```
-
-Those writes take a moment, so trying again usually just works. `--force` goes ahead regardless, and says what it
-overrode (`Overriding: Local Review is busy: …`). Open pages don't count as busy: drafts live in the browser, and the
-pages reconnect once it's back. `service uninstall` doesn't ask, since removing the service is a deliberate act.
 
 ### `service status`
 
@@ -125,24 +158,57 @@ uses.
 
 ### `service restart`
 
-Restarts it, for instance after an upgrade (below), unless it's [busy](#busy-stop-and-restart-wait-for-you). If the service's file is stale, it's rewritten first, keeping
+Restarts it, for instance after an upgrade (below), unless it's [busy](#busy). If the service's file is stale, it's rewritten first, keeping
 the port and the environment it was installed with. A file is stale when an older Local Review wrote it (one from
 before 0.14 logs to two files), or when the Node or `local-review` it names has gone. In that last case, it's pointed
 at the `local-review` you ran and its Node.
 
 ### `service logs`
 
-Prints the last 50 lines of the service's log, `logs/service.log` in the data home. `-n <lines>` prints more or fewer,
-and `-f` keeps printing what it writes until you press Ctrl-C. Local Review writes that file itself on both OSes,
-not the systemd journal, so it's the same command everywhere. A service installed before 0.14 writes `server.out.log`
+**The last 50 lines; `-f` follows, `-n` sets how many** (until you press Ctrl-C). It reads `logs/service.log` in the
+data home ([Logs](#logs), below), not the systemd journal, so it's the same command on both OSes. A service installed before 0.14 writes `server.out.log`
 and `server.err.log` instead. `service logs` shows both until `service restart` moves the service to the one file.
 The old files are left where they are.
 
 ### `service uninstall`
 
-Stops the service and removes its file. **Nothing else**: your data in `~/.local-review` (and its `logs/`) stays
+**Stops it and removes the unit. Your data and logs stay**: everything in `~/.local-review`, `logs/` included, stays
 exactly where it is, as the [never-delete guarantee](/guarantees/never-delete/) promises. Running it when there's no
 service just says so. It works from npx too.
+
+## Busy
+
+**`service stop` and `service restart` first ask the running Local Review whether it's busy**: saving a comment or a
+description, taking a backup snapshot, or syncing with GitHub. **If it is, they refuse with exit 75 and say what's
+running. Wait and try again, or add `--force`, which prints the same message prefixed `Overriding:` and goes ahead.**
+
+```text
+$ local-review service restart
+local-review: Local Review is busy: 1 GitHub sync is running. Try again once it has finished (`local-review busy` says when), or restart it anyway with --force.
+```
+
+Those writes take a moment, so trying again usually just works. Open pages don't count as busy: drafts live in the
+browser, and the pages reconnect once it's back. `uninstall` doesn't ask, since removing the service is a deliberate
+act. [`local-review busy`](/reference/cli/#local-review-busy) asks the same question on its own (0 not busy, 75 busy,
+3 nothing running).
+
+## Logs
+
+One file, `~/.local-review/logs/service.log`, which stdout and stderr both append to, on both OSes. **Local Review
+rotates it itself** (by copying and truncating, at 8 MB, keeping 3: `service.log.1` to `.3`), because the service
+manager holds it open: when it starts, and every 15 minutes while it runs. `service logs` reads it, and `service
+uninstall` leaves it.
+
+## Exit codes
+
+| Code | |
+| --- | --- |
+| `0` | Running and answering (`status`); done (the rest). |
+| `1` | Failed: refused (npx, a checkout, the port), or started but not answering. |
+| `2` | Usage: an unknown command or option, or an option the command doesn't take. |
+| `3` | **Installed but not running or not answering** (`status`). |
+| `4` | **Not installed** (`status`, `start`, `stop`, `restart`, `logs`, `install --refresh`). |
+| `75` | **Busy** (`stop`, `restart`): try again later, or use `--force`. |
 
 ## What the service runs
 
@@ -165,7 +231,7 @@ start a service with almost no environment of its own:
 - It still listens on **127.0.0.1 only**, as `local-review` always does. There's no option to change that
   ([Localhost security](/guarantees/localhost-security/)).
 - Its working directory is the data home, and its output, stdout and stderr both, is appended to `logs/service.log`
-  there. Local Review rotates it itself, by copying and truncating, at 8 MB, keeping 3.
+  there ([Logs](#logs)).
 
 Here is a generated unit, from `local-review service install --dry-run` on Linux:
 
@@ -192,37 +258,11 @@ WantedBy=default.target
 
 The macOS plist says the same: `RunAtLoad` and `KeepAlive`, with `ThrottleInterval` 10.
 
-## Not from npx
-
-`local-review service install` refuses to run from npx's cache, which npm can delete at any time: the service would
-break at some later login, and it would stay on that one version. It refuses pnpm dlx, bunx and yarn dlx for the same
-reason, writes nothing and says what to do instead:
-
-```text
-$ npx local-review service install
-local-review: Local Review is running from npx's cache, which npm can delete at any time, so a service that runs it would break at some later login. Install it first: `npm i -g local-review`, then run `local-review service install` again.
-```
-
-## Not from a checkout, unless you mean it
-
-From a clone of the repo, it refuses too: the service would run whatever the checkout last built, and break when it's
-cleaned or rebuilt. If that's what you want (you're working on Local Review itself), build it and add
-`--from-checkout`:
-
-```sh
-npm run build
-npm run lr -- service install --from-checkout
-```
-
 ## Updating
 
 `local-review update` installs the latest version and restarts the service onto it, and if the new version doesn't
 come up it puts the old one back: see [Updating](/getting-started/updating/). By hand, it's
 `npm i -g local-review@latest` then `local-review service install --refresh`.
-
-If you've changed Node since you installed the service (a new version through nvm, fnm or Homebrew), your global
-packages may have moved with it. Run `local-review service install` again to point the service at the new ones; it
-keeps the port and data home. `local-review service status` and `local-review doctor` warn when this is needed.
 
 ## How much of this has been tested
 
