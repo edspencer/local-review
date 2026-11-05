@@ -37,7 +37,7 @@ local-review service install       # run it at every login (after npm i -g local
 ```
 
 Stop any `local-review` you started in a terminal first: the service needs its port. It won't install a service from
-npx's cache, which npm can delete at any time. More: [Run it as a service](/getting-started/service/).
+npx's cache, which npm can delete at any time. More: [Running as a service](/getting-started/service/).
 
 ## Updating
 

@@ -20,9 +20,11 @@ Update Local Review 0.15.0 → 0.16.0? The service will restart.
 Updated Local Review 0.15.0 → 0.16.0. Running at http://127.0.0.1:5622
 ```
 
-It installs the latest version from npm with the package manager you installed it with, then restarts the
-[service](/getting-started/service/) onto it. Your data isn't touched: it lives in `~/.local-review`, not in the
-package. `upgrade` works too.
+**`local-review update` asks the registry for the latest version, checks whether Local Review is busy, asks you to
+confirm, downloads the new version first (while the old one is still running), stops the service, installs, starts the
+new version and waits until it answers.** If anything from the install on fails, it puts the old version back. It
+installs with the package manager you installed it with, and restarts the [service](/getting-started/service/) onto
+the new version. Your data isn't touched: it lives in `~/.local-review`, not in the package. `upgrade` works too.
 
 ## Just checking
 
@@ -36,11 +38,9 @@ Local Review 0.16.0 is available (you have 0.15.0).
   Changes: https://github.com/edspencer/local-review/releases/tag/v0.16.0
 ```
 
-It changes nothing and exits 0 whether or not there's a newer version. With `--json` it prints
-`{ name, current, target, updateAvailable, installMethod, canUpdate, command, … }` for scripts.
+**It reports and changes nothing. It exits 0 whether or not there's an update; with `--json`, read
+`updateAvailable`.** The document is `{ name, current, target, updateAvailable, installMethod, canUpdate, command, … }`.
 [`local-review doctor`](/reference/cli/#local-review-doctor) checks too, along with the rest of the install.
-`local-review service status` repeats what the last check found, but never asks npm itself: nothing in Local Review
-contacts npm unless you run one of those three commands.
 
 ## What it does, in order
 
@@ -60,24 +60,34 @@ contacts npm unless you run one of those three commands.
    from what it was installed with (port, data home, environment), in the new version's format, and starts it.
 9. **Waits for the new version** to answer on `/api/health`, for up to 30 seconds.
 
-If anything from the install on fails, it prints the last lines of the service's log and **puts the old version
-back**: it reinstalls it, refreshes the service with the old version's CLI, and checks it answers. Then it exits
-**6** (`0.16.0 didn't start; 0.15.0 is running again.`). If even that fails, it exits **7** and prints the commands
-to run by hand.
+## Busy
 
-**Without a service** (you run `local-review` in a terminal), it does steps 1 to 6 and the install. If Local Review is
-running, stop it first (Ctrl-C): `update` won't install under a running server, and exits 3 if one answers. Then
-start it again.
+**If Local Review is busy, `update` refuses with exit 75 before anything is stopped**, and says what's running:
+saving a comment or a description, taking a backup snapshot, or syncing with GitHub. Wait, or use `--force`.
+
+## If the new version doesn't start
+
+**`update` waits up to 30 seconds for the new version to answer. If it doesn't, it prints the last 20 lines of the
+log, reinstalls the old version and checks that it answers: exit 6, "0.16.0 didn't start; 0.15.0 is running again."
+If the old version doesn't come back either, it exits 7 and prints the commands to run by hand.** The same rollback
+runs if the install or the hand-over fails.
+
+## Without a service
+
+If you run `local-review serve` yourself and it's answering, **`update` asks you to stop it first and exits 3**;
+stop it (Ctrl-C in its terminal), run `update` again, then start `serve` again. It stops before installing anything:
+it won't install under a running server. With no service and nothing answering, `update` does steps 1 to 6 and the
+install, and the next `local-review` you start is the new version.
 
 ## Options
 
 | Option | |
 | --- | --- |
-| `--check` | Report, change nothing. |
-| `--to <v>` | A version (`0.16.0`) or a dist-tag (`next`). The only way to go back to a lower version. |
-| `--yes` | Don't ask. |
-| `--force` | Update even while it's busy. Only the busy check is skipped: the health check and the rollback still run. |
-| `--json` | One JSON document on stdout, the progress on stderr. |
+| `--check` | **Reports and changes nothing. It exits 0 whether or not there's an update; with `--json`, read `updateAvailable`.** |
+| `--to <version\|tag>` | **A version or a dist-tag (`next`). It's the only way to move to a lower version.** |
+| `--yes` | **Skips the question. Without a terminal (a script, cron), `--yes` is required, or `update` exits 2.** |
+| `--force` | **Skips the busy check, and nothing else: the health check and the rollback still run.** |
+| `--json` | One JSON document on stdout; prose on stderr. |
 
 ## When it can't update itself
 
@@ -85,26 +95,34 @@ Some copies aren't `update`'s to change. It says so, prints the right command, a
 
 | Installed | What to run instead |
 | --- | --- |
-| With npx (`npx local-review`) | Nothing: `npx local-review@latest` fetches the latest each time. |
-| From a source checkout | `git pull && npm install && npm run build` |
-| As a dependency of another project | `npm install local-review@<version>` in that project. |
-| With yarn's `global add` | `yarn global add local-review@<version>` |
-| Where npm's global folder isn't yours to write | `sudo npm install -g local-review@<version>` |
 | Managed by something else (`LOCAL_REVIEW_UPDATE_HINT` is set) | Whatever that hint says. |
+| With npx (`npx local-review`) | Nothing: **`npx local-review@latest` already runs the latest**. |
+| From a git checkout | `git pull && npm install && npm run build` |
+| Where npm's global folder isn't yours to write | **The same command with `sudo`**: `sudo npm install -g local-review@<version>`. **Local Review never runs `sudo` itself.** |
+| With yarn's `global add`, or as a dependency of another project | Update it the way you installed it: `yarn global add local-review@<version>`, or `npm install local-review@<version>` in that project. |
+
+**A managed install: if `LOCAL_REVIEW_UPDATE_HINT` is set, `update` prints it and exits 5.** Set it in the
+environment of an install something else manages (an Ansible role, a NixOS module), so nobody updates it by hand.
 
 A global install with npm, pnpm, bun or Volta is updated with that same tool.
+
+## No automatic checks
+
+**Local Review never checks for updates by itself. Only `update`, `update --check` and `doctor` ask the registry,
+and only when you run them. `service status` repeats what the last of those found**, from
+`~/.local-review/update-check.json`.
 
 ## Exit codes
 
 | Code | |
 | --- | --- |
-| `0` | Updated, already up to date, or (`--check`) reported. |
+| `0` | Updated, or up to date (and `--check`, either way). |
 | `1` | Failed before anything changed: npm couldn't be reached, the version doesn't exist, the new version needs a newer Node, or another update is running. |
-| `2` | No terminal to ask, and no `--yes`. |
-| `3` | Local Review is running in a terminal, with no service to stop. |
-| `5` | This copy can't update itself; the command to run was printed. |
-| `6` | The new version didn't start; the old one is running again. |
-| `7` | The new version didn't start, and the old one couldn't be put back. Run what it printed. |
-| `75` | Busy. Try again later, or use `--force`. |
+| `2` | Usage, or no terminal without `--yes`. |
+| `3` | A foreground `local-review` is still answering. |
+| `5` | **This install can't update itself; the right command was printed.** |
+| `6` | **The update failed and was rolled back; the old version is running again.** |
+| `7` | **The update failed and couldn't be rolled back; a person is needed.** Run what it printed. |
+| `75` | **Busy.** Try again later, or use `--force`. |
 
 These are the [CLI contract](https://github.com/edspencer/cli-contract)'s, shared with Local Review's sibling tools.
