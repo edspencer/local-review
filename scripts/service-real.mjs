@@ -236,9 +236,11 @@ try {
   assert.match(o, new RegExp(`Port ${port2}, as it was installed`));
 
   step('service uninstall');
-  // its start, reading the data home `service install` chose (its environment came from the service's file alone)
+  // its start, in the log. (That it uses the data home `service install` chose, from the service's file alone, the
+  // busy step showed: its runtime.json is in that data home.)
   const logged = fs.readFileSync(log, 'utf8');
-  assert.ok(logged.includes(`Local Review ${version}: http://localhost:${port}\nProjects: ${path.join(data, 'projects')}\n`), `it logged its start:\n${logged}`);
+  // (the service runs `serve --quiet`: just the first line, cli-contract SPEC §3)
+  assert.ok(logged.startsWith(`Local Review ${version}: http://localhost:${port}\n`), `it logged its start:\n${logged}`);
   const dataBefore = fs.readdirSync(data).sort();
   assert.match(lr('service', 'uninstall'), /^Removed Local Review's service \(.*\)\. Your data in .* is untouched\.$/m);
   installed = false;
