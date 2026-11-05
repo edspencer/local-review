@@ -270,12 +270,14 @@ function world(platform: 'darwin' | 'linux', { where = 'global', git = true }: {
 
   // the service manager's state, as the mocked commands see it
   const calls: string[] = [];
-  const state = { loaded: false, running: false, enabled: false, pid: 100 };
+  // refuse: the verbs the manager refuses (exit 1), e.g. a systemd that won't start the unit, a bootstrap launchd won't do
+  const state = { loaded: false, running: false, enabled: false, pid: 100, refuse: [] as string[] };
   const run: Runner = async (cmd, args): Promise<RunResult> => {
     calls.push(`${cmd} ${args.join(' ')}`);
     const ok = (stdout = '') => ({ code: 0, stdout, stderr: '' });
     if (cmd === 'systemctl') {
       const [, verb] = args;
+      if (state.refuse.includes(verb)) return { code: 1, stdout: '', stderr: `Failed to ${verb} unit: refused` };
       if (verb === 'show') {
         const file = fs.existsSync(path.join(userHome, '.config', 'systemd', 'user', 'local-review-server.service'));
         return ok(
@@ -291,6 +293,7 @@ function world(platform: 'darwin' | 'linux', { where = 'global', git = true }: {
     }
     if (cmd === 'launchctl') {
       const [verb] = args;
+      if (state.refuse.includes(verb)) return { code: 1, stdout: '', stderr: `${verb}: refused` };
       if (verb === 'print') return state.loaded ? ok(`x = {\n\tstate = ${state.running ? 'running' : 'not running'}\n${state.running ? `\tpid = ${state.pid}\n` : ''}}\n`) : { code: 113, stdout: '', stderr: 'Could not find service' };
       if (verb === 'bootstrap') Object.assign(state, { loaded: true, running: true, pid: state.pid + 1 });
       if (verb === 'bootout') Object.assign(state, { loaded: false, running: false });
@@ -581,6 +584,52 @@ describe('--json on install, uninstall, start, stop and restart (cli-contract SP
     assert.equal(d.ok, false);
     assert.match(d.error, /npx's cache/);
     assert.equal(d.installed, false);
+  });
+});
+
+describe("a first install the service manager refuses leaves no unit behind (cli-contract d5ddc0e)", () => {
+  test('systemd refuses the start: the unit is disabled, removed and reloaded away, and status says not installed', async () => {
+    const w = world('linux');
+    w.state.refuse = ['start'];
+    await assert.rejects(install(w.ctx, {}), /systemctl --user start local-review-server\.service failed \(exit 1\)/);
+    assert.equal(fs.existsSync(w.file), false, 'status would otherwise say it is installed');
+    assert.deepEqual(w.calls.slice(-2), ['systemctl --user disable --quiet local-review-server.service', 'systemctl --user daemon-reload']);
+    w.state.refuse = [];
+    w.take();
+    assert.equal(await status(w.ctx), 4);
+  });
+
+  test("systemd refuses the reload or the enable, after the unit was written: it's taken back too", async () => {
+    for (const verb of ['daemon-reload', 'enable']) {
+      const w = world('linux');
+      w.state.refuse = [verb];
+      await assert.rejects(install(w.ctx, {}), new RegExp(`systemctl --user ${verb}.* failed \\(exit 1\\)`), verb);
+      assert.equal(fs.existsSync(w.file), false, verb);
+      assert.ok(fs.statSync(path.join(w.userHome, '.local-review', 'logs')).isDirectory(), 'the data home is left as it is');
+    }
+  });
+
+  test('launchd refuses the bootstrap: the plist is removed', async () => {
+    const w = world('darwin');
+    w.state.refuse = ['bootstrap'];
+    await assert.rejects(install(w.ctx, {}), /launchctl bootstrap .* failed \(exit 1\)/);
+    assert.equal(fs.existsSync(w.file), false);
+  });
+
+  test('control: a refused reinstall keeps the unit it had, on both', async () => {
+    for (const [platform, verb] of [
+      ['linux', 'restart'],
+      ['darwin', 'bootstrap'],
+    ] as const) {
+      const w = world(platform);
+      assert.equal(await install(w.ctx, {}), 0);
+      w.state.refuse = [verb];
+      // a new port: the definition changes, so the reinstall restarts (launchd: boots out and bootstraps) it
+      await assert.rejects(install(w.ctx, { port: 6001 }), /failed \(exit 1\)/, platform);
+      assert.ok(fs.existsSync(w.file), `${platform}: a reinstall keeps its unit`);
+      assert.match(fs.readFileSync(w.file, 'utf8'), /6001/, `${platform}: the unit that's there, as written`);
+      assert.ok(!w.calls.some((c) => / disable /.test(c)), `${platform}: nothing disabled`);
+    }
   });
 });
 

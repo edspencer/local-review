@@ -4,7 +4,7 @@ description: Your reviews are never irreparably deleted, and are snapshotted aut
 ---
 
 **The server (and the CLI) can't irreparably delete anything in `~/.local-review`.** Writes are atomic and never
-clobber another file, no file is ever unlinked or truncated, and `projects/` is snapshotted hourly whenever it changes.
+clobber another file, none of your files is ever unlinked or truncated, and `projects/` is snapshotted hourly whenever it changes.
 A test fails the build if any code gains a way around that.
 
 ## The guarantees
@@ -35,6 +35,10 @@ A test fails the build if any code gains a way around that.
   file *outside* `~/.local-review` (a LaunchAgent in `~/Library/LaunchAgents`, or a systemd user unit in
   `~/.config/systemd/user`, or under `$XDG_CONFIG_HOME`) and only creates `logs/` in the data home. `local-review service uninstall` removes that
   one file, after checking its name and directory, and nothing in `~/.local-review`, not even the logs.
+- **The service's log is rotated, and that's the only log anything removes.** `logs/service.log` is what launchd or
+  systemd appends Local Review's output to, not your data. Past 8 MB, Local Review copies it to `service.log.1` and
+  truncates it in place (the service manager holds it open), shifting older copies down to `service.log.3`; the oldest
+  copy goes.
 - **`cache/` is Local Review's own, disposable data**, not yours: what git said about commits, rewritten atomically as
   git answers come in and never snapshotted. You can delete it any time; it's rebuilt as needed.
 - **`runtime.json` is Local Review's own note to itself**, not yours: while it runs, its pid, port, URL and version,
@@ -76,6 +80,8 @@ directory); and `runtime.json`'s write, rename and removal in `server/contract/r
 that the removal is of `runtime.json` only, after checking its pid. `update`'s files in `server/contract/` have theirs
 too: `lock.ts` creates `update.lock` with `O_EXCL` and removes only it, and only once its pid is ours or gone;
 `update-check.ts` writes a temporary file, renames it to `update-check.json`, and removes only that temporary file;
-`package-manager.ts` removes only the empty directory it has just made for the writability check. The test pins each.
+`package-manager.ts` removes only the empty directory it has just made for the writability check. `rotate.ts` copies,
+truncates, shifts and drops only the service's log and its numbered copies, and `serve` gives it only
+`logs/service.log`. The test pins each.
 
 Contributors: if the guard fails on your change, route the write through `server/safefs.ts`; don't widen the test.

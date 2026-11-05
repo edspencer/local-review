@@ -166,5 +166,15 @@ export function systemdManager({ dir, label, run = defaultRunner }: SystemdOptio
       await systemctl(['daemon-reload']);
       await systemctl(['reset-failed', unit], [0, 1, 5]);
     },
+    async discard() {
+      // the systemctl calls are best effort: what refused the install may refuse these too (cli-contract d5ddc0e)
+      await run('systemctl', ['--user', 'disable', '--quiet', unit]).catch(() => {});
+      try {
+        removeServiceFile(file, dir);
+      } catch {
+        /* it's the refusal that gets reported */
+      }
+      await run('systemctl', ['--user', 'daemon-reload']).catch(() => {});
+    },
   };
 }

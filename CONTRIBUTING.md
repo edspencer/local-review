@@ -59,7 +59,7 @@ the rest of it is.
   ["Read-only guarantee"](https://local-review.edspencer.net/guarantees/read-only/)). New git calls go through it too, using only subcommands
   on the list.
 - **User data is never deleted.** Writes under `~/.local-review` are atomic and never clobber; nothing is unlinked
-  or truncated except snapshot pruning (the ["Never-delete guarantee"](https://local-review.edspencer.net/guarantees/never-delete/)). `test/fsguard.test.ts` enforces it: it scans `server/**/*.ts` and fails if anything
+  or truncated except snapshot pruning and the service's own log rotation (the ["Never-delete guarantee"](https://local-review.edspencer.net/guarantees/never-delete/)). `test/fsguard.test.ts` enforces it: it scans `server/**/*.ts` and fails if anything
   outside `server/safefs.ts` and `server/backups.ts` calls `unlink`, `rm`, `writeFile`, `rename` and friends, or
   shells out to `rm`/`mv`. If it fails on your change, route the write through `server/safefs.ts`; don't widen the
   test.
