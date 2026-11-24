@@ -17,6 +17,7 @@ import { ExamplesMenuItem, ExamplesStrip, Welcome } from './Welcome';
 import { Projects } from './Projects';
 import { tildify } from '../shared/paths';
 import { chainGroups, visibleProjects } from '../shared/chains';
+import { connectEvents } from './liveEvents';
 import { ARCHIVED_TITLE, LINK_ICON } from './Projects';
 import { SIDEBAR_DEFAULT, SIDEBAR_KEY, SIDEBAR_MIN, clampSidebar, keyResize, readSidebarWidth, sidebarMax } from './sidebarWidth';
 import { HomeContext, LinksContext, ProjectContext, hashString, isTyping, linkTo, navigate, prTab, projectUrl, relativeTime, routeUrl, useLocalStorage, useRoute, useTick, useTilde, type Route } from './util';
@@ -84,37 +85,29 @@ export function App() {
 
   // Server-sent events: review / PR files changed on disk, branch heads moved, project.yaml edited.
   useEffect(() => {
-    let es: EventSource | null = null;
-    let retry: ReturnType<typeof setTimeout>;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let dropped = false;
     const refreshSoon = () => { clearTimeout(timer); timer = setTimeout(refreshAll, 200); };
-    const connect = () => {
-      es = new EventSource('/api/events');
-      es.addEventListener('hello', () => {
+    const close = connectEvents({
+      onHello: () => {
         setLive(true);
         // back after a drop: events may have been missed while it was down
         if (dropped) {
+          dropped = false;
           invalidateAll();
           refreshSoon();
           reloadGithub();
         }
-      });
-      es.addEventListener('change', (m) => {
-        const e = JSON.parse((m as MessageEvent).data) as ServerEvent;
+      },
+      onChange: (data) => {
+        const e = JSON.parse(data) as ServerEvent;
         if (e.type === 'github') return reloadGithub(); // only GitHub's state changed: not the project
         onServerEvent(e); // the PR pages in memory (the one on screen refreshes)
         refreshSoon();
-      });
-      es.onerror = () => {
-        setLive(false);
-        dropped = true;
-        es?.close();
-        retry = setTimeout(connect, 2000);
-      };
-    };
-    connect();
-    return () => { es?.close(); clearTimeout(retry); clearTimeout(timer); };
+      },
+      onDown: () => { setLive(false); dropped = true; },
+    });
+    return () => { close(); clearTimeout(timer); };
   }, [refreshAll, reloadGithub]);
 
   // every commit of the project in sidebar order, for j/k, prev/next and redirects
@@ -191,7 +184,7 @@ export function App() {
   // its Files changed tab (FilesChanged.tsx); none on the welcome, project and stack pages
   const shortcuts = onRoot
     ? list && list.projects.length > 0 ? '/: filter projects' : null
-    : onCommit ? ['j / k: next / prev commit', route.tab === 'files' && 'n / p: next / prev file'].filter(Boolean).join(' · ') : null;
+    : onCommit ? ['j / k: next / prev commit', route.tab === 'files' && 'n / p: next / prev file', route.tab === 'files' && 'w: wrap lines'].filter(Boolean).join(' · ') : null;
   // linked projects (`after:`): what the breadcrumbs, the project page's bar and the stack pictures need
   const links = useMemo(() => ({ after: project?.after ?? null, next: project?.next.filter((n) => !n.hidden) ?? [], hiddenNext: !!project?.next.some((n) => n.hidden), buildsOn: !!project?.repos.some((r) => r.startsAfter) }), [project]);
   const isExample = !!list?.projects.find((p) => p.slug === activeSlug)?.example;

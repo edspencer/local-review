@@ -104,6 +104,7 @@ export function FilesChanged({ files: gitOrder, review, actions, newThread, setV
   // show the cards in the same order as the tree (directories first), like GitHub, so n / p follow it
   const files = useMemo(() => treeOrder(buildTree(gitOrder)), [gitOrder]);
   const [diffStyle, setDiffStyle] = useLocalStorage<'split' | 'unified'>('lr.diffStyle', 'unified');
+  const [wrap, setWrap] = useLocalStorage('lr.diffWrap', false);
   const [treeOpen, setTreeOpen] = useLocalStorage('lr.treeOpen', true);
   const viewed = useMemo(() => new Set(review.viewed), [review.viewed]);
   // explicit open/closed state per path; otherwise viewed files start collapsed (huge ones show "Load diff")
@@ -222,6 +223,19 @@ export function FilesChanged({ files: gitOrder, review, actions, newThread, setV
     return () => window.removeEventListener('keydown', onKey);
   }, [files, scrollTo]);
 
+  // w: toggle wrapping of long lines
+  const wrapRef = useRef(wrap);
+  wrapRef.current = wrap;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey || e.key !== 'w') return;
+      e.preventDefault();
+      setWrap(!wrapRef.current);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [setWrap]);
+
   const viewedCount = files.filter((f) => viewed.has(f.path)).length;
 
   return (
@@ -242,6 +256,7 @@ export function FilesChanged({ files: gitOrder, review, actions, newThread, setV
         </span>
         <button className="btn btn-sm" onClick={() => setAll(true)}>Expand all</button>
         <button className="btn btn-sm" onClick={() => setAll(false)}>Collapse all</button>
+        <button className={`btn btn-sm ${wrap ? 'selected' : ''}`} onClick={() => setWrap(!wrap)} title="Wrap long lines (w)">Wrap</button>
         <div className="BtnGroup">
           <button className={`btn btn-sm ${diffStyle === 'split' ? 'selected' : ''}`} onClick={() => setDiffStyle('split')}>Split</button>
           <button className={`btn btn-sm ${diffStyle === 'unified' ? 'selected' : ''}`} onClick={() => setDiffStyle('unified')}>Unified</button>
@@ -269,6 +284,7 @@ export function FilesChanged({ files: gitOrder, review, actions, newThread, setV
               }}
               threads={threadsByPath.get(f.path) ?? []}
               diffStyle={diffStyle}
+              wrap={wrap}
               drafts={draftsByPath.get(f.path) ?? NO_DRAFTS}
               openDraft={openDraft}
               actions={actions}
@@ -594,6 +610,7 @@ interface FileCardProps {
   setViewed: (v: boolean) => Promise<unknown>;
   threads: Thread[];
   diffStyle: 'split' | 'unified';
+  wrap: boolean;
   drafts: OpenDraft[];
   openDraft: (at: Draft, lineText: string | undefined) => void;
   actions: ThreadActions;
@@ -702,7 +719,7 @@ function ThreadLocation({ t }: { t: Thread }) {
   return <div className="thread-location">Comment on {rangeText(t.side, t.line, t.start_line, t.start_side)} ({isMixed(t) ? 'old and new' : t.side === 'left' ? 'old' : 'new'} file), outside the visible diff</div>;
 }
 
-function DiffBody({ file: f, threads, diffStyle, drafts, openDraft, actions, newThread }: FileCardProps) {
+function DiffBody({ file: f, threads, diffStyle, wrap, drafts, openDraft, actions, newThread }: FileCardProps) {
   const fileDiff = useMemo(
     () =>
       parseDiffFromFile(
@@ -743,7 +760,7 @@ function DiffBody({ file: f, threads, diffStyle, drafts, openDraft, actions, new
       hunkSeparators: 'line-info',
       // GitHub expands 20 lines per click; gaps larger than this get separate up / down / "Expand all" buttons
       expansionLineCount: 20,
-      overflow: 'scroll',
+      overflow: wrap ? 'wrap' : 'scroll',
       diffIndicators: 'classic',
       enableGutterUtility: true,
       // click / drag / shift-click line numbers to select lines (GitHub-style); the + then sits on the last one
@@ -764,7 +781,7 @@ function DiffBody({ file: f, threads, diffStyle, drafts, openDraft, actions, new
       unsafeCSS: PIERRE_CSS,
       onPostRender: () => applyRangeCSSRef.current(),
     }),
-    [diffStyle],
+    [diffStyle, wrap],
   );
 
   const { visible, outside } = useMemo(() => {
